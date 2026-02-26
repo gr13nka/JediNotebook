@@ -1,0 +1,15 @@
+services:
+  web-timer:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - timer-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/app/data/timer.db
+    restart: unless-stopped
+
+volumes:
+  timer-data:

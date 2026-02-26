@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.db
+*.sqlite
+data/
+client/android/
+client/ios/
+.DS_Store
+*.log
+.vite/

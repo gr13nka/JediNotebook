@@ -1,0 +1,8 @@
+node_modules
+dist
+*.db
+.git
+.DS_Store
+client/android
+client/ios
+data
