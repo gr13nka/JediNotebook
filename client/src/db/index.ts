@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Activity, TimeEntry, UserSettings, Habit, HabitEntry, Note, PomodoroPreset, Project, ProjectTask, TodayTask, ProjectFolder } from '@shared/types';
+import type { Activity, TimeEntry, UserSettings, Habit, HabitEntry, Note, PomodoroPreset, Project, ProjectTask, TodayTask, ProjectFolder, InboxItem } from '@shared/types';
 
 const db = new Dexie('TimeTrackerDB') as Dexie & {
   activities: EntityTable<Activity, 'id'>;
@@ -13,6 +13,7 @@ const db = new Dexie('TimeTrackerDB') as Dexie & {
   projectTasks: EntityTable<ProjectTask, 'id'>;
   todayTasks: EntityTable<TodayTask, 'id'>;
   projectFolders: EntityTable<ProjectFolder, 'id'>;
+  inboxItems: EntityTable<InboxItem, 'id'>;
 };
 
 db.version(1).stores({
@@ -81,6 +82,21 @@ db.version(6).stores({
     if (t.recurrenceRule === undefined) t.recurrenceRule = null;
     if (t.lastRecurredDate === undefined) t.lastRecurredDate = null;
   });
+});
+
+db.version(7).stores({
+  activities: 'id, name, sortOrder, deletedAt, updatedAt',
+  timeEntries: 'id, activityId, date, startedAt, endedAt, deletedAt, updatedAt',
+  settings: 'id',
+  habits: 'id, name, sortOrder, deletedAt, updatedAt',
+  habitEntries: 'id, habitId, date, deletedAt, updatedAt, [habitId+date]',
+  notes: 'id, isPinned, deletedAt, updatedAt',
+  pomodoroPresets: 'id, name, sortOrder, deletedAt, updatedAt',
+  projects: 'id, name, folderId, sortOrder, isArchived, deletedAt, updatedAt',
+  projectTasks: 'id, projectId, sortOrder, isCompleted, deletedAt, updatedAt',
+  todayTasks: 'id, projectTaskId, projectId, date, isCompleted, deletedAt, updatedAt',
+  projectFolders: 'id, name, parentFolderId, sortOrder, deletedAt, updatedAt',
+  inboxItems: 'id, deletedAt, updatedAt',
 });
 
 export { db };

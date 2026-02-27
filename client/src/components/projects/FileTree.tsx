@@ -7,6 +7,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { NEU } from '../../utils/shadows';
 import { AddProjectModal } from './AddProjectModal';
 import { AddFolderModal } from './AddFolderModal';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import type { ProjectFolder, Project } from '@shared/types';
 
 interface ContextMenuState {
@@ -28,6 +29,8 @@ export function FileTree() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [dragOverRoot, setDragOverRoot] = useState(false);
+  const [confirmDeleteProject, setConfirmDeleteProject] = useState<Project | null>(null);
+  const [confirmDeleteFolderId, setConfirmDeleteFolderId] = useState<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const projectsByFolder = (folderId: string) =>
@@ -39,10 +42,8 @@ export function FileTree() {
     await createFolder(data.name, data.color);
   };
 
-  const handleDeleteFolder = async (id: string) => {
-    if (confirm(t('folders.deleteConfirm'))) {
-      await deleteFolder(id);
-    }
+  const handleDeleteFolder = (id: string) => {
+    setConfirmDeleteFolderId(id);
   };
 
   const handleAddProject = async (data: { name: string; color: string }) => {
@@ -56,11 +57,8 @@ export function FileTree() {
   };
 
   const handleDeleteProject = (project: Project) => {
-    if (confirm(t('projects.deleteConfirm'))) {
-      closeTab(project.id);
-      deleteProject(project.id);
-    }
     setContextMenu(null);
+    setConfirmDeleteProject(project);
   };
 
   const handleMoveToRoot = (project: Project) => {
@@ -133,23 +131,34 @@ export function FileTree() {
   return (
     <div className="flex flex-col h-full">
       {/* Action buttons at top */}
-      <div className="flex gap-1 px-1.5 py-1.5 border-b border-border">
+      <div className="flex gap-1 px-1.5 py-1.5 border-b border-border justify-start">
         <button
           onClick={() => setShowAddFolder(true)}
-          className="flex-1 text-[11px] text-text-muted hover:text-text-secondary px-1.5 py-1 rounded-md transition-colors"
+          className="w-7 h-7 flex items-center justify-center text-text-muted hover:text-text-secondary rounded-md transition-colors"
           style={{ boxShadow: NEU.raisedSm }}
+          title={t('folders.newFolder')}
         >
-          + {t('folders.newFolder')}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            <line x1="12" y1="11" x2="12" y2="17" />
+            <line x1="9" y1="14" x2="15" y2="14" />
+          </svg>
         </button>
         <button
           onClick={() => {
             setAddProjectFolderId(null);
             setShowAddProject(true);
           }}
-          className="flex-1 text-[11px] text-text-muted hover:text-text-secondary px-1.5 py-1 rounded-md transition-colors"
+          className="w-7 h-7 flex items-center justify-center text-text-muted hover:text-text-secondary rounded-md transition-colors"
           style={{ boxShadow: NEU.raisedSm }}
+          title={t('projects.newProject')}
         >
-          + {t('projects.newProject')}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="12" y1="18" x2="12" y2="12" />
+            <line x1="9" y1="15" x2="15" y2="15" />
+          </svg>
         </button>
       </div>
 
@@ -241,6 +250,31 @@ export function FileTree() {
         open={showAddProject}
         onClose={() => setShowAddProject(false)}
         onAdd={handleAddProject}
+      />
+
+      <ConfirmModal
+        open={!!confirmDeleteProject}
+        onClose={() => setConfirmDeleteProject(null)}
+        onConfirm={() => {
+          if (confirmDeleteProject) {
+            closeTab(confirmDeleteProject.id);
+            deleteProject(confirmDeleteProject.id);
+          }
+        }}
+        title={t('projects.delete')}
+        message={t('projects.deleteConfirm')}
+      />
+
+      <ConfirmModal
+        open={!!confirmDeleteFolderId}
+        onClose={() => setConfirmDeleteFolderId(null)}
+        onConfirm={() => {
+          if (confirmDeleteFolderId) {
+            deleteFolder(confirmDeleteFolderId);
+          }
+        }}
+        title={t('folders.delete')}
+        message={t('folders.deleteConfirm')}
       />
     </div>
   );

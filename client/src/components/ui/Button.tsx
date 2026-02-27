@@ -15,10 +15,10 @@ export function Button({
 }: ButtonProps) {
   const base = 'rounded-xl font-medium transition-colors duration-200 ease-[var(--ease-spring)] focus:outline-none disabled:opacity-50 neu-btn';
   const variants = {
-    primary: 'bg-accent text-accent-fg',
-    secondary: 'bg-bg-card text-text-primary',
+    primary: 'bg-accent text-accent-fg border border-accent',
+    secondary: 'bg-bg-elevated text-text-primary border border-border',
     ghost: 'bg-transparent text-text-secondary hover:text-text-primary',
-    danger: 'bg-red text-white',
+    danger: 'bg-red text-white border border-red',
   };
   const shadows: Record<string, React.CSSProperties> = {
     primary: { boxShadow: NEU.raisedSm },

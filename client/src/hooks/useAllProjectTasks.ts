@@ -5,11 +5,27 @@ import type { Project, ProjectTask, ProjectFolder } from '@shared/types';
 export interface TaskGroup {
   project: Project;
   tasks: ProjectTask[];
+  completedTasks: ProjectTask[];
 }
 
 export interface FolderGroup {
   folder: ProjectFolder | null;
   projects: TaskGroup[];
+}
+
+async function buildTaskGroup(project: Project): Promise<TaskGroup> {
+  const allTasks = await db.projectTasks
+    .where('projectId')
+    .equals(project.id)
+    .filter((t) => !t.deletedAt)
+    .toArray();
+  const tasks = allTasks.filter((t) => !t.isCompleted).sort((a, b) => a.sortOrder - b.sortOrder);
+  const completedTasks = allTasks.filter((t) => t.isCompleted).sort((a, b) => {
+    const aTime = a.completedAt ?? a.updatedAt;
+    const bTime = b.completedAt ?? b.updatedAt;
+    return bTime.localeCompare(aTime);
+  });
+  return { project, tasks, completedTasks };
 }
 
 export function useAllProjectTasks() {
@@ -21,14 +37,9 @@ export function useAllProjectTasks() {
 
     const result: TaskGroup[] = [];
     for (const project of projects) {
-      const tasks = await db.projectTasks
-        .where('projectId')
-        .equals(project.id)
-        .filter((t) => !t.deletedAt && !t.isCompleted)
-        .toArray();
-      tasks.sort((a, b) => a.sortOrder - b.sortOrder);
-      if (tasks.length > 0) {
-        result.push({ project, tasks });
+      const group = await buildTaskGroup(project);
+      if (group.tasks.length > 0 || group.completedTasks.length > 0) {
+        result.push(group);
       }
     }
     return result;
@@ -47,14 +58,9 @@ export function useAllProjectTasks() {
 
     const projectGroups: TaskGroup[] = [];
     for (const project of projects) {
-      const tasks = await db.projectTasks
-        .where('projectId')
-        .equals(project.id)
-        .filter((t) => !t.deletedAt && !t.isCompleted)
-        .toArray();
-      tasks.sort((a, b) => a.sortOrder - b.sortOrder);
-      if (tasks.length > 0) {
-        projectGroups.push({ project, tasks });
+      const group = await buildTaskGroup(project);
+      if (group.tasks.length > 0 || group.completedTasks.length > 0) {
+        projectGroups.push(group);
       }
     }
 

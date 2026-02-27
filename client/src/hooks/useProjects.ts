@@ -13,13 +13,13 @@ export function useProjects() {
     [],
   );
 
-  const createProject = async (data: { name: string; color: string; folderId?: string | null }) => {
+  const createProject = async (data: { name: string; color: string; description?: string; folderId?: string | null }) => {
     const now = new Date().toISOString();
     const all = await db.projects.filter((p) => !p.deletedAt).toArray();
     const project: Project = {
       id: generateId(),
       name: data.name,
-      description: '',
+      description: data.description ?? '',
       color: data.color,
       sortOrder: all.length,
       isArchived: false,
@@ -69,11 +69,19 @@ export function useProjects() {
     }
   };
 
+  const reorderProjects = async (orderedIds: string[]) => {
+    const now = new Date().toISOString();
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db.projects.update(orderedIds[i], { sortOrder: i, updatedAt: now });
+    }
+  };
+
   return {
     projects: projects ?? [],
     createProject,
     updateProject,
     deleteProject,
     moveProject,
+    reorderProjects,
   };
 }

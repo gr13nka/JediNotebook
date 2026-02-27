@@ -9,14 +9,18 @@ import { TaskSettings } from '../components/settings/TaskSettings';
 import { TimerNotificationSettings } from '../components/settings/TimerNotificationSettings';
 import { LanguagePicker } from '../components/settings/LanguagePicker';
 import { NavPositionPicker } from '../components/settings/NavPositionPicker';
+import { AccentColorPicker } from '../components/settings/AccentColorPicker';
+import { ZoomSettings } from '../components/settings/ZoomSettings';
 import { Card } from '../components/ui/Card';
 import { useTranslation } from '../i18n/useTranslation';
 
 const sectionComponents = [
   { key: 'settings.language', component: LanguagePicker },
   { key: 'settings.theme', component: ThemeToggle },
+  { key: 'settings.accent', component: AccentColorPicker },
   { key: 'settings.appearance', component: BarStylePicker },
   { key: 'settings.navPosition', component: NavPositionPicker },
+  { key: 'settings.zoom', component: ZoomSettings },
   { key: 'settings.time', component: DayBoundarySettings },
   { key: 'settings.timezone', component: TimezoneSettings },
   { key: 'settings.tasks', component: TaskSettings },

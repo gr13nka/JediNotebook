@@ -30,7 +30,7 @@ export function ThemeToggle() {
       <div>
         <h3 className="text-sm font-medium text-text-secondary mb-2">{t('settings.themeStyle')}</h3>
         <div
-          className="flex gap-1 rounded-lg p-1 bg-bg-card"
+          className="flex gap-1 rounded-lg p-1 bg-bg-card border border-border"
           style={{ boxShadow: NEU.pressed }}
         >
           {([false, true] as const).map((neu) => {
@@ -41,7 +41,7 @@ export function ThemeToggle() {
                 type="button"
                 onClick={() => setStyle(neu)}
                 className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  active ? 'text-text-primary bg-bg-primary' : 'text-text-secondary'
+                  active ? 'text-text-primary bg-bg-primary border border-border' : 'text-text-secondary'
                 }`}
                 style={active ? { boxShadow: NEU.raisedSm } : undefined}
               >
@@ -55,7 +55,7 @@ export function ThemeToggle() {
       <div>
         <h3 className="text-sm font-medium text-text-secondary mb-2">{t('settings.themeColor')}</h3>
         <div
-          className="flex gap-1 rounded-lg p-1 bg-bg-card"
+          className="flex gap-1 rounded-lg p-1 bg-bg-card border border-border"
           style={{ boxShadow: NEU.pressed }}
         >
           {([false, true] as const).map((dark) => {
@@ -66,7 +66,7 @@ export function ThemeToggle() {
                 type="button"
                 onClick={() => setColor(dark)}
                 className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  active ? 'text-text-primary bg-bg-primary' : 'text-text-secondary'
+                  active ? 'text-text-primary bg-bg-primary border border-border' : 'text-text-secondary'
                 }`}
                 style={active ? { boxShadow: NEU.raisedSm } : undefined}
               >

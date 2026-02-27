@@ -1,8 +1,11 @@
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { create } from 'zustand';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { ContextMenu } from '../ui/ContextMenu';
 
 // Shared sidebar state so AppShell can react to it
 export const useSidebarStore = create<{
@@ -41,6 +44,13 @@ const NoteIcon = () => (
     <polyline points="14 2 14 8 20 8" />
     <line x1="16" y1="13" x2="8" y2="13" />
     <line x1="16" y1="17" x2="8" y2="17" />
+  </svg>
+);
+
+const InboxIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
   </svg>
 );
 
@@ -93,21 +103,80 @@ const CollapseIcon = ({ collapsed }: { collapsed: boolean }) => (
   </svg>
 );
 
+// Tabs that cannot be hidden (always visible)
+const PROTECTED_TABS = new Set<string>();
+
 export function Sidebar() {
   const collapsed = useSidebarStore((s) => s.collapsed);
   const toggle = useSidebarStore((s) => s.toggle);
   const { t } = useTranslation();
+  const hiddenNavTabs = useSettingsStore((s) => s.hiddenNavTabs);
+  const update = useSettingsStore((s) => s.update);
 
-  const navItems = [
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tab: string } | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+
+  const allNavItems = useMemo(() => [
     { to: '/', label: t('nav.tracking'), icon: ClockIcon },
     { to: '/projects', label: t('nav.projects'), icon: FolderIcon },
     { to: '/tasks', label: t('nav.taskSelection'), icon: ListIcon },
     { to: '/today', label: t('nav.today'), icon: SunIcon },
+    { to: '/inbox', label: t('nav.inbox'), icon: InboxIcon },
     { to: '/habits', label: t('nav.habits'), icon: HabitIcon },
     { to: '/analytics', label: t('nav.analytics'), icon: ChartIcon },
     { to: '/notes', label: t('nav.ideas'), icon: NoteIcon },
     { to: '/settings', label: t('nav.settings'), icon: GearIcon },
-  ];
+  ], [t]);
+
+  const visibleNavItems = useMemo(
+    () => allNavItems.filter((item) => !hiddenNavTabs.includes(item.to)),
+    [allNavItems, hiddenNavTabs],
+  );
+
+  const hiddenItems = useMemo(
+    () => allNavItems.filter((item) => hiddenNavTabs.includes(item.to)),
+    [allNavItems, hiddenNavTabs],
+  );
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, tab: string) => {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY, tab });
+  }, []);
+
+  const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
+
+  const toggleTabVisibility = useCallback((tab: string) => {
+    const current = hiddenNavTabs;
+    if (current.includes(tab)) {
+      update({ hiddenNavTabs: current.filter((t) => t !== tab) });
+    } else {
+      update({ hiddenNavTabs: [...current, tab] });
+    }
+  }, [hiddenNavTabs, update]);
+
+  const contextMenuItems = useMemo(() => {
+    if (!ctxMenu) return [];
+    const items = [];
+    const tab = ctxMenu.tab;
+
+    // Hide this tab (only if not protected)
+    if (!PROTECTED_TABS.has(tab)) {
+      items.push({
+        label: t('nav.hideTab'),
+        onClick: () => toggleTabVisibility(tab),
+      });
+    }
+
+    // Show hidden tabs
+    for (const hidden of hiddenItems) {
+      items.push({
+        label: `${t('nav.showTab')} "${hidden.label}"`,
+        onClick: () => toggleTabVisibility(hidden.to),
+      });
+    }
+
+    return items;
+  }, [ctxMenu, t, hiddenItems, toggleTabVisibility]);
 
   return (
     <motion.aside
@@ -140,7 +209,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-col gap-1 px-2">
-        {navItems.map((item) => (
+        {visibleNavItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -158,6 +227,7 @@ export function Sidebar() {
               isActive ? { boxShadow: NEU.pressed } : {}
             }
             title={collapsed ? item.label : undefined}
+            onContextMenu={(e) => handleContextMenu(e, item.to)}
           >
             {({ isActive }) => (
               <>
@@ -171,9 +241,59 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      {/* Hidden tabs restore button */}
+      {hiddenItems.length > 0 && (
+        <div className="px-2 mt-2">
+          <button
+            onClick={() => setShowHidden((s) => !s)}
+            className={`flex items-center gap-3 w-full rounded-lg text-sm text-text-muted hover:text-text-secondary transition-colors ${
+              collapsed ? 'px-2 py-2 justify-center' : 'px-3 py-2'
+            }`}
+            title={collapsed ? t('nav.hiddenTabs') : undefined}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </svg>
+            {!collapsed && (
+              <>
+                <span>{t('nav.hiddenTabs')}</span>
+                <span className="ml-auto text-xs tabular-nums">{hiddenItems.length}</span>
+              </>
+            )}
+          </button>
+          <AnimatePresence initial={false}>
+            {showHidden && !collapsed && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.15, ease: 'easeInOut' }}
+                style={{ overflow: 'hidden' }}
+              >
+                {hiddenItems.map((item) => (
+                  <button
+                    key={item.to}
+                    onClick={() => toggleTabVisibility(item.to)}
+                    className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-text-muted hover:text-text-primary transition-colors"
+                  >
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
       <div className="mt-auto pt-4 px-4">
         {!collapsed && <span className="text-xs text-text-muted/50">v1.0</span>}
       </div>
+
+      <ContextMenu items={contextMenuItems} position={ctxMenu} onClose={closeCtxMenu} />
     </motion.aside>
   );
 }

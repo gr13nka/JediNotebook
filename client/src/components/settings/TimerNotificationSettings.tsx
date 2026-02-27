@@ -24,13 +24,13 @@ export function TimerNotificationSettings() {
             <button
               onClick={() => update({ timerNotificationIntervalMinutes: Math.max(5, interval - 5) })}
               disabled={interval <= 5}
-              className="w-8 h-8 rounded-lg text-text-primary font-medium disabled:opacity-40 transition-colors"
+              className="w-8 h-8 rounded-lg bg-bg-elevated text-text-primary font-medium border border-border disabled:opacity-40 transition-colors"
               style={{ boxShadow: NEU.raisedSm }}
             >
               −
             </button>
             <span
-              className="w-10 h-8 flex items-center justify-center rounded-lg text-sm font-semibold text-text-primary"
+              className="w-10 h-8 flex items-center justify-center rounded-lg text-sm font-semibold text-text-primary bg-bg-card border border-border"
               style={{ boxShadow: NEU.pressedSm }}
             >
               {interval}
@@ -38,7 +38,7 @@ export function TimerNotificationSettings() {
             <button
               onClick={() => update({ timerNotificationIntervalMinutes: Math.min(120, interval + 5) })}
               disabled={interval >= 120}
-              className="w-8 h-8 rounded-lg text-text-primary font-medium disabled:opacity-40 transition-colors"
+              className="w-8 h-8 rounded-lg bg-bg-elevated text-text-primary font-medium border border-border disabled:opacity-40 transition-colors"
               style={{ boxShadow: NEU.raisedSm }}
             >
               +

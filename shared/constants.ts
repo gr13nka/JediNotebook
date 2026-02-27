@@ -42,6 +42,10 @@ export const DEFAULT_SETTINGS = {
   timerNotificationsEnabled: false,
   timerNotificationIntervalMinutes: 30,
   pointsCounterVisible: true,
+  accentColor: '',
+  uiZoom: 110,
+  pointsColorFixed: false,
+  hiddenNavTabs: [] as string[],
 };
 
 export const BREAK_ACTIVITY = {

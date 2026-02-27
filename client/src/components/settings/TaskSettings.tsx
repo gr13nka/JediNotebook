@@ -14,13 +14,13 @@ export function TaskSettings() {
         <button
           onClick={() => update({ maxTasksPerProject: Math.max(1, maxTasksPerProject - 1) })}
           disabled={maxTasksPerProject <= 1}
-          className="w-8 h-8 rounded-lg text-text-primary font-medium disabled:opacity-40 transition-colors"
+          className="w-8 h-8 rounded-lg bg-bg-elevated text-text-primary font-medium border border-border disabled:opacity-40 transition-colors"
           style={{ boxShadow: NEU.raisedSm }}
         >
           −
         </button>
         <span
-          className="w-10 h-8 flex items-center justify-center rounded-lg text-sm font-semibold text-text-primary"
+          className="w-10 h-8 flex items-center justify-center rounded-lg text-sm font-semibold text-text-primary bg-bg-card border border-border"
           style={{ boxShadow: NEU.pressedSm }}
         >
           {maxTasksPerProject}
@@ -28,7 +28,7 @@ export function TaskSettings() {
         <button
           onClick={() => update({ maxTasksPerProject: Math.min(20, maxTasksPerProject + 1) })}
           disabled={maxTasksPerProject >= 20}
-          className="w-8 h-8 rounded-lg text-text-primary font-medium disabled:opacity-40 transition-colors"
+          className="w-8 h-8 rounded-lg bg-bg-elevated text-text-primary font-medium border border-border disabled:opacity-40 transition-colors"
           style={{ boxShadow: NEU.raisedSm }}
         >
           +

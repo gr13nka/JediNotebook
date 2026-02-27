@@ -1,8 +1,10 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { usePointsCounter } from '../../hooks/usePointsCounter';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
 
-function getScoreColor(score: number): string {
+function getScoreColor(score: number, fixed: boolean): string {
+  if (fixed) return 'text-text-muted';
   if (score < 100) return 'text-green-500';
   if (score <= 500) return 'text-amber-500';
   return 'text-red-500';
@@ -22,9 +24,21 @@ const EyeClosed = () => (
   </svg>
 );
 
+const PaletteIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={className ?? 'w-3.5 h-3.5'}>
+    <path fillRule="evenodd" d="M3.5 2A1.5 1.5 0 002 3.5V15a3 3 0 106 0V3.5A1.5 1.5 0 006.5 2h-3zm11.76 5.84l-3.1-3.1a1.5 1.5 0 00-2.12 0L8.5 6.28a1.5 1.5 0 000 2.12l3.1 3.1a1.5 1.5 0 002.12 0l1.54-1.54a1.5 1.5 0 000-2.12z" clipRule="evenodd" />
+  </svg>
+);
+
 export function PointsCounter() {
   const { totalScore, isVisible, toggleVisibility } = usePointsCounter();
+  const colorFixed = useSettingsStore((s) => s.pointsColorFixed);
+  const update = useSettingsStore((s) => s.update);
   const { t } = useTranslation();
+
+  const toggleColorFixed = () => {
+    update({ pointsColorFixed: !colorFixed });
+  };
 
   return (
     <div className="flex items-center gap-1.5">
@@ -36,7 +50,7 @@ export function PointsCounter() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
             transition={{ duration: 0.2 }}
-            className={`text-xs font-bold tabular-nums ${getScoreColor(totalScore)}`}
+            className={`text-xs font-bold tabular-nums ${getScoreColor(totalScore, colorFixed)}`}
             title={t('points.title')}
           >
             {totalScore}
@@ -50,6 +64,15 @@ export function PointsCounter() {
       >
         {isVisible ? <EyeOpen /> : <EyeClosed />}
       </button>
+      {isVisible && (
+        <button
+          onClick={toggleColorFixed}
+          className={`transition-colors ${colorFixed ? 'text-text-muted' : 'text-accent'}`}
+          title={t('points.colorToggle')}
+        >
+          <PaletteIcon />
+        </button>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { TaskSelectionPage } from './pages/TaskSelectionPage';
 import { TodayPage } from './pages/TodayPage';
+import { InboxPage } from './pages/InboxPage';
 import { useSettingsStore } from './stores/settingsStore';
 import { useRecurringTaskCheck } from './hooks/useRecurringTaskCheck';
 
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="/habits" element={<HabitsPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/notes" element={<NotesPage />} />
+            <Route path="/inbox" element={<InboxPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </motion.div>

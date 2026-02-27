@@ -142,10 +142,10 @@ export function ProjectTaskList({ projectId }: ProjectTaskListProps) {
             <button
               onClick={handleAdd}
               disabled={!newTitle.trim()}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium text-text-primary disabled:opacity-40 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-lg text-text-primary disabled:opacity-40 transition-colors"
               style={{ boxShadow: NEU.raisedSm }}
             >
-              {t('projectTasks.add')}
+              +
             </button>
           </div>
           {showNewRecurrence && (

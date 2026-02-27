@@ -12,9 +12,8 @@ export function Input({ label, className = '', ...props }: InputProps) {
         <span className="block text-sm text-text-secondary mb-1 transition-colors duration-200">{label}</span>
       )}
       <input
-        className={`w-full rounded-xl bg-bg-card px-3 py-2 text-text-primary placeholder:text-text-muted transition-colors duration-200 focus:outline-none ${className}`}
+        className={`w-full rounded-xl bg-bg-card px-3 py-2 text-text-primary placeholder:text-text-muted border border-border transition-colors duration-200 focus:outline-none focus:border-accent ${className}`}
         style={{
-          border: 'none',
           boxShadow: NEU.pressed,
         }}
         {...props}

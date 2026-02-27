@@ -19,9 +19,8 @@ export function DayBoundarySettings() {
         <label className="block">
           <span className="block text-sm text-text-primary mb-1">{t('settings.dayStarts')}</span>
           <select
-            className="w-full rounded-xl bg-bg-card px-3 py-2 text-text-primary focus:outline-none"
+            className="w-full rounded-xl bg-bg-card px-3 py-2 text-text-primary border border-border focus:outline-none focus:border-accent"
             style={{
-              border: 'none',
               boxShadow: NEU.pressed,
             }}
             value={dayStartHour}
@@ -35,9 +34,8 @@ export function DayBoundarySettings() {
         <label className="block">
           <span className="block text-sm text-text-primary mb-1">{t('settings.dayEnds')}</span>
           <select
-            className="w-full rounded-xl bg-bg-card px-3 py-2 text-text-primary focus:outline-none"
+            className="w-full rounded-xl bg-bg-card px-3 py-2 text-text-primary border border-border focus:outline-none focus:border-accent"
             style={{
-              border: 'none',
               boxShadow: NEU.pressed,
             }}
             value={dayEndHour}

@@ -21,6 +21,18 @@ function applyTheme(theme: ThemeMode) {
   }
 }
 
+function applyZoom(zoom: number) {
+  document.documentElement.style.fontSize = `${zoom}%`;
+}
+
+function applyAccentColor(color: string) {
+  if (color) {
+    document.documentElement.style.setProperty('--color-accent', color);
+  } else {
+    document.documentElement.style.removeProperty('--color-accent');
+  }
+}
+
 interface SettingsState {
   dayStartHour: number;
   dayEndHour: number;
@@ -37,6 +49,10 @@ interface SettingsState {
   timerNotificationsEnabled: boolean;
   timerNotificationIntervalMinutes: number;
   pointsCounterVisible: boolean;
+  accentColor: string;
+  uiZoom: number;
+  pointsColorFixed: boolean;
+  hiddenNavTabs: string[];
   loaded: boolean;
   load: () => Promise<void>;
   update: (patch: Partial<Omit<SettingsState, 'loaded' | 'load' | 'update'>>) => Promise<void>;
@@ -76,10 +92,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         timerNotificationsEnabled: raw.timerNotificationsEnabled ?? DEFAULT_SETTINGS.timerNotificationsEnabled,
         timerNotificationIntervalMinutes: raw.timerNotificationIntervalMinutes ?? DEFAULT_SETTINGS.timerNotificationIntervalMinutes,
         pointsCounterVisible: raw.pointsCounterVisible ?? DEFAULT_SETTINGS.pointsCounterVisible,
+        accentColor: raw.accentColor ?? DEFAULT_SETTINGS.accentColor,
+        uiZoom: raw.uiZoom ?? DEFAULT_SETTINGS.uiZoom,
+        pointsColorFixed: raw.pointsColorFixed ?? DEFAULT_SETTINGS.pointsColorFixed,
+        hiddenNavTabs: raw.hiddenNavTabs ?? DEFAULT_SETTINGS.hiddenNavTabs,
         loaded: true,
       });
       applyTheme(theme);
+      applyAccentColor(raw.accentColor ?? DEFAULT_SETTINGS.accentColor);
+      applyZoom(raw.uiZoom ?? DEFAULT_SETTINGS.uiZoom);
     } else {
+      applyZoom(DEFAULT_SETTINGS.uiZoom);
       set({ language: detectBrowserLanguage(), loaded: true });
     }
   },
@@ -98,6 +121,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
     if ('theme' in patch && patch.theme) {
       applyTheme(patch.theme);
+      // Re-apply custom accent after theme change so it overrides the new theme default
+      applyAccentColor(get().accentColor);
+    }
+
+    if ('accentColor' in patch) {
+      applyAccentColor(patch.accentColor ?? '');
+    }
+
+    if ('uiZoom' in patch) {
+      applyZoom(patch.uiZoom ?? DEFAULT_SETTINGS.uiZoom);
     }
 
     await db.settings.update('default', {

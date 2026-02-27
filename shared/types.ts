@@ -42,6 +42,7 @@ export interface UserSettings {
   timerNotificationsEnabled: boolean;
   timerNotificationIntervalMinutes: number;
   pointsCounterVisible: boolean;
+  accentColor: string;
   updatedAt: string;
   deviceId: string;
 }
@@ -174,6 +175,15 @@ export interface TodayTask {
   isCompleted: boolean;
   completedAt: string | null;
   date: string; // YYYY-MM-DD
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  deviceId: string;
+}
+
+export interface InboxItem {
+  id: string;
+  text: string;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
