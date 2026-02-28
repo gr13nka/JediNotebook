@@ -47,7 +47,7 @@ export function renderMarkdown(md: string): string {
     .join('\n');
 
   // Single line breaks within paragraphs
-  html = html.replace(/(?<!\n)\n(?!\n)/g, '<br>');
+  html = html.replace(/([^\n])\n([^\n])/g, '$1<br>$2');
 
   return html;
 }

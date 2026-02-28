@@ -32,6 +32,7 @@ export function FileTree() {
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<Project | null>(null);
   const [confirmDeleteFolderId, setConfirmDeleteFolderId] = useState<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const draggedProjectIdRef = useRef<string | null>(null);
 
   const projectsByFolder = (folderId: string) =>
     projects.filter((p) => p.folderId === folderId);
@@ -79,12 +80,15 @@ export function FileTree() {
   }, [contextMenu]);
 
   // Drag handlers for projects
+  // Use a ref instead of dataTransfer because WKWebView (Tauri) doesn't
+  // reliably support getData() in drop events.
   const handleProjectDragStart = (projectId: string) => (e: React.DragEvent) => {
-    e.dataTransfer.setData('text/plain', projectId);
+    draggedProjectIdRef.current = projectId;
     e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragEnd = () => {
+    draggedProjectIdRef.current = null;
     setDragOverFolderId(null);
     setDragOverRoot(false);
   };
@@ -102,10 +106,11 @@ export function FileTree() {
   const handleFolderDrop = (folderId: string) => (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const projectId = e.dataTransfer.getData('text/plain');
+    const projectId = draggedProjectIdRef.current;
     if (projectId) {
       moveProject(projectId, folderId);
     }
+    draggedProjectIdRef.current = null;
     setDragOverFolderId(null);
   };
 
@@ -121,10 +126,11 @@ export function FileTree() {
 
   const handleRootDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    const projectId = e.dataTransfer.getData('text/plain');
+    const projectId = draggedProjectIdRef.current;
     if (projectId) {
       moveProject(projectId, null);
     }
+    draggedProjectIdRef.current = null;
     setDragOverRoot(false);
   };
 
