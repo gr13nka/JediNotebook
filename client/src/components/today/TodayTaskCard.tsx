@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
+import { ProcrastinationConfirmModal } from '../ui/ProcrastinationConfirmModal';
+import { isProcrastinationRisky, getMatchedWords } from '../../utils/procrastinationCheck';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import type { EnrichedTodayTask } from '../../hooks/useTodayTasks';
 
 interface TodayTaskCardProps {
@@ -27,7 +31,18 @@ const ChevronDown = () => (
 export function TodayTaskCard({ task, onComplete, onMoveUp, onMoveDown, onEditTitle, isFirst }: TodayTaskCardProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(task.taskTitle);
+  const [showProcrastModal, setShowProcrastModal] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { t } = useTranslation();
+  const procrastinationWords = useSettingsStore((s) => s.procrastinationWords);
+  const dismissedIds = useSettingsStore((s) => s.dismissedProcrastinationTaskIds);
+  const updateSettings = useSettingsStore((s) => s.update);
+
+  const dismissKey = task.projectTaskId;
+  const isRisky = !task.isCompleted
+    && isProcrastinationRisky(task.taskTitle, procrastinationWords)
+    && !dismissedIds.includes(dismissKey);
+  const matchedWords = isRisky ? getMatchedWords(task.taskTitle, procrastinationWords) : [];
 
   useEffect(() => {
     setEditValue(task.taskTitle);
@@ -120,15 +135,28 @@ export function TodayTaskCard({ task, onComplete, onMoveUp, onMoveDown, onEditTi
               style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
             />
           ) : (
-            <span
-              onClick={() => setEditing(true)}
-              className={`text-sm font-medium block truncate transition-colors duration-200 cursor-text ${
-                task.isCompleted ? 'line-through text-green' : 'text-text-primary'
-              }`}
-              style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
-            >
-              {task.taskTitle}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span
+                onClick={() => setEditing(true)}
+                className={`text-sm font-medium truncate transition-colors duration-200 cursor-text ${
+                  task.isCompleted ? 'line-through text-green' : 'text-text-primary'
+                }`}
+                style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
+              >
+                {task.taskTitle}
+              </span>
+              {isRisky && (
+                <button
+                  onClick={() => setShowProcrastModal(true)}
+                  title={t('procrastination.matchedWords').replace('{words}', matchedWords.join(', '))}
+                  className="shrink-0 p-0.5 text-amber-500"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+                  </svg>
+                </button>
+              )}
+            </div>
           )}
         </div>
         <button
@@ -158,6 +186,14 @@ export function TodayTaskCard({ task, onComplete, onMoveUp, onMoveDown, onEditTi
           )}
         </button>
       </div>
+      <ProcrastinationConfirmModal
+        open={showProcrastModal}
+        onClose={() => setShowProcrastModal(false)}
+        onConfirm={() => {
+          updateSettings({ dismissedProcrastinationTaskIds: [...dismissedIds, dismissKey] });
+          setShowProcrastModal(false);
+        }}
+      />
     </motion.div>
   );
 }

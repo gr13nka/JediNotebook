@@ -4,13 +4,14 @@ import { ThemeToggle } from '../components/settings/ThemeToggle';
 import { BarStylePicker } from '../components/settings/BarStylePicker';
 import { DayBoundarySettings } from '../components/settings/DayBoundarySettings';
 import { TimezoneSettings } from '../components/settings/TimezoneSettings';
-import { SyncSettings } from '../components/settings/SyncSettings';
 import { TaskSettings } from '../components/settings/TaskSettings';
 import { TimerNotificationSettings } from '../components/settings/TimerNotificationSettings';
 import { LanguagePicker } from '../components/settings/LanguagePicker';
 import { NavPositionPicker } from '../components/settings/NavPositionPicker';
 import { AccentColorPicker } from '../components/settings/AccentColorPicker';
 import { ZoomSettings } from '../components/settings/ZoomSettings';
+import { ProcrastinationWordSettings } from '../components/settings/ProcrastinationWordSettings';
+import { VaultSettings } from '../components/settings/VaultSettings';
 import { Card } from '../components/ui/Card';
 import { useTranslation } from '../i18n/useTranslation';
 
@@ -24,8 +25,9 @@ const sectionComponents = [
   { key: 'settings.time', component: DayBoundarySettings },
   { key: 'settings.timezone', component: TimezoneSettings },
   { key: 'settings.tasks', component: TaskSettings },
-  { key: 'settings.sync', component: SyncSettings },
+  { key: 'settings.procrastination', component: ProcrastinationWordSettings },
   { key: 'settings.notifications', component: TimerNotificationSettings },
+  { key: 'settings.vault', component: VaultSettings },
 ] as const;
 
 const container = {

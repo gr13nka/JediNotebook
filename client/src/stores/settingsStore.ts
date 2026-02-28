@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BarStyle, Language, ThemeMode } from '@shared/types';
+import type { BarStyle, CustomThemeColors, Language, ThemeMode } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { db } from '../db';
 
@@ -13,10 +13,49 @@ function detectBrowserLanguage(): Language {
   return 'en';
 }
 
-function applyTheme(theme: ThemeMode) {
+const CUSTOM_COLOR_CSS_MAP: [keyof CustomThemeColors, string][] = [
+  ['bgPrimary', '--color-bg-primary'],
+  ['bgCard', '--color-bg-card'],
+  ['bgElevated', '--color-bg-elevated'],
+  ['textPrimary', '--color-text-primary'],
+  ['textSecondary', '--color-text-secondary'],
+  ['textMuted', '--color-text-muted'],
+  ['accent', '--color-accent'],
+  ['accentFg', '--color-accent-fg'],
+  ['green', '--color-green'],
+  ['red', '--color-red'],
+  ['barTrack', '--color-bar-track'],
+  ['border', '--color-border'],
+];
+
+function applyCustomTheme(colors: CustomThemeColors) {
+  const el = document.documentElement;
+  for (const [key, cssVar] of CUSTOM_COLOR_CSS_MAP) {
+    el.style.setProperty(cssVar, colors[key]);
+  }
+  el.style.setProperty('--color-neu-light', 'transparent');
+  el.style.setProperty('--color-neu-dark', 'transparent');
+}
+
+function clearCustomTheme() {
+  const el = document.documentElement;
+  for (const [, cssVar] of CUSTOM_COLOR_CSS_MAP) {
+    el.style.removeProperty(cssVar);
+  }
+  el.style.removeProperty('--color-neu-light');
+  el.style.removeProperty('--color-neu-dark');
+}
+
+function applyTheme(theme: ThemeMode, customColors?: CustomThemeColors) {
   const cl = document.documentElement.classList;
-  cl.remove('dark', 'notion', 'neu-light', 'neu-dark');
-  if (theme !== 'light') {
+  cl.remove('dark', 'notion', 'neu-light', 'neu-dark',
+    'dracula', 'gruvbox', 'nord', 'solarized', 'catppuccin', 'tokyonight', 'custom');
+  clearCustomTheme();
+
+  if (theme === 'custom' && customColors) {
+    cl.add('custom');
+    applyCustomTheme(customColors);
+  } else if (theme !== 'light') {
     cl.add(theme);
   }
 }
@@ -45,7 +84,7 @@ interface SettingsState {
   syncServerUrl: string;
   syncApiKey: string;
   maxTasksPerProject: number;
-  navPosition: 'left' | 'bottom';
+  navPosition: 'left' | 'bottom' | 'dropdown';
   timerNotificationsEnabled: boolean;
   timerNotificationIntervalMinutes: number;
   pointsCounterVisible: boolean;
@@ -53,6 +92,13 @@ interface SettingsState {
   uiZoom: number;
   pointsColorFixed: boolean;
   hiddenNavTabs: string[];
+  navTabOrder: string[];
+  dropdownFabCorner: string;
+  customThemeColors: CustomThemeColors;
+  procrastinationWords: string[];
+  dismissedProcrastinationTaskIds: string[];
+  vaultEnabled: boolean;
+  vaultPath: string;
   loaded: boolean;
   load: () => Promise<void>;
   update: (patch: Partial<Omit<SettingsState, 'loaded' | 'load' | 'update'>>) => Promise<void>;
@@ -75,13 +121,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if ((theme as string) === 'notion') theme = 'dark';
 
       const language = raw.language ?? detectBrowserLanguage();
+      const customThemeColors = raw.customThemeColors ?? DEFAULT_SETTINGS.customThemeColors;
 
       set({
         dayStartHour: settings.dayStartHour,
         dayEndHour: settings.dayEndHour,
         timezone: settings.timezone,
         barStyle: settings.barStyle,
-        darkMode: theme === 'dark' || theme === 'neu-dark',
+        darkMode: theme !== 'light' && theme !== 'neu-light',
         theme,
         language,
         syncEnabled: settings.syncEnabled,
@@ -96,9 +143,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         uiZoom: raw.uiZoom ?? DEFAULT_SETTINGS.uiZoom,
         pointsColorFixed: raw.pointsColorFixed ?? DEFAULT_SETTINGS.pointsColorFixed,
         hiddenNavTabs: raw.hiddenNavTabs ?? DEFAULT_SETTINGS.hiddenNavTabs,
+        navTabOrder: raw.navTabOrder ?? DEFAULT_SETTINGS.navTabOrder,
+        dropdownFabCorner: raw.dropdownFabCorner ?? DEFAULT_SETTINGS.dropdownFabCorner,
+        customThemeColors,
+        procrastinationWords: raw.procrastinationWords ?? DEFAULT_SETTINGS.procrastinationWords,
+        dismissedProcrastinationTaskIds: raw.dismissedProcrastinationTaskIds ?? DEFAULT_SETTINGS.dismissedProcrastinationTaskIds,
+        vaultEnabled: raw.vaultEnabled ?? DEFAULT_SETTINGS.vaultEnabled,
+        vaultPath: raw.vaultPath ?? DEFAULT_SETTINGS.vaultPath,
         loaded: true,
       });
-      applyTheme(theme);
+      applyTheme(theme, customThemeColors);
       applyAccentColor(raw.accentColor ?? DEFAULT_SETTINGS.accentColor);
       applyZoom(raw.uiZoom ?? DEFAULT_SETTINGS.uiZoom);
     } else {
@@ -110,7 +164,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   update: async (patch) => {
     // If theme is being set, keep darkMode in sync
     if ('theme' in patch && patch.theme) {
-      patch.darkMode = patch.theme === 'dark' || patch.theme === 'neu-dark';
+      patch.darkMode = patch.theme !== 'light' && patch.theme !== 'neu-light';
     }
     // If darkMode is toggled directly (legacy), map to theme
     if ('darkMode' in patch && !('theme' in patch)) {
@@ -120,8 +174,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set(patch);
 
     if ('theme' in patch && patch.theme) {
-      applyTheme(patch.theme);
-      // Re-apply custom accent after theme change so it overrides the new theme default
+      applyTheme(patch.theme, get().customThemeColors);
+      applyAccentColor(get().accentColor);
+    }
+
+    if ('customThemeColors' in patch && patch.customThemeColors && get().theme === 'custom') {
+      applyCustomTheme(patch.customThemeColors);
       applyAccentColor(get().accentColor);
     }
 

@@ -7,15 +7,16 @@ export function NavPositionPicker() {
   const navPosition = useSettingsStore((s) => s.navPosition);
   const update = useSettingsStore((s) => s.update);
 
-  const options: { value: 'left' | 'bottom'; label: string }[] = [
+  const options: { value: 'left' | 'bottom' | 'dropdown'; label: string }[] = [
     { value: 'left', label: t('settings.navLeft') },
     { value: 'bottom', label: t('settings.navBottom') },
+    { value: 'dropdown', label: t('settings.navDropdown') },
   ];
 
   return (
     <div>
       <h3 className="text-sm font-medium text-text-secondary mb-3">{t('settings.navPosition')}</h3>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {options.map((opt) => {
           const active = navPosition === opt.value;
           return (

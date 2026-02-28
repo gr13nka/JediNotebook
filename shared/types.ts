@@ -38,18 +38,40 @@ export interface UserSettings {
   syncServerUrl: string;
   syncApiKey: string;
   maxTasksPerProject: number;
-  navPosition: 'left' | 'bottom';
+  navPosition: 'left' | 'bottom' | 'dropdown';
   timerNotificationsEnabled: boolean;
   timerNotificationIntervalMinutes: number;
   pointsCounterVisible: boolean;
   accentColor: string;
+  procrastinationWords: string[];
+  dismissedProcrastinationTaskIds: string[];
+  vaultEnabled: boolean;
+  vaultPath: string;
   updatedAt: string;
   deviceId: string;
 }
 
 export type BarStyle = 'thick-linear' | 'segmented' | 'circular';
 
-export type ThemeMode = 'light' | 'dark' | 'neu-light' | 'neu-dark';
+export type ThemeMode =
+  | 'light' | 'dark' | 'neu-light' | 'neu-dark'
+  | 'dracula' | 'gruvbox' | 'nord' | 'solarized' | 'catppuccin' | 'tokyonight'
+  | 'custom';
+
+export interface CustomThemeColors {
+  bgPrimary: string;
+  bgCard: string;
+  bgElevated: string;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  accent: string;
+  accentFg: string;
+  green: string;
+  red: string;
+  barTrack: string;
+  border: string;
+}
 
 export type Language = 'en' | 'zh' | 'es' | 'pt' | 'ru';
 
@@ -184,6 +206,27 @@ export interface TodayTask {
 export interface InboxItem {
   id: string;
   text: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  deviceId: string;
+}
+
+export interface MindMapNode {
+  id: string;
+  text: string;
+  children: string[];
+  color?: string;
+  collapsed?: boolean;
+  direction?: 'right' | 'left' | 'top' | 'bottom';
+}
+
+export interface MindMap {
+  id: string;
+  title: string;
+  nodes: MindMapNode[];
+  rootNodeId: string;
+  color: string;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;

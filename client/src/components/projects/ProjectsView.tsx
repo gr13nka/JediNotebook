@@ -1,13 +1,17 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useProjects } from '../../hooks/useProjects';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { NEU } from '../../utils/shadows';
+import { db } from '../../db';
 import { FileTree } from './FileTree';
 import { ProjectTabs } from './ProjectTabs';
 import { ProjectDraftEditor } from './ProjectDraftEditor';
 import { ProjectTaskList } from './ProjectTaskList';
+import { ConfirmModal } from '../ui/ConfirmModal';
 
 const MIN_SIDEBAR = 160;
 const MAX_SIDEBAR = 400;
@@ -18,7 +22,12 @@ const MAX_TASK_PANEL_HEIGHT_RATIO = 0.7;
 
 export function ProjectsView() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { projects, updateProject, deleteProject } = useProjects();
+  const inboxCount = useLiveQuery(
+    () => db.inboxItems.filter((i) => !i.deletedAt).count(),
+    [],
+  );
   const activeTabId = useProjectUIStore((s) => s.activeTabId);
   const closeTab = useProjectUIStore((s) => s.closeTab);
   const sidebarCollapsed = useProjectUIStore((s) => s.sidebarCollapsed);
@@ -26,6 +35,7 @@ export function ProjectsView() {
   const splitDirection = useProjectUIStore((s) => s.splitDirection);
   const setSplitDirection = useProjectUIStore((s) => s.setSplitDirection);
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Resizable sidebar width
   const [sidebarWidth, setSidebarWidth] = useState(220);
@@ -44,10 +54,7 @@ export function ProjectsView() {
 
   const handleDelete = () => {
     if (!activeProject) return;
-    if (confirm(t('projects.deleteConfirm'))) {
-      closeTab(activeProject.id);
-      deleteProject(activeProject.id);
-    }
+    setShowDeleteConfirm(true);
   };
 
   const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
@@ -223,6 +230,21 @@ export function ProjectsView() {
           <ProjectTabs />
 
           <div className="flex items-center gap-1 ml-auto pl-2 shrink-0">
+            {/* Sort Inbox button */}
+            {(inboxCount ?? 0) > 0 && (
+              <button
+                onClick={() => navigate('/inbox?mode=sort')}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-medium text-text-muted hover:text-accent transition-colors"
+                title={t('projects.sortInbox')}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+                  <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                </svg>
+                {t('projects.sortInbox')} ({inboxCount})
+              </button>
+            )}
+
             {/* Split direction toggle (desktop only) */}
             <button
               onClick={() => setSplitDirection(splitDirection === 'vertical' ? 'horizontal' : 'vertical')}
@@ -315,6 +337,19 @@ export function ProjectsView() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={() => {
+          if (activeProject) {
+            closeTab(activeProject.id);
+            deleteProject(activeProject.id);
+          }
+        }}
+        title={t('projects.delete')}
+        message={t('projects.deleteConfirm')}
+      />
     </div>
   );
 }

@@ -3,10 +3,11 @@ import { useLocation } from 'react-router-dom';
 import { Sidebar, useSidebarStore } from './Sidebar';
 import { BottomNav } from './BottomNav';
 import { DesktopBottomNav } from './DesktopBottomNav';
+import { DropdownNav } from './DropdownNav';
 import { useSettingsStore } from '../../stores/settingsStore';
 
-const WIDE_PAGES = ['/projects', '/tasks', '/notes'];
-const FULL_BLEED_PAGES = ['/projects'];
+const WIDE_PAGES = ['/projects', '/tasks', '/notes', '/mindmap'];
+const FULL_BLEED_PAGES = ['/projects', '/mindmap'];
 const HIDE_NAV_PAGES: string[] = [];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const hideNav = HIDE_NAV_PAGES.some((p) => location.pathname.startsWith(p));
 
   const desktopBottomNav = navPosition === 'bottom';
+  const dropdownNav = navPosition === 'dropdown';
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 768px)');
@@ -34,8 +36,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-bg-primary relative">
-      {!desktopBottomNav && <Sidebar />}
-      <main className={`flex-1 pb-16 ${desktopBottomNav ? 'md:pb-16' : 'md:pb-0'} relative z-10 min-w-0`}>
+      {!desktopBottomNav && !dropdownNav && <Sidebar />}
+      <main className={`flex-1 ${dropdownNav ? 'pb-0' : `pb-16 ${desktopBottomNav ? 'md:pb-16' : 'md:pb-0'}`} relative z-10 min-w-0`}>
         {isFullBleed ? (
           <div className="h-full">{children}</div>
         ) : (
@@ -44,8 +46,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </main>
-      {!hideNav && <BottomNav />}
-      {desktopBottomNav && !hideNav && <DesktopBottomNav />}
+      {dropdownNav ? (
+        <DropdownNav />
+      ) : (
+        <>
+          {!hideNav && <BottomNav />}
+          {desktopBottomNav && !hideNav && <DesktopBottomNav />}
+        </>
+      )}
     </div>
   );
 }

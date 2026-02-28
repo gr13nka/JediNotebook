@@ -10,7 +10,24 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="root"><p style="padding:40px;font-family:sans-serif;font-size:18px">Loading...</p></div>
+    <script>
+      function showErr(e) {
+        var r = document.getElementById('root');
+        var msg = (e && e.message) || String(e);
+        var stack = (e && e.stack) || '';
+        r.innerHTML = '<pre style="padding:40px;color:red;font-size:13px;white-space:pre-wrap">' +
+          msg + '\n\n' + stack + '</pre>';
+      }
+      window.onerror = function(msg, src, line, col, err) { showErr(err || msg); };
+      window.onunhandledrejection = function(ev) { showErr(ev.reason); };
+    </script>
+    <script type="module">
+      import("/src/main.tsx").catch(function(err) {
+        document.getElementById('root').innerHTML =
+          '<pre style="padding:40px;color:red;font-size:13px;white-space:pre-wrap">' +
+          err.message + '\n\n' + err.stack + '</pre>';
+      });
+    </script>
   </body>
 </html>

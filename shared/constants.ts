@@ -26,6 +26,27 @@ export const THEME = {
   neuBg: '#E0E5EC',
 } as const;
 
+export const DEFAULT_CUSTOM_THEME_COLORS = {
+  bgPrimary: '#1a1a2e',
+  bgCard: '#16213e',
+  bgElevated: '#1a3a5c',
+  textPrimary: '#eaeaea',
+  textSecondary: '#a0a0b0',
+  textMuted: '#5a5a6e',
+  accent: '#e94560',
+  accentFg: '#ffffff',
+  green: '#27ae60',
+  red: '#e74c3c',
+  barTrack: '#1a3a5c',
+  border: '#1a3a5c',
+};
+
+export const DEFAULT_PROCRASTINATION_WORDS = [
+  'подумать', 'вылечить', 'подготовить', 'сдать', 'провести',
+  'разобраться', 'изучить', 'решить', 'обдумать', 'продумать',
+  'рассмотреть', 'организовать', 'наладить', 'улучшить', 'оптимизировать',
+];
+
 export const DEFAULT_SETTINGS = {
   dayStartHour: 6,
   dayEndHour: 2,
@@ -46,6 +67,13 @@ export const DEFAULT_SETTINGS = {
   uiZoom: 110,
   pointsColorFixed: false,
   hiddenNavTabs: [] as string[],
+  navTabOrder: [] as string[],
+  dropdownFabCorner: 'bottom-right' as const,
+  customThemeColors: DEFAULT_CUSTOM_THEME_COLORS,
+  procrastinationWords: DEFAULT_PROCRASTINATION_WORDS,
+  dismissedProcrastinationTaskIds: [] as string[],
+  vaultEnabled: false,
+  vaultPath: '',
 };
 
 export const BREAK_ACTIVITY = {

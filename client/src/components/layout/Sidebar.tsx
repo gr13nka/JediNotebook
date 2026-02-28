@@ -85,6 +85,16 @@ const SunIcon = () => (
   </svg>
 );
 
+const MindMapIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <line x1="12" y1="3" x2="12" y2="9" />
+    <line x1="12" y1="15" x2="12" y2="21" />
+    <line x1="3" y1="12" x2="9" y2="12" />
+    <line x1="15" y1="12" x2="21" y2="12" />
+  </svg>
+);
+
 const GearIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
@@ -103,6 +113,17 @@ const CollapseIcon = ({ collapsed }: { collapsed: boolean }) => (
   </svg>
 );
 
+const DragDotsIcon = () => (
+  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+    <circle cx="5" cy="3" r="1.2" />
+    <circle cx="11" cy="3" r="1.2" />
+    <circle cx="5" cy="8" r="1.2" />
+    <circle cx="11" cy="8" r="1.2" />
+    <circle cx="5" cy="13" r="1.2" />
+    <circle cx="11" cy="13" r="1.2" />
+  </svg>
+);
+
 // Tabs that cannot be hidden (always visible)
 const PROTECTED_TABS = new Set<string>();
 
@@ -111,10 +132,13 @@ export function Sidebar() {
   const toggle = useSidebarStore((s) => s.toggle);
   const { t } = useTranslation();
   const hiddenNavTabs = useSettingsStore((s) => s.hiddenNavTabs);
+  const navTabOrder = useSettingsStore((s) => s.navTabOrder);
   const update = useSettingsStore((s) => s.update);
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tab: string } | null>(null);
   const [showHidden, setShowHidden] = useState(false);
+  const dragIdx = useRef<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
 
   const allNavItems = useMemo(() => [
     { to: '/', label: t('nav.tracking'), icon: ClockIcon },
@@ -122,16 +146,19 @@ export function Sidebar() {
     { to: '/tasks', label: t('nav.taskSelection'), icon: ListIcon },
     { to: '/today', label: t('nav.today'), icon: SunIcon },
     { to: '/inbox', label: t('nav.inbox'), icon: InboxIcon },
+    { to: '/mindmap', label: t('nav.mindmap'), icon: MindMapIcon },
     { to: '/habits', label: t('nav.habits'), icon: HabitIcon },
     { to: '/analytics', label: t('nav.analytics'), icon: ChartIcon },
     { to: '/notes', label: t('nav.ideas'), icon: NoteIcon },
     { to: '/settings', label: t('nav.settings'), icon: GearIcon },
   ], [t]);
 
-  const visibleNavItems = useMemo(
-    () => allNavItems.filter((item) => !hiddenNavTabs.includes(item.to)),
-    [allNavItems, hiddenNavTabs],
-  );
+  const visibleNavItems = useMemo(() => {
+    const filtered = allNavItems.filter((item) => !hiddenNavTabs.includes(item.to));
+    if (!navTabOrder.length) return filtered;
+    const m = new Map(navTabOrder.map((p, i) => [p, i]));
+    return [...filtered].sort((a, b) => (m.get(a.to) ?? 999) - (m.get(b.to) ?? 999));
+  }, [allNavItems, hiddenNavTabs, navTabOrder]);
 
   const hiddenItems = useMemo(
     () => allNavItems.filter((item) => hiddenNavTabs.includes(item.to)),
@@ -153,6 +180,18 @@ export function Sidebar() {
       update({ hiddenNavTabs: [...current, tab] });
     }
   }, [hiddenNavTabs, update]);
+
+  const handleReorder = useCallback((fromIdx: number, toIdx: number, position: 'above' | 'below') => {
+    if (fromIdx === toIdx) return;
+    const defaultOrder = allNavItems.map((item) => item.to);
+    const currentOrder = navTabOrder.length >= defaultOrder.length ? [...navTabOrder] : [...defaultOrder];
+    const movedRoute = visibleNavItems[fromIdx].to;
+    const targetRoute = visibleNavItems[toIdx].to;
+    currentOrder.splice(currentOrder.indexOf(movedRoute), 1);
+    const ti = currentOrder.indexOf(targetRoute);
+    currentOrder.splice(position === 'above' ? ti : ti + 1, 0, movedRoute);
+    update({ navTabOrder: currentOrder });
+  }, [allNavItems, navTabOrder, visibleNavItems, update]);
 
   const contextMenuItems = useMemo(() => {
     if (!ctxMenu) return [];
@@ -209,36 +248,81 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-col gap-1 px-2">
-        {visibleNavItems.map((item) => (
-          <NavLink
+        {visibleNavItems.map((item, idx) => (
+          <div
             key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) =>
-              `relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-200 ease-[var(--ease-smooth)] ${
-                collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'
-              } ${
-                isActive
-                  ? 'bg-bg-primary text-accent'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`
-            }
-            style={({ isActive }) =>
-              isActive ? { boxShadow: NEU.pressed } : {}
-            }
-            title={collapsed ? item.label : undefined}
-            onContextMenu={(e) => handleContextMenu(e, item.to)}
+            className="relative group"
+            draggable={!collapsed}
+            onDragStart={(e) => {
+              dragIdx.current = idx;
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', item.to);
+            }}
+            onDragEnd={() => {
+              dragIdx.current = null;
+              setDropTarget(null);
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              if (dragIdx.current === null || dragIdx.current === idx) {
+                if (dropTarget?.index === idx) setDropTarget(null);
+                return;
+              }
+              const rect = e.currentTarget.getBoundingClientRect();
+              const midY = rect.top + rect.height / 2;
+              setDropTarget({ index: idx, position: e.clientY < midY ? 'above' : 'below' });
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragIdx.current !== null && dropTarget) {
+                handleReorder(dragIdx.current, dropTarget.index, dropTarget.position);
+              }
+              dragIdx.current = null;
+              setDropTarget(null);
+            }}
           >
-            {({ isActive }) => (
-              <>
-                {isActive && !collapsed && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-accent" />
-                )}
-                <item.icon />
-                {!collapsed && <span>{item.label}</span>}
-              </>
+            {dropTarget?.index === idx && dropTarget.position === 'above' && (
+              <div className="absolute top-0 left-2 right-2 h-0.5 bg-accent rounded-full z-10" />
             )}
-          </NavLink>
+            <NavLink
+              to={item.to}
+              end={item.to === '/'}
+              draggable={false}
+              className={({ isActive }) =>
+                `relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-200 ease-[var(--ease-smooth)] ${
+                  collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'
+                } ${
+                  isActive
+                    ? 'bg-bg-primary text-accent'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`
+              }
+              style={({ isActive }) =>
+                isActive ? { boxShadow: NEU.pressed } : {}
+              }
+              title={collapsed ? item.label : undefined}
+              onContextMenu={(e) => handleContextMenu(e, item.to)}
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && !collapsed && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-accent" />
+                  )}
+                  <item.icon />
+                  {!collapsed && <span>{item.label}</span>}
+                  {!collapsed && (
+                    <div className="ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab text-text-muted">
+                      <DragDotsIcon />
+                    </div>
+                  )}
+                </>
+              )}
+            </NavLink>
+            {dropTarget?.index === idx && dropTarget.position === 'below' && (
+              <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full z-10" />
+            )}
+          </div>
         ))}
       </nav>
 

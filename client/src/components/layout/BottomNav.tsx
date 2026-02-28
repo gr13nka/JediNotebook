@@ -83,6 +83,16 @@ const ListIcon = () => (
   </svg>
 );
 
+const MindMapIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <line x1="12" y1="3" x2="12" y2="9" />
+    <line x1="12" y1="15" x2="12" y2="21" />
+    <line x1="3" y1="12" x2="9" y2="12" />
+    <line x1="15" y1="12" x2="21" y2="12" />
+  </svg>
+);
+
 const GearIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
@@ -97,6 +107,7 @@ export function BottomNav() {
   const [showMore, setShowMore] = useState(false);
   const { t } = useTranslation();
   const hiddenNavTabs = useSettingsStore((s) => s.hiddenNavTabs);
+  const navTabOrder = useSettingsStore((s) => s.navTabOrder);
   const update = useSettingsStore((s) => s.update);
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tab: string } | null>(null);
@@ -110,20 +121,27 @@ export function BottomNav() {
 
   const allMoreNavItems = useMemo(() => [
     { to: '/inbox', label: t('nav.inbox'), icon: InboxIcon },
+    { to: '/mindmap', label: t('nav.mindmap'), icon: MindMapIcon },
     { to: '/analytics', label: t('nav.analytics'), icon: ChartIcon },
     { to: '/notes', label: t('nav.ideas'), icon: NoteIcon },
     { to: '/tasks', label: t('nav.taskSelection'), icon: ListIcon },
     { to: '/settings', label: t('nav.settings'), icon: GearIcon },
   ], [t]);
 
+  const applyOrder = useCallback(<T extends { to: string }>(items: T[]): T[] => {
+    if (!navTabOrder.length) return items;
+    const m = new Map(navTabOrder.map((p, i) => [p, i]));
+    return [...items].sort((a, b) => (m.get(a.to) ?? 999) - (m.get(b.to) ?? 999));
+  }, [navTabOrder]);
+
   const mainNavItems = useMemo(
-    () => allMainNavItems.filter((item) => !hiddenNavTabs.includes(item.to)),
-    [allMainNavItems, hiddenNavTabs],
+    () => applyOrder(allMainNavItems.filter((item) => !hiddenNavTabs.includes(item.to))),
+    [allMainNavItems, hiddenNavTabs, applyOrder],
   );
 
   const moreNavItems = useMemo(
-    () => allMoreNavItems.filter((item) => !hiddenNavTabs.includes(item.to)),
-    [allMoreNavItems, hiddenNavTabs],
+    () => applyOrder(allMoreNavItems.filter((item) => !hiddenNavTabs.includes(item.to))),
+    [allMoreNavItems, hiddenNavTabs, applyOrder],
   );
 
   const allNavItems = useMemo(() => [...allMainNavItems, ...allMoreNavItems], [allMainNavItems, allMoreNavItems]);

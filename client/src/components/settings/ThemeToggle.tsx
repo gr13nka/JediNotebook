@@ -1,81 +1,115 @@
 import { useTranslation } from '../../i18n/useTranslation';
+import type { TranslationKey } from '../../i18n/translations';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { NEU } from '../../utils/shadows';
+import { CustomThemeEditor } from './CustomThemeEditor';
 import type { ThemeMode } from '@shared/types';
+
+interface ThemeSwatch {
+  id: ThemeMode;
+  labelKey: TranslationKey;
+  bg: string;
+  card: string;
+  accent: string;
+}
+
+const THEMES: ThemeSwatch[] = [
+  { id: 'light',      labelKey: 'settings.themeLight',      bg: '#F0F1F4', card: '#FAFBFC', accent: '#1F2937' },
+  { id: 'dark',       labelKey: 'settings.themeDark',       bg: '#1e1e1e', card: '#262626', accent: '#7f6df2' },
+  { id: 'neu-light',  labelKey: 'settings.theme3dLight',    bg: '#E0E5EC', card: '#E0E5EC', accent: '#2D3748' },
+  { id: 'neu-dark',   labelKey: 'settings.theme3dDark',     bg: '#2D2D32', card: '#2D2D32', accent: '#E0E0E0' },
+  { id: 'dracula',    labelKey: 'settings.themeDracula',    bg: '#282a36', card: '#2e303e', accent: '#bd93f9' },
+  { id: 'gruvbox',    labelKey: 'settings.themeGruvbox',    bg: '#1d2021', card: '#282828', accent: '#fe8019' },
+  { id: 'nord',       labelKey: 'settings.themeNord',       bg: '#2e3440', card: '#3b4252', accent: '#88c0d0' },
+  { id: 'solarized',  labelKey: 'settings.themeSolarized',  bg: '#002b36', card: '#073642', accent: '#2aa198' },
+  { id: 'catppuccin', labelKey: 'settings.themeCatppuccin', bg: '#1e1e2e', card: '#24243a', accent: '#cba6f7' },
+  { id: 'tokyonight', labelKey: 'settings.themeTokyoNight', bg: '#1a1b26', card: '#1f2032', accent: '#7aa2f7' },
+];
 
 export function ThemeToggle() {
   const { t } = useTranslation();
   const theme = useSettingsStore((s) => s.theme);
   const update = useSettingsStore((s) => s.update);
-
-  const isNeu = theme === 'neu-light' || theme === 'neu-dark';
-  const isDark = theme === 'dark' || theme === 'neu-dark';
-
-  const setStyle = (neu: boolean) => {
-    const next: ThemeMode = neu
-      ? (isDark ? 'neu-dark' : 'neu-light')
-      : (isDark ? 'dark' : 'light');
-    update({ theme: next });
-  };
-
-  const setColor = (dark: boolean) => {
-    const next: ThemeMode = isNeu
-      ? (dark ? 'neu-dark' : 'neu-light')
-      : (dark ? 'dark' : 'light');
-    update({ theme: next });
-  };
+  const customColors = useSettingsStore((s) => s.customThemeColors);
 
   return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="text-sm font-medium text-text-secondary mb-2">{t('settings.themeStyle')}</h3>
-        <div
-          className="flex gap-1 rounded-lg p-1 bg-bg-card border border-border"
-          style={{ boxShadow: NEU.pressed }}
-        >
-          {([false, true] as const).map((neu) => {
-            const active = isNeu === neu;
-            return (
-              <button
-                key={neu ? 'neu' : 'flat'}
-                type="button"
-                onClick={() => setStyle(neu)}
-                className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  active ? 'text-text-primary bg-bg-primary border border-border' : 'text-text-secondary'
-                }`}
-                style={active ? { boxShadow: NEU.raisedSm } : undefined}
+    <div>
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+        {THEMES.map((swatch) => {
+          const active = theme === swatch.id;
+          return (
+            <button
+              key={swatch.id}
+              type="button"
+              onClick={() => update({ theme: swatch.id })}
+              className={`flex flex-col items-center gap-1.5 rounded-lg p-2 transition-all border-2 ${
+                active
+                  ? 'border-accent'
+                  : 'border-transparent hover:border-border'
+              }`}
+              style={active ? { boxShadow: NEU.pressedSm } : undefined}
+            >
+              <div
+                className="w-full aspect-[4/3] rounded-md overflow-hidden flex flex-col"
+                style={{ backgroundColor: swatch.bg }}
               >
-                {neu ? t('settings.theme3d') : t('settings.themeFlat')}
-              </button>
-            );
-          })}
-        </div>
+                <div className="flex-1" />
+                <div className="flex gap-0.5 px-1 pb-1">
+                  <div
+                    className="flex-1 h-2 rounded-sm"
+                    style={{ backgroundColor: swatch.card }}
+                  />
+                  <div
+                    className="w-2 h-2 rounded-sm"
+                    style={{ backgroundColor: swatch.accent }}
+                  />
+                </div>
+              </div>
+              <span className={`text-xs font-medium leading-tight text-center ${
+                active ? 'text-text-primary' : 'text-text-secondary'
+              }`}>
+                {t(swatch.labelKey)}
+              </span>
+            </button>
+          );
+        })}
+
+        {/* Custom theme swatch */}
+        <button
+          type="button"
+          onClick={() => update({ theme: 'custom' })}
+          className={`flex flex-col items-center gap-1.5 rounded-lg p-2 transition-all border-2 ${
+            theme === 'custom'
+              ? 'border-accent'
+              : 'border-transparent hover:border-border'
+          }`}
+          style={theme === 'custom' ? { boxShadow: NEU.pressedSm } : undefined}
+        >
+          <div
+            className="w-full aspect-[4/3] rounded-md overflow-hidden flex flex-col"
+            style={{ backgroundColor: customColors.bgPrimary }}
+          >
+            <div className="flex-1" />
+            <div className="flex gap-0.5 px-1 pb-1">
+              <div
+                className="flex-1 h-2 rounded-sm"
+                style={{ backgroundColor: customColors.bgCard }}
+              />
+              <div
+                className="w-2 h-2 rounded-sm"
+                style={{ backgroundColor: customColors.accent }}
+              />
+            </div>
+          </div>
+          <span className={`text-xs font-medium leading-tight text-center ${
+            theme === 'custom' ? 'text-text-primary' : 'text-text-secondary'
+          }`}>
+            {t('settings.themeCustom')}
+          </span>
+        </button>
       </div>
 
-      <div>
-        <h3 className="text-sm font-medium text-text-secondary mb-2">{t('settings.themeColor')}</h3>
-        <div
-          className="flex gap-1 rounded-lg p-1 bg-bg-card border border-border"
-          style={{ boxShadow: NEU.pressed }}
-        >
-          {([false, true] as const).map((dark) => {
-            const active = isDark === dark;
-            return (
-              <button
-                key={dark ? 'dark' : 'light'}
-                type="button"
-                onClick={() => setColor(dark)}
-                className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  active ? 'text-text-primary bg-bg-primary border border-border' : 'text-text-secondary'
-                }`}
-                style={active ? { boxShadow: NEU.raisedSm } : undefined}
-              >
-                {dark ? t('settings.themeDark') : t('settings.themeLight')}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {theme === 'custom' && <CustomThemeEditor />}
     </div>
   );
 }

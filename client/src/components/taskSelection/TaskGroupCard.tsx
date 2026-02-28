@@ -5,7 +5,7 @@ import { useProjectTasks } from '../../hooks/useProjectTasks';
 import { useTranslation } from '../../i18n/useTranslation';
 import type { Project, ProjectTask } from '@shared/types';
 
-export type TaskSortMode = 'custom' | 'created';
+export type TaskSortMode = 'custom' | 'created' | 'points' | 'suspicious' | 'created-asc' | 'created-desc';
 
 interface TaskGroupCardProps {
   project: Project;

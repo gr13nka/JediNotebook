@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { useInbox } from '../../hooks/useInbox';
@@ -8,6 +9,10 @@ import { db } from '../../db';
 import { generateId, getDeviceId } from '../../utils/uuid';
 import { ACTIVITY_COLORS, NOTE_COLORS } from '@shared/constants';
 import { Card } from '../ui/Card';
+
+interface InboxViewProps {
+  embedded?: boolean;
+}
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -55,10 +60,11 @@ const UndoIcon = () => (
   </svg>
 );
 
-export function InboxView() {
+export function InboxView({ embedded = false }: InboxViewProps) {
   const { items, addItem, updateItem, deleteItem } = useInbox();
   const { projects, createProject } = useProjects();
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
   const [inputText, setInputText] = useState('');
   const [mode, setMode] = useState<'capture' | 'sort'>('capture');
   const [sortIndex, setSortIndex] = useState(0);
@@ -68,7 +74,10 @@ export function InboxView() {
   const [sortEditText, setSortEditText] = useState('');
   const [isSortEditing, setIsSortEditing] = useState(false);
   const [undoPending, setUndoPending] = useState<{ id: string; secondsLeft: number } | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [taskMode, setTaskMode] = useState(false);
+  const [taskModePickerId, setTaskModePickerId] = useState<string | null>(null);
+  const autoSortTriggered = useRef(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const sortEditRef = useRef<HTMLInputElement>(null);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -108,19 +117,62 @@ export function InboxView() {
     }
   }, [isSortEditing]);
 
+  // Auto-enter sort mode from ?mode=sort query param
+  useEffect(() => {
+    if (!embedded && !autoSortTriggered.current && searchParams.get('mode') === 'sort' && items.length > 0) {
+      autoSortTriggered.current = true;
+      enterSortMode();
+    }
+  }, [items.length, searchParams, embedded]);
+
+  const handleTaskModeAssign = async (itemId: string, projectId: string) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return;
+    const now = new Date().toISOString();
+    const existingTasks = await db.projectTasks
+      .where('projectId')
+      .equals(projectId)
+      .filter((t) => !t.deletedAt)
+      .toArray();
+    await db.projectTasks.add({
+      id: generateId(),
+      projectId,
+      title: item.text,
+      sortOrder: existingTasks.length,
+      isCompleted: false,
+      completedAt: null,
+      recurrenceRule: null,
+      lastRecurredDate: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      deviceId: getDeviceId(),
+    });
+    await deleteItem(itemId);
+    setTaskModePickerId(null);
+  };
+
   const handleAdd = async () => {
     const text = inputText.trim();
     if (!text) return;
     await addItem(text);
     setInputText('');
-    inputRef.current?.focus();
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.focus();
+    }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleAdd();
     }
+  };
+
+  const autoResize = (el: HTMLTextAreaElement) => {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
   };
 
   const startEditing = (id: string, text: string) => {
@@ -310,9 +362,11 @@ export function InboxView() {
     if (items.length === 0) {
       return (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-xl font-bold text-text-primary">{t('inbox.title')}</h1>
-          </div>
+          {!embedded && (
+            <div className="flex items-center justify-between">
+              <h1 className="text-xl font-bold text-text-primary">{t('inbox.title')}</h1>
+            </div>
+          )}
           <Card>
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <InboxTrayIcon />
@@ -388,7 +442,7 @@ export function InboxView() {
             >
               <ArrowLeftIcon />
             </button>
-            <h1 className="text-xl font-bold text-text-primary">{t('inbox.title')}</h1>
+            {!embedded && <h1 className="text-xl font-bold text-text-primary">{t('inbox.title')}</h1>}
           </div>
           <span className="text-sm text-text-muted">
             {clampedIndex + 1} / {items.length}
@@ -489,34 +543,51 @@ export function InboxView() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-text-primary">{t('inbox.title')}</h1>
-        {items.length > 0 && (
-          <button
-            onClick={enterSortMode}
-            className="px-3 py-1.5 rounded-xl text-sm font-medium text-accent"
-            style={{ boxShadow: NEU.raisedSm }}
-          >
-            {t('inbox.sort')}
-          </button>
-        )}
+        {!embedded && <h1 className="text-xl font-bold text-text-primary">{t('inbox.title')}</h1>}
+        <div className="flex items-center gap-2 ml-auto">
+          {items.length > 0 && (
+            <button
+              onClick={() => setTaskMode((v) => !v)}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${
+                taskMode ? 'text-accent' : 'text-text-muted'
+              }`}
+              style={{ boxShadow: taskMode ? NEU.pressedSm : NEU.raisedSm }}
+            >
+              {t('inbox.taskMode')}
+            </button>
+          )}
+          {items.length > 0 && (
+            <button
+              onClick={enterSortMode}
+              className="px-3 py-1.5 rounded-xl text-sm font-medium text-accent"
+              style={{ boxShadow: NEU.raisedSm }}
+            >
+              {t('inbox.sort')}
+            </button>
+          )}
+        </div>
       </div>
 
       <div
-        className="flex gap-2 rounded-xl bg-bg-card p-2"
+        className="flex gap-2 items-end rounded-xl bg-bg-card p-2"
         style={{ boxShadow: NEU.pressed }}
       >
-        <input
+        <textarea
           ref={inputRef}
           value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
+          onChange={(e) => {
+            setInputText(e.target.value);
+            autoResize(e.target);
+          }}
           onKeyDown={handleKeyDown}
           placeholder={t('inbox.placeholder')}
-          className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none px-2"
+          rows={1}
+          className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none px-2 resize-none overflow-hidden leading-6"
         />
         <button
           onClick={handleAdd}
           disabled={!inputText.trim()}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium text-accent disabled:opacity-40 transition-opacity"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium text-accent disabled:opacity-40 transition-opacity shrink-0"
           style={{ boxShadow: NEU.raisedSm }}
         >
           +
@@ -603,6 +674,49 @@ export function InboxView() {
                   <span className="text-xs text-text-muted whitespace-nowrap">
                     {relativeTime(item.createdAt)}
                   </span>
+                  {taskMode && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setTaskModePickerId(taskModePickerId === item.id ? null : item.id)}
+                        className="w-5 h-5 rounded-full border-2 border-accent/50 hover:border-accent transition-colors shrink-0"
+                        title={t('inbox.task')}
+                      />
+                      <AnimatePresence>
+                        {taskModePickerId === item.id && (
+                          <>
+                            <motion.div
+                              className="fixed inset-0 z-40"
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              onClick={() => setTaskModePickerId(null)}
+                            />
+                            <motion.div
+                              className="absolute right-0 top-full mt-1 z-50 rounded-xl bg-bg-card p-1.5 min-w-[160px] max-h-[200px] overflow-y-auto"
+                              style={{ boxShadow: NEU.raised }}
+                              initial={{ opacity: 0, y: -4 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -4 }}
+                            >
+                              {projects.map((project) => (
+                                <button
+                                  key={project.id}
+                                  onClick={() => handleTaskModeAssign(item.id, project.id)}
+                                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left text-text-secondary hover:text-text-primary transition-colors"
+                                >
+                                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
+                                  <span className="truncate">{project.name}</span>
+                                </button>
+                              ))}
+                              {projects.length === 0 && (
+                                <p className="text-xs text-text-muted px-3 py-2">{t('projects.empty')}</p>
+                              )}
+                            </motion.div>
+                          </>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
                   <button
                     onClick={() => deleteItem(item.id)}
                     className="p-1 rounded-lg text-text-muted hover:text-red transition-colors shrink-0"
