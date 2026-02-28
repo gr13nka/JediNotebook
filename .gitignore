@@ -8,6 +8,10 @@ build/
 data/
 client/android/
 client/ios/
+
+# Tauri
+client/src-tauri/target/
+client/src-tauri/gen/schemas/
 .DS_Store
 *.log
 .vite/
