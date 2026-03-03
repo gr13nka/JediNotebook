@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedayfor/tauri/refs/heads/v2/crates/tauri-cli/schema.json",
   "productName": "Web Timer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.webtimer.app",
   "build": {
     "beforeDevCommand": "npm run dev",
