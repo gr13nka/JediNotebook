@@ -21,6 +21,7 @@
     "motion": "^11.18.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-pdf": "^10.4.1",
     "react-router-dom": "^7.1.0",
     "recharts": "^2.15.0",
     "uuid": "^11.0.5",

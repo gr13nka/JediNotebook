@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { generateId, getDeviceId } from '../utils/uuid';
 import type { Note } from '@shared/types';
+import { awardXP, XP_VALUES } from '../utils/streak';
 
 export function useNotes() {
   const notes = useLiveQuery(
@@ -36,6 +37,7 @@ export function useNotes() {
       deviceId: getDeviceId(),
     };
     await db.notes.add(note);
+    awardXP(XP_VALUES.createNote);
     return note;
   };
 

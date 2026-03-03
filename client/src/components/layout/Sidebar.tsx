@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { ContextMenu } from '../ui/ContextMenu';
+import { SidebarStreakIndicator } from '../gamification/SidebarStreakIndicator';
 
 // Shared sidebar state so AppShell can react to it
 export const useSidebarStore = create<{
@@ -95,6 +96,14 @@ const MindMapIcon = () => (
   </svg>
 );
 
+const ReviewIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+    <path d="M9 14l2 2 4-4" />
+  </svg>
+);
+
 const GearIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
@@ -150,6 +159,7 @@ export function Sidebar() {
     { to: '/habits', label: t('nav.habits'), icon: HabitIcon },
     { to: '/analytics', label: t('nav.analytics'), icon: ChartIcon },
     { to: '/notes', label: t('nav.ideas'), icon: NoteIcon },
+    { to: '/review', label: t('nav.review'), icon: ReviewIcon },
     { to: '/settings', label: t('nav.settings'), icon: GearIcon },
   ], [t]);
 
@@ -219,7 +229,7 @@ export function Sidebar() {
 
   return (
     <motion.aside
-      className="hidden md:flex flex-col min-h-screen bg-bg-primary shrink-0"
+      className="hidden md:flex flex-col min-h-screen-safe bg-bg-primary shrink-0"
       style={{ boxShadow: NEU.sidebarRight }}
       animate={{ width: collapsed ? 56 : 224 }}
       transition={{ type: 'spring', stiffness: 400, damping: 35 }}
@@ -373,7 +383,8 @@ export function Sidebar() {
         </div>
       )}
 
-      <div className="mt-auto pt-4 px-4">
+      <div className="mt-auto pt-4 px-4 flex flex-col gap-2">
+        <SidebarStreakIndicator collapsed={collapsed} />
         {!collapsed && <span className="text-xs text-text-muted/50">v1.0</span>}
       </div>
 

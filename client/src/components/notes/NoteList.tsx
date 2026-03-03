@@ -1,46 +1,51 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { NEU } from '../../utils/shadows';
-import { stripMarkdown } from '../../utils/markdown';
+import { NoteCard } from './NoteCard';
 import { NoteEditor } from './NoteEditor';
+import { PdfCard } from './PdfCard';
+import { PdfViewer } from './PdfViewer';
+import { PdfUploadButton } from './PdfUploadButton';
 import { useNotes } from '../../hooks/useNotes';
+import { usePdfDocuments } from '../../hooks/usePdfDocuments';
 import { useTranslation } from '../../i18n/useTranslation';
-import { NOTE_COLORS } from '@shared/constants';
-import type { Note } from '@shared/types';
+import type { Note, PdfDocument } from '@shared/types';
 
-const PinIcon = ({ filled }: { filled: boolean }) => (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill={filled ? 'currentColor' : 'none'}
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M12 17v5" />
-    <path d="M5 12h14" />
-    <rect x="7" y="4" width="10" height="8" rx="1" />
-  </svg>
-);
+type IdeasItem =
+  | { type: 'note'; data: Note }
+  | { type: 'pdf'; data: PdfDocument };
 
 export function NoteList() {
   const { t } = useTranslation();
-  const { notes, createNote, updateNote, deleteNote, togglePin } = useNotes();
+  const { notes, createNote, updateNote, deleteNote, togglePin: toggleNotePin } = useNotes();
+  const { pdfs, createPdf, deletePdf, togglePin: togglePdfPin } = usePdfDocuments();
+
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [viewingPdf, setViewingPdf] = useState<PdfDocument | null>(null);
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
 
-  const handleNew = () => {
+  const items = useMemo<IdeasItem[]>(() => {
+    const all: IdeasItem[] = [
+      ...notes.map((n) => ({ type: 'note' as const, data: n })),
+      ...pdfs.map((p) => ({ type: 'pdf' as const, data: p })),
+    ];
+    return all.sort((a, b) => {
+      if (a.data.isPinned !== b.data.isPinned) return a.data.isPinned ? -1 : 1;
+      return b.data.updatedAt.localeCompare(a.data.updatedAt);
+    });
+  }, [notes, pdfs]);
+
+  const handleNewNote = () => {
     setEditingNote(null);
     setEditorOpen(true);
   };
 
-  const handleOpen = (note: Note) => {
+  const handleOpenNote = (note: Note) => {
     setEditingNote(note);
     setEditorOpen(true);
   };
 
-  const handleSave = async (data: { title: string; content: string; color: string }) => {
+  const handleSaveNote = async (data: { title: string; content: string; color: string }) => {
     if (editingNote) {
       await updateNote(editingNote.id, data);
     } else {
@@ -48,16 +53,33 @@ export function NoteList() {
     }
   };
 
-  const handleDelete = () => {
+  const handleDeleteNote = () => {
     if (editingNote) {
       deleteNote(editingNote.id);
     }
   };
 
-  const sorted = [...notes].sort((a, b) => {
-    if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
-    return 0;
-  });
+  const handleOpenPdf = (pdf: PdfDocument) => {
+    setViewingPdf(pdf);
+    setPdfViewerOpen(true);
+  };
+
+  const handleDeletePdf = () => {
+    if (viewingPdf) {
+      deletePdf(viewingPdf.id);
+    }
+  };
+
+  const handleUploadPdf = async (data: {
+    title: string;
+    fileName: string;
+    fileSize: number;
+    pageCount: number;
+    pdfData: Blob;
+    thumbnail: Blob | null;
+  }) => {
+    await createPdf(data);
+  };
 
   return (
     <div>
@@ -67,54 +89,49 @@ export function NoteList() {
         </h1>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {sorted.map((n) => (
-          <div
-            key={n.id}
-            onClick={() => handleOpen(n)}
-            className="rounded-2xl bg-bg-card p-3 cursor-pointer"
-            style={{ boxShadow: NEU.raised }}
-          >
-            <div className="flex items-center gap-2 mb-1.5">
-              <span
-                className="w-2.5 h-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: n.color }}
-              />
-              <span className="text-sm font-medium text-text-primary truncate flex-1">
-                {n.title || t('ideas.untitled')}
-              </span>
-              <button
-                onClick={(e) => { e.stopPropagation(); togglePin(n.id); }}
-                className={`p-0.5 rounded transition-colors shrink-0 ${
-                  n.isPinned ? 'text-accent' : 'text-text-muted/40'
-                }`}
-              >
-                <PinIcon filled={n.isPinned} />
-              </button>
-            </div>
-            {n.content && (
-              <p className="text-xs text-text-secondary leading-relaxed line-clamp-3">
-                {stripMarkdown(n.content)}
-              </p>
-            )}
-          </div>
-        ))}
+      <div className="columns-2 gap-3">
+        {items.map((item) =>
+          item.type === 'note' ? (
+            <NoteCard
+              key={item.data.id}
+              note={item.data}
+              onClick={() => handleOpenNote(item.data)}
+              onTogglePin={() => toggleNotePin(item.data.id)}
+            />
+          ) : (
+            <PdfCard
+              key={item.data.id}
+              pdf={item.data}
+              onClick={() => handleOpenPdf(item.data)}
+              onTogglePin={() => togglePdfPin(item.data.id)}
+            />
+          ),
+        )}
 
         <button
-          onClick={handleNew}
-          className="rounded-2xl p-3 flex items-center justify-center text-sm font-medium text-text-muted hover:text-text-secondary transition-colors"
+          onClick={handleNewNote}
+          className="rounded-2xl p-3 w-full flex items-center justify-center text-sm font-medium text-text-muted hover:text-text-secondary transition-colors mb-3"
           style={{ boxShadow: NEU.pressed, minHeight: '80px' }}
         >
           {t('ideas.new')}
         </button>
+
+        <PdfUploadButton onUpload={handleUploadPdf} />
       </div>
 
       <NoteEditor
         open={editorOpen}
         onClose={() => { setEditorOpen(false); setEditingNote(null); }}
-        onSave={handleSave}
-        onDelete={editingNote ? handleDelete : undefined}
+        onSave={handleSaveNote}
+        onDelete={editingNote ? handleDeleteNote : undefined}
         note={editingNote}
+      />
+
+      <PdfViewer
+        open={pdfViewerOpen}
+        onClose={() => { setPdfViewerOpen(false); setViewingPdf(null); }}
+        onDelete={viewingPdf ? handleDeletePdf : undefined}
+        pdf={viewingPdf}
       />
     </div>
   );

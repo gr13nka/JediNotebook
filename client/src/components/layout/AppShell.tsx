@@ -35,9 +35,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-bg-primary relative">
+    <div className="flex min-h-screen-safe bg-bg-primary relative">
       {!desktopBottomNav && !dropdownNav && <Sidebar />}
-      <main className={`flex-1 ${dropdownNav ? 'pb-0' : `pb-16 ${desktopBottomNav ? 'md:pb-16' : 'md:pb-0'}`} relative z-10 min-w-0`}>
+      <main className={`flex-1 ${dropdownNav ? 'pb-0' : `pb-nav-safe ${desktopBottomNav ? 'md:pb-16' : 'md:pb-0'}`} relative z-10 min-w-0`}>
         {isFullBleed ? (
           <div className="h-full">{children}</div>
         ) : (

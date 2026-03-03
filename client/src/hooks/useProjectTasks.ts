@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { generateId, getDeviceId } from '../utils/uuid';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
+import { awardXP, XP_VALUES } from '../utils/streak';
 
 export function useProjectTasks(projectId: string | null) {
   const tasks = useLiveQuery(
@@ -40,6 +41,7 @@ export function useProjectTasks(projectId: string | null) {
       deviceId: getDeviceId(),
     };
     await db.projectTasks.add(task);
+    awardXP(XP_VALUES.createTask);
     return task;
   };
 
@@ -60,6 +62,7 @@ export function useProjectTasks(projectId: string | null) {
       completedAt: newCompleted ? now : null,
       updatedAt: now,
     });
+    if (newCompleted) awardXP(XP_VALUES.completeTask);
     // If completing a recurring task, auto-create next occurrence
     if (newCompleted && task.recurrenceRule) {
       const today = now.slice(0, 10);

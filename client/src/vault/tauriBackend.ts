@@ -71,6 +71,20 @@ export class TauriVaultBackend implements VaultBackend {
     await mkdir(this.resolve(path), { recursive: true }).catch(() => {});
   }
 
+  async readBinaryFile(path: string): Promise<Uint8Array> {
+    const { readFile } = await import('@tauri-apps/plugin-fs');
+    return readFile(this.resolve(path));
+  }
+
+  async writeBinaryFile(path: string, data: Uint8Array): Promise<void> {
+    const { writeFile, mkdir } = await import('@tauri-apps/plugin-fs');
+    const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;
+    if (dir) {
+      await mkdir(this.resolve(dir), { recursive: true }).catch(() => {});
+    }
+    await writeFile(this.resolve(path), data);
+  }
+
   async watch(callback: WatchCallback): Promise<() => void> {
     const { watch } = await import('@tauri-apps/plugin-fs');
     const unwatch = await watch(

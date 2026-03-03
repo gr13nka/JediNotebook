@@ -17,6 +17,7 @@ const TABLE_TO_TYPE: Record<string, string> = {
   projectFolders: 'projectFolders',
   inboxItems: 'inboxItems',
   mindMaps: 'mindMaps',
+  pdfDocuments: 'pdfDocuments',
 };
 
 /**

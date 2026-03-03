@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { TimerDisplay } from '../components/timer/TimerDisplay';
 import { TodayTaskCard } from '../components/today/TodayTaskCard';
 import { useTodayTasks } from '../hooks/useTodayTasks';
+import { useTaskTimer } from '../hooks/useTaskTimer';
 import { useTranslation } from '../i18n/useTranslation';
 import { NEU } from '../utils/shadows';
 
@@ -43,6 +44,7 @@ const ExpandIcon = () => (
 export function TodayPage() {
   const { t } = useTranslation();
   const { todayTasks, completeTask, reorderTodayTasks, updateTaskTitle } = useTodayTasks();
+  const taskTimer = useTaskTimer();
   const [hideCompleted, setHideCompleted] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
 
@@ -68,6 +70,37 @@ export function TodayPage() {
     const completedIds = completedTasks.map((t) => t.id);
     reorderTodayTasks([...ids, ...completedIds]);
   }, [incompleteTasks, completedTasks, reorderTodayTasks]);
+
+  const handleComplete = useCallback((taskId: string) => {
+    // Stop task timer if this task is active
+    if (taskTimer.activeTaskId === taskId) {
+      taskTimer.stopTask();
+    }
+    completeTask(taskId);
+  }, [taskTimer, completeTask]);
+
+  const renderTaskCard = (task: typeof todayTasks[0], i: number, list: typeof todayTasks) => {
+    const isActive = taskTimer.activeTaskId === task.id;
+    return (
+      <TodayTaskCard
+        key={task.id}
+        task={task}
+        onComplete={() => handleComplete(task.id)}
+        onMoveUp={!task.isCompleted && i > 0 ? () => handleMoveUp(task.id) : undefined}
+        onMoveDown={!task.isCompleted && i < list.length - 1 ? () => handleMoveDown(task.id) : undefined}
+        onEditTitle={(title) => updateTaskTitle(task.id, title)}
+        isFirst={i === 0}
+        isTaskActive={isActive}
+        countdownDisplay={isActive ? taskTimer.formatCountdown() : undefined}
+        countdownComplete={isActive ? taskTimer.countdownComplete : undefined}
+        isPaused={isActive ? taskTimer.isPaused : undefined}
+        onStartTask={() => taskTimer.startTask(task.id, task.projectId, task.linkedActivityId)}
+        onStopTask={isActive ? () => taskTimer.stopTask() : undefined}
+        onPauseTask={isActive ? () => taskTimer.pauseTask() : undefined}
+        onResumeTask={isActive ? () => taskTimer.resumeTask() : undefined}
+      />
+    );
+  };
 
   // Normal mode: renders in-flow inside AppShell (sidebar visible)
   // Focus mode: fixed full-screen overlay on top of everything
@@ -109,17 +142,7 @@ export function TodayPage() {
             <div className="flex-1 overflow-auto px-4 py-4 max-w-2xl mx-auto w-full relative z-[52] flex flex-col justify-center">
               <div className="flex flex-col gap-3">
                 <AnimatePresence mode="popLayout">
-                  {incompleteTasks.map((task, i) => (
-                    <TodayTaskCard
-                      key={task.id}
-                      task={task}
-                      onComplete={() => completeTask(task.id)}
-                      onMoveUp={i > 0 ? () => handleMoveUp(task.id) : undefined}
-                      onMoveDown={i < incompleteTasks.length - 1 ? () => handleMoveDown(task.id) : undefined}
-                      onEditTitle={(title) => updateTaskTitle(task.id, title)}
-                      isFirst={i === 0}
-                    />
-                  ))}
+                  {incompleteTasks.map((task, i) => renderTaskCard(task, i, incompleteTasks))}
                 </AnimatePresence>
               </div>
             </div>
@@ -167,17 +190,7 @@ export function TodayPage() {
         {/* Incomplete tasks */}
         <div className="flex flex-col gap-3 mb-6">
           <AnimatePresence mode="popLayout">
-            {incompleteTasks.map((task, i) => (
-              <TodayTaskCard
-                key={task.id}
-                task={task}
-                onComplete={() => completeTask(task.id)}
-                onMoveUp={i > 0 ? () => handleMoveUp(task.id) : undefined}
-                onMoveDown={i < incompleteTasks.length - 1 ? () => handleMoveDown(task.id) : undefined}
-                onEditTitle={(title) => updateTaskTitle(task.id, title)}
-                isFirst={i === 0}
-              />
-            ))}
+            {incompleteTasks.map((task, i) => renderTaskCard(task, i, incompleteTasks))}
           </AnimatePresence>
         </div>
 
@@ -212,7 +225,7 @@ export function TodayPage() {
                         <TodayTaskCard
                           key={task.id}
                           task={task}
-                          onComplete={() => completeTask(task.id)}
+                          onComplete={() => handleComplete(task.id)}
                           onEditTitle={(title) => updateTaskTitle(task.id, title)}
                           isFirst={false}
                         />

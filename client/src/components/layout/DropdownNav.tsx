@@ -75,6 +75,14 @@ const SunIcon = () => (
   </svg>
 );
 
+const ReviewIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+    <path d="M9 14l2 2 4-4" />
+  </svg>
+);
+
 const GearIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
@@ -118,6 +126,7 @@ const iconMap: Record<string, React.FC> = {
   '/habits': HabitIcon,
   '/analytics': ChartIcon,
   '/notes': NoteIcon,
+  '/review': ReviewIcon,
   '/settings': GearIcon,
 };
 
@@ -150,6 +159,7 @@ export function DropdownNav() {
     { to: '/habits', label: t('nav.habits'), icon: HabitIcon },
     { to: '/analytics', label: t('nav.analytics'), icon: ChartIcon },
     { to: '/notes', label: t('nav.ideas'), icon: NoteIcon },
+    { to: '/review', label: t('nav.review'), icon: ReviewIcon },
     { to: '/settings', label: t('nav.settings'), icon: GearIcon },
   ], [t]);
 
@@ -252,12 +262,16 @@ export function DropdownNav() {
   const fabPositionStyle: React.CSSProperties = fabDragPos
     ? { left: fabDragPos.x, top: fabDragPos.y, right: 'auto', bottom: 'auto' }
     : {
-        ...(fabCorner.startsWith('bottom') ? { bottom: 20 } : { top: 20 }),
+        ...(fabCorner.startsWith('bottom')
+          ? { bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))' }
+          : { top: 'calc(20px + env(safe-area-inset-top, 0px))' }),
         ...(fabCorner.endsWith('right') ? { right: 16 } : { left: 16 }),
       };
 
   const popupPositionStyle: React.CSSProperties = {
-    ...(fabCorner.startsWith('bottom') ? { bottom: 80 } : { top: 80 }),
+    ...(fabCorner.startsWith('bottom')
+      ? { bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }
+      : { top: 'calc(80px + env(safe-area-inset-top, 0px))' }),
     ...(fabCorner.endsWith('right') ? { right: 16 } : { left: 16 }),
   };
 

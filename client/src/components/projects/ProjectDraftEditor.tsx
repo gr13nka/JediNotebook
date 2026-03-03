@@ -1,45 +1,55 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NEU } from '../../utils/shadows';
 import { renderLineMd } from '../../utils/markdown';
+import { useTranslation } from '../../i18n/useTranslation';
+import type { Activity } from '@shared/types';
 
 interface ProjectDraftEditorProps {
   title: string;
   description: string;
   onSaveTitle: (title: string) => void;
   onSave: (description: string) => void;
+  linkedActivityId?: string | null;
+  onLinkActivity?: (activityId: string | null) => void;
+  activities?: Activity[];
 }
 
-export function ProjectDraftEditor({ title, description, onSaveTitle, onSave }: ProjectDraftEditorProps) {
-  const [lines, setLines] = useState<string[]>(() => splitLines(description));
+export function ProjectDraftEditor({ title, description, onSaveTitle, onSave, linkedActivityId, onLinkActivity, activities }: ProjectDraftEditorProps) {
   const [localTitle, setLocalTitle] = useState(title);
-  const [editingLine, setEditingLine] = useState<number | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [localDesc, setLocalDesc] = useState(description);
+  const [isEditing, setIsEditing] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setLines(splitLines(description));
+    setLocalDesc(description);
   }, [description]);
 
   useEffect(() => {
     setLocalTitle(title);
   }, [title]);
 
-  // Focus input when editing line changes
+  // Auto-resize and focus when entering edit mode
   useEffect(() => {
-    if (editingLine !== null && inputRef.current) {
-      inputRef.current.focus();
+    if (isEditing && textareaRef.current) {
+      const ta = textareaRef.current;
+      ta.focus();
       // Place cursor at end
-      const len = inputRef.current.value.length;
-      inputRef.current.setSelectionRange(len, len);
+      const len = ta.value.length;
+      ta.setSelectionRange(len, len);
+      // Auto-resize
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
     }
-  }, [editingLine]);
+  }, [isEditing]);
 
-  const save = useCallback((newLines: string[]) => {
-    const text = newLines.join('\n');
-    if (text !== description) {
-      onSave(text);
+  const autoResize = useCallback(() => {
+    if (textareaRef.current) {
+      const ta = textareaRef.current;
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
     }
-  }, [description, onSave]);
+  }, []);
 
   const handleTitleBlur = () => {
     if (localTitle !== title) {
@@ -47,59 +57,51 @@ export function ProjectDraftEditor({ title, description, onSaveTitle, onSave }: 
     }
   };
 
-  const handleLineClick = (index: number) => {
-    setEditingLine(index);
+  const handleDescChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setLocalDesc(e.target.value);
+    autoResize();
   };
 
-  const handleLineChange = (index: number, value: string) => {
-    const newLines = [...lines];
-    newLines[index] = value;
-    setLines(newLines);
-  };
-
-  const handleLineBlur = () => {
-    setEditingLine(null);
-    save(lines);
-  };
-
-  const handleLineKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      // Insert new line after current
-      const newLines = [...lines];
-      newLines.splice(index + 1, 0, '');
-      setLines(newLines);
-      save(newLines);
-      setEditingLine(index + 1);
-    } else if (e.key === 'Backspace' && lines[index] === '' && lines.length > 1) {
-      e.preventDefault();
-      // Delete empty line, move to previous
-      const newLines = [...lines];
-      newLines.splice(index, 1);
-      setLines(newLines);
-      save(newLines);
-      setEditingLine(Math.max(0, index - 1));
-    } else if (e.key === 'ArrowDown') {
-      if (index < lines.length - 1) {
-        setEditingLine(index + 1);
-      }
-    } else if (e.key === 'ArrowUp') {
-      if (index > 0) {
-        setEditingLine(index - 1);
-      }
+  const handleDescBlur = () => {
+    setIsEditing(false);
+    if (localDesc !== description) {
+      onSave(localDesc);
     }
   };
 
-  // Click on empty area to add a new line
+  const handlePreviewClick = () => {
+    setIsEditing(true);
+  };
+
+  // Click on empty area to start editing
   const handleContainerClick = (e: React.MouseEvent) => {
     if (e.target === containerRef.current) {
-      const newLines = [...lines, ''];
-      setLines(newLines);
-      setEditingLine(newLines.length - 1);
+      setIsEditing(true);
     }
   };
 
-  const hasContent = lines.some((l) => l.trim().length > 0);
+  const hasContent = localDesc.trim().length > 0;
+
+  // Render markdown preview lines
+  const renderPreview = () => {
+    const lines = localDesc.split('\n');
+    return lines.map((line, i) => {
+      if (line.trim() === '') {
+        return <div key={i} className="h-6" />;
+      }
+      const rendered = renderLineMd(line);
+      return (
+        <div
+          key={i}
+          className="py-0.5 markdown-preview"
+          dangerouslySetInnerHTML={{ __html: rendered }}
+        />
+      );
+    });
+  };
+
+  const { t } = useTranslation();
+  const nonBreakActivities = activities?.filter((a) => !a.isBreak) ?? [];
 
   return (
     <div className="flex flex-col h-full">
@@ -112,61 +114,53 @@ export function ProjectDraftEditor({ title, description, onSaveTitle, onSave }: 
         className="w-full bg-transparent text-xl font-bold text-text-primary placeholder:text-text-muted/40 focus:outline-none border-none mb-2 px-1"
       />
 
+      {/* Activity link selector */}
+      {onLinkActivity && (
+        <div className="flex items-center gap-2 mb-3 px-1">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-text-muted shrink-0">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          <select
+            value={linkedActivityId ?? ''}
+            onChange={(e) => onLinkActivity(e.target.value || null)}
+            className="text-xs bg-transparent text-text-secondary border border-border rounded-lg px-2 py-1 focus:outline-none focus:border-accent cursor-pointer"
+            style={{ boxShadow: NEU.pressedSm }}
+          >
+            <option value="">{t('projects.noLinkedActivity')}</option>
+            {nonBreakActivities.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="mx-auto w-full max-w-prose">
         <div
           ref={containerRef}
           onClick={handleContainerClick}
-          className="rounded-xl p-4 text-sm text-text-primary leading-relaxed cursor-text"
+          className="rounded-xl p-4 text-sm text-text-primary leading-relaxed cursor-text overflow-y-auto no-scrollbar"
           style={{ boxShadow: NEU.pressedSm, minHeight: '300px' }}
         >
-          {!hasContent && editingLine === null && (
-            <span className="text-text-muted/40">Take a note...</span>
+          {isEditing ? (
+            <textarea
+              ref={textareaRef}
+              value={localDesc}
+              onChange={handleDescChange}
+              onBlur={handleDescBlur}
+              className="w-full bg-transparent text-sm text-text-primary focus:outline-none border-none font-mono resize-none overflow-hidden selection:bg-accent/30 selection:text-text-primary"
+              style={{ lineHeight: '1.625', whiteSpace: 'pre-wrap' }}
+            />
+          ) : (
+            <div onClick={handlePreviewClick}>
+              {!hasContent && (
+                <span className="text-text-muted/40">Take a note...</span>
+              )}
+              {hasContent && renderPreview()}
+            </div>
           )}
-
-          {lines.map((line, i) => {
-            if (editingLine === i) {
-              return (
-                <input
-                  key={i}
-                  ref={inputRef}
-                  value={line}
-                  onChange={(e) => handleLineChange(i, e.target.value)}
-                  onBlur={handleLineBlur}
-                  onKeyDown={(e) => handleLineKeyDown(i, e)}
-                  className="w-full bg-transparent text-sm text-text-primary focus:outline-none border-none py-0.5 font-mono"
-                  style={{ lineHeight: '1.625' }}
-                />
-              );
-            }
-
-            // Rendered line
-            const rendered = renderLineMd(line);
-            if (line.trim() === '') {
-              return (
-                <div
-                  key={i}
-                  onClick={() => handleLineClick(i)}
-                  className="h-6 cursor-text"
-                />
-              );
-            }
-            return (
-              <div
-                key={i}
-                onClick={() => handleLineClick(i)}
-                className="cursor-text py-0.5 markdown-preview"
-                dangerouslySetInnerHTML={{ __html: rendered }}
-              />
-            );
-          })}
         </div>
       </div>
     </div>
   );
-}
-
-function splitLines(text: string): string[] {
-  const lines = text.split('\n');
-  if (lines.length === 0) return [''];
-  return lines;
 }

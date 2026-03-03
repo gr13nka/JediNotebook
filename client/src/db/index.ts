@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Activity, TimeEntry, UserSettings, Habit, HabitEntry, Note, PomodoroPreset, Project, ProjectTask, TodayTask, ProjectFolder, InboxItem, MindMap } from '@shared/types';
+import type { Activity, TimeEntry, UserSettings, Habit, HabitEntry, Note, PomodoroPreset, Project, ProjectTask, TodayTask, ProjectFolder, InboxItem, MindMap, PdfDocument } from '@shared/types';
 
 const db = new Dexie('TimeTrackerDB') as Dexie & {
   activities: EntityTable<Activity, 'id'>;
@@ -15,6 +15,7 @@ const db = new Dexie('TimeTrackerDB') as Dexie & {
   projectFolders: EntityTable<ProjectFolder, 'id'>;
   inboxItems: EntityTable<InboxItem, 'id'>;
   mindMaps: EntityTable<MindMap, 'id'>;
+  pdfDocuments: EntityTable<PdfDocument, 'id'>;
 };
 
 db.version(1).stores({
@@ -114,6 +115,23 @@ db.version(8).stores({
   projectFolders: 'id, name, parentFolderId, sortOrder, deletedAt, updatedAt',
   inboxItems: 'id, deletedAt, updatedAt',
   mindMaps: 'id, deletedAt, updatedAt',
+});
+
+db.version(9).stores({
+  activities: 'id, name, sortOrder, deletedAt, updatedAt',
+  timeEntries: 'id, activityId, date, startedAt, endedAt, deletedAt, updatedAt',
+  settings: 'id',
+  habits: 'id, name, sortOrder, deletedAt, updatedAt',
+  habitEntries: 'id, habitId, date, deletedAt, updatedAt, [habitId+date]',
+  notes: 'id, isPinned, deletedAt, updatedAt',
+  pomodoroPresets: 'id, name, sortOrder, deletedAt, updatedAt',
+  projects: 'id, name, folderId, sortOrder, isArchived, deletedAt, updatedAt',
+  projectTasks: 'id, projectId, sortOrder, isCompleted, deletedAt, updatedAt',
+  todayTasks: 'id, projectTaskId, projectId, date, isCompleted, deletedAt, updatedAt',
+  projectFolders: 'id, name, parentFolderId, sortOrder, deletedAt, updatedAt',
+  inboxItems: 'id, deletedAt, updatedAt',
+  mindMaps: 'id, deletedAt, updatedAt',
+  pdfDocuments: 'id, isPinned, deletedAt, updatedAt',
 });
 
 export { db };

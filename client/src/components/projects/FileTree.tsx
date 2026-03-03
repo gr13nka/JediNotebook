@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFolders } from '../../hooks/useFolders';
 import { useProjects } from '../../hooks/useProjects';
@@ -16,10 +16,21 @@ interface ContextMenuState {
   project: Project;
 }
 
+interface DragState {
+  projectId: string;
+  projectName: string;
+  projectColor: string;
+  startX: number;
+  startY: number;
+  active: boolean;
+}
+
+const DRAG_THRESHOLD = 5;
+
 export function FileTree() {
   const { t } = useTranslation();
   const { folders, createFolder, deleteFolder, toggleExpanded } = useFolders();
-  const { projects, createProject, deleteProject, moveProject } = useProjects();
+  const { projects, createProject, deleteProject, moveProject, updateProject } = useProjects();
   const openTab = useProjectUIStore((s) => s.openTab);
   const closeTab = useProjectUIStore((s) => s.closeTab);
   const activeTabId = useProjectUIStore((s) => s.activeTabId);
@@ -31,13 +42,24 @@ export function FileTree() {
   const [dragOverRoot, setDragOverRoot] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<Project | null>(null);
   const [confirmDeleteFolderId, setConfirmDeleteFolderId] = useState<string | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
-  const draggedProjectIdRef = useRef<string | null>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
+
+  // Mouse-based drag state (replaces HTML5 DnD which is broken in WKWebView)
+  const dragRef = useRef<DragState | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [ghostPos, setGhostPos] = useState({ x: 0, y: 0 });
+  const [ghostInfo, setGhostInfo] = useState<{ name: string; color: string } | null>(null);
+
+  const activeProjects = projects.filter((p) => !p.isArchived);
+  const inactiveProjects = projects.filter((p) => p.isArchived);
+  const visibleProjects = showInactive ? projects : activeProjects;
 
   const projectsByFolder = (folderId: string) =>
-    projects.filter((p) => p.folderId === folderId);
+    visibleProjects.filter((p) => p.folderId === folderId);
 
-  const unfiledProjects = projects.filter((p) => !p.folderId);
+  const unfiledProjects = visibleProjects.filter((p) => !p.folderId);
 
   const handleNewFolder = async (data: { name: string; color: string }) => {
     await createFolder(data.name, data.color);
@@ -67,6 +89,11 @@ export function FileTree() {
     setContextMenu(null);
   };
 
+  const handleToggleActive = (project: Project) => {
+    updateProject(project.id, { isArchived: !project.isArchived });
+    setContextMenu(null);
+  };
+
   // Close context menu on click outside
   useEffect(() => {
     if (!contextMenu) return;
@@ -79,60 +106,94 @@ export function FileTree() {
     return () => document.removeEventListener('mousedown', handler);
   }, [contextMenu]);
 
-  // Drag handlers for projects
-  // Use a ref instead of dataTransfer because WKWebView (Tauri) doesn't
-  // reliably support getData() in drop events.
-  const handleProjectDragStart = (projectId: string) => (e: React.DragEvent) => {
-    draggedProjectIdRef.current = projectId;
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragEnd = () => {
-    draggedProjectIdRef.current = null;
-    setDragOverFolderId(null);
-    setDragOverRoot(false);
-  };
-
-  const handleFolderDragOver = (folderId: string) => (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverFolderId(folderId);
-  };
-
-  const handleFolderDragLeave = () => {
-    setDragOverFolderId(null);
-  };
-
-  const handleFolderDrop = (folderId: string) => (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const projectId = draggedProjectIdRef.current;
-    if (projectId) {
-      moveProject(projectId, folderId);
+  // Find which folder (or root) the cursor is over using data attributes
+  const findDropTarget = useCallback((x: number, y: number): string | null | undefined => {
+    // undefined = not over any drop zone, null = root zone, string = folder id
+    const el = document.elementFromPoint(x, y);
+    if (!el) return undefined;
+    // Walk up to find a folder drop target
+    let node: Element | null = el;
+    while (node) {
+      if (node instanceof HTMLElement) {
+        const folderId = node.dataset.dropFolderId;
+        if (folderId) return folderId;
+        if (node.dataset.dropRoot !== undefined) return null;
+      }
+      node = node.parentElement;
     }
-    draggedProjectIdRef.current = null;
-    setDragOverFolderId(null);
-  };
+    return undefined;
+  }, []);
 
-  const handleRootDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverRoot(true);
-  };
+  // Mouse-based drag: mousedown on project
+  const handleProjectMouseDown = useCallback((project: Project) => (e: React.MouseEvent) => {
+    // Only left mouse button, ignore if context menu action
+    if (e.button !== 0) return;
+    dragRef.current = {
+      projectId: project.id,
+      projectName: project.name,
+      projectColor: project.color,
+      startX: e.clientX,
+      startY: e.clientY,
+      active: false,
+    };
+  }, []);
 
-  const handleRootDragLeave = () => {
-    setDragOverRoot(false);
-  };
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
 
-  const handleRootDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const projectId = draggedProjectIdRef.current;
-    if (projectId) {
-      moveProject(projectId, null);
-    }
-    draggedProjectIdRef.current = null;
-    setDragOverRoot(false);
-  };
+      if (!drag.active) {
+        const dx = e.clientX - drag.startX;
+        const dy = e.clientY - drag.startY;
+        if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+        drag.active = true;
+        setIsDragging(true);
+        setGhostInfo({ name: drag.projectName, color: drag.projectColor });
+      }
+
+      setGhostPos({ x: e.clientX, y: e.clientY });
+
+      // Hit-test for drop target
+      const target = findDropTarget(e.clientX, e.clientY);
+      if (target === undefined) {
+        setDragOverFolderId(null);
+        setDragOverRoot(false);
+      } else if (target === null) {
+        setDragOverFolderId(null);
+        setDragOverRoot(true);
+      } else {
+        setDragOverFolderId(target);
+        setDragOverRoot(false);
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      dragRef.current = null;
+
+      if (drag.active) {
+        const target = findDropTarget(e.clientX, e.clientY);
+        if (target !== undefined) {
+          // target is null (root) or string (folderId)
+          moveProject(drag.projectId, target);
+        }
+      }
+
+      setIsDragging(false);
+      setGhostInfo(null);
+      setDragOverFolderId(null);
+      setDragOverRoot(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [findDropTarget, moveProject]);
 
   return (
     <div className="flex flex-col h-full">
@@ -166,14 +227,27 @@ export function FileTree() {
             <line x1="9" y1="15" x2="15" y2="15" />
           </svg>
         </button>
+        {inactiveProjects.length > 0 && (
+          <button
+            onClick={() => setShowInactive((s) => !s)}
+            className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ml-auto ${
+              showInactive ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
+            }`}
+            style={{ boxShadow: showInactive ? NEU.pressedSm : NEU.raisedSm }}
+            title={t('projects.showInactive')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Scrollable tree */}
       <div
+        ref={treeRef}
         className={`flex-1 overflow-y-auto pt-1 px-1 ${dragOverRoot ? 'bg-accent/10' : ''} transition-colors`}
-        onDragOver={handleRootDragOver}
-        onDragLeave={handleRootDragLeave}
-        onDrop={handleRootDrop}
+        data-drop-root
       >
         {folders.map((folder) => (
           <FolderRow
@@ -185,12 +259,9 @@ export function FileTree() {
             onProjectClick={openTab}
             onDelete={() => handleDeleteFolder(folder.id)}
             onContextMenu={handleContextMenu}
-            onProjectDragStart={handleProjectDragStart}
-            onProjectDragEnd={handleDragEnd}
+            onProjectMouseDown={handleProjectMouseDown}
             isDragOver={dragOverFolderId === folder.id}
-            onDragOver={handleFolderDragOver(folder.id)}
-            onDragLeave={handleFolderDragLeave}
-            onDrop={handleFolderDrop(folder.id)}
+            isDragging={isDragging}
           />
         ))}
 
@@ -209,14 +280,35 @@ export function FileTree() {
             key={project.id}
             project={project}
             isActive={project.id === activeTabId}
-            onClick={() => openTab(project.id)}
+            onClick={() => {
+              if (!isDragging) openTab(project.id);
+            }}
             onContextMenu={(e) => handleContextMenu(e, project)}
-            draggable
-            onDragStart={handleProjectDragStart(project.id)}
-            onDragEnd={handleDragEnd}
+            onMouseDown={handleProjectMouseDown(project)}
           />
         ))}
       </div>
+
+      {/* Drag ghost */}
+      {isDragging && ghostInfo && (
+        <div
+          className="fixed z-[100] pointer-events-none flex items-center gap-1.5 px-2 py-1 rounded-md bg-bg-card border border-border"
+          style={{
+            left: ghostPos.x + 12,
+            top: ghostPos.y - 10,
+            boxShadow: NEU.modal,
+            opacity: 0.9,
+          }}
+        >
+          <span
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{ backgroundColor: ghostInfo.color }}
+          />
+          <span className="text-[12px] text-text-primary whitespace-nowrap">
+            {ghostInfo.name}
+          </span>
+        </div>
+      )}
 
       {/* Context menu */}
       {contextMenu && (
@@ -237,6 +329,12 @@ export function FileTree() {
               {t('projects.moveToRoot')}
             </button>
           )}
+          <button
+            onClick={() => handleToggleActive(contextMenu.project)}
+            className="w-full text-left px-3 py-1.5 text-[12px] text-text-secondary hover:bg-bg-elevated transition-colors"
+          >
+            {contextMenu.project.isArchived ? t('projects.activate') : t('projects.deactivate')}
+          </button>
           <button
             onClick={() => handleDeleteProject(contextMenu.project)}
             className="w-full text-left px-3 py-1.5 text-[12px] text-red hover:bg-bg-elevated transition-colors"
@@ -294,12 +392,9 @@ function FolderRow({
   onProjectClick,
   onDelete,
   onContextMenu,
-  onProjectDragStart,
-  onProjectDragEnd,
+  onProjectMouseDown,
   isDragOver,
-  onDragOver,
-  onDragLeave,
-  onDrop,
+  isDragging,
 }: {
   folder: ProjectFolder;
   projects: Project[];
@@ -308,12 +403,9 @@ function FolderRow({
   onProjectClick: (id: string) => void;
   onDelete: () => void;
   onContextMenu: (e: React.MouseEvent, project: Project) => void;
-  onProjectDragStart: (projectId: string) => (e: React.DragEvent) => void;
-  onProjectDragEnd: () => void;
+  onProjectMouseDown: (project: Project) => (e: React.MouseEvent) => void;
   isDragOver: boolean;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
-  onDrop: (e: React.DragEvent) => void;
+  isDragging: boolean;
 }) {
   return (
     <div>
@@ -321,10 +413,8 @@ function FolderRow({
         className={`flex items-center gap-1 px-1.5 py-[3px] rounded-md cursor-pointer group transition-colors ${
           isDragOver ? 'bg-accent/15' : 'hover:bg-bg-elevated/50'
         }`}
+        data-drop-folder-id={folder.id}
         onClick={onToggle}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
       >
         <motion.span
           animate={{ rotate: folder.isExpanded ? 90 : 0 }}
@@ -369,11 +459,11 @@ function FolderRow({
                   key={project.id}
                   project={project}
                   isActive={project.id === activeTabId}
-                  onClick={() => onProjectClick(project.id)}
+                  onClick={() => {
+                    if (!isDragging) onProjectClick(project.id);
+                  }}
                   onContextMenu={(e) => onContextMenu(e, project)}
-                  draggable
-                  onDragStart={onProjectDragStart(project.id)}
-                  onDragEnd={onProjectDragEnd}
+                  onMouseDown={onProjectMouseDown(project)}
                 />
               ))}
             </div>
@@ -389,28 +479,22 @@ function ProjectRow({
   isActive,
   onClick,
   onContextMenu,
-  draggable,
-  onDragStart,
-  onDragEnd,
+  onMouseDown,
 }: {
   project: Project;
   isActive: boolean;
   onClick: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
-  draggable?: boolean;
-  onDragStart?: (e: React.DragEvent) => void;
-  onDragEnd?: () => void;
+  onMouseDown?: (e: React.MouseEvent) => void;
 }) {
   return (
     <button
       onClick={onClick}
       onContextMenu={onContextMenu}
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
+      onMouseDown={onMouseDown}
       className={`w-full flex items-center gap-1.5 px-1.5 py-[3px] rounded-md text-left transition-colors ${
         isActive ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary hover:bg-bg-elevated/30'
-      }`}
+      } ${project.isArchived ? 'opacity-50' : ''}`}
     >
       <span
         className="w-2 h-2 rounded-full shrink-0"

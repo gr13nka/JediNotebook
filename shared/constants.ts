@@ -74,6 +74,15 @@ export const DEFAULT_SETTINGS = {
   dismissedProcrastinationTaskIds: [] as string[],
   vaultEnabled: false,
   vaultPath: '',
+  vaultSetupDone: false,
+  currentStreak: 0,
+  longestStreak: 0,
+  lastActiveDate: '',
+  totalXP: 0,
+  todayXP: 0,
+  todayXPDate: '',
+  gamificationEnabled: true,
+  taskTimerMinutes: 20,
 };
 
 export const BREAK_ACTIVITY = {

@@ -47,6 +47,7 @@ export interface UserSettings {
   dismissedProcrastinationTaskIds: string[];
   vaultEnabled: boolean;
   vaultPath: string;
+  vaultSetupDone: boolean;
   updatedAt: string;
   deviceId: string;
 }
@@ -168,6 +169,7 @@ export interface Project {
   sortOrder: number;
   isArchived: boolean;
   folderId: string | null;
+  linkedActivityId: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -227,6 +229,22 @@ export interface MindMap {
   nodes: MindMapNode[];
   rootNodeId: string;
   color: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  deviceId: string;
+}
+
+export interface PdfDocument {
+  id: string;
+  title: string;
+  fileName: string;
+  fileSize: number;
+  pageCount: number;
+  color: string;
+  isPinned: boolean;
+  thumbnail: Blob | null;
+  pdfData: Blob;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;

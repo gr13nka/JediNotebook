@@ -13,6 +13,7 @@ import {
   serializeSettings, deserializeSettings,
   serializePomodoroPresets, deserializePomodoroPresets,
   serializeFolders, deserializeFolders,
+  serializePdfMeta, pdfBinaryPath, deserializePdfMeta,
 } from './serializers';
 import { extractShortIdFromFilename, uuidMatchesShortId } from './sanitize';
 
@@ -30,7 +31,7 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
   }, null, 2) + '\n');
 
   // Ensure directories exist
-  for (const dir of ['activities', 'notes', 'projects', 'habits', 'mind-maps', 'time-log', 'today']) {
+  for (const dir of ['activities', 'notes', 'projects', 'habits', 'mind-maps', 'time-log', 'today', 'pdfs']) {
     await backend.mkdir(dir);
   }
 
@@ -106,6 +107,20 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
   if (inboxItems.length > 0) {
     const { path, content } = serializeInbox(inboxItems);
     await backend.writeFile(path, content);
+  }
+
+  // PDF documents
+  const pdfDocs = await db.pdfDocuments.filter(p => !p.deletedAt).toArray();
+  for (const pdf of pdfDocs) {
+    const { path, content } = serializePdfMeta(pdf);
+    await backend.writeFile(path, content);
+    fileIndex.set(pdf.id, path);
+    // Write binary PDF file
+    if (backend.writeBinaryFile) {
+      const binPath = pdfBinaryPath(pdf);
+      const arrayBuf = await pdf.pdfData.arrayBuffer();
+      await backend.writeBinaryFile(binPath, new Uint8Array(arrayBuf));
+    }
   }
 
   // Time entries grouped by date
@@ -252,6 +267,47 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<void> {
     const items = deserializeInbox(content);
     for (const item of items) {
       await mergeEntity(db.inboxItems, item);
+    }
+  }
+
+  // PDF documents
+  if (await backend.exists('pdfs')) {
+    const pdfMetaFiles = await backend.listFiles('pdfs', '.json');
+    for (const filePath of pdfMetaFiles) {
+      const content = await backend.readFile(filePath);
+      const pdfMeta = deserializePdfMeta(content);
+      // Try to read the binary PDF
+      const binPath = filePath.replace(/\.json$/, '.pdf');
+      let pdfData: Blob | null = null;
+      let thumbnail: Blob | null = null;
+      if (backend.readBinaryFile && await backend.exists(binPath)) {
+        const bytes = await backend.readBinaryFile(binPath);
+        pdfData = new Blob([bytes.slice().buffer], { type: 'application/pdf' });
+        // Generate thumbnail
+        try {
+          const { generatePdfThumbnail } = await import('../utils/pdfThumbnail');
+          thumbnail = await generatePdfThumbnail(bytes.buffer as ArrayBuffer);
+        } catch { /* thumbnail generation is optional */ }
+      }
+      if (pdfData) {
+        const existing = await db.pdfDocuments.get(pdfMeta.id);
+        if (!existing) {
+          await db.pdfDocuments.put({
+            ...pdfMeta,
+            pdfData,
+            thumbnail,
+            deletedAt: null,
+          });
+        } else if (pdfMeta.updatedAt > (existing.updatedAt || '')) {
+          await db.pdfDocuments.put({
+            ...pdfMeta,
+            pdfData,
+            thumbnail,
+            deletedAt: existing.deletedAt,
+          });
+        }
+        fileIndex.set(pdfMeta.id, filePath);
+      }
     }
   }
 
@@ -435,6 +491,33 @@ export async function writeEntityToDisk(
       }
       break;
     }
+    case 'pdfDocuments': {
+      const pdf = await db.pdfDocuments.get(entityId);
+      if (!pdf || pdf.deletedAt) {
+        // Delete both sidecar and binary
+        const oldPath = fileIndex.getPath(entityId);
+        if (oldPath) {
+          await backend.deleteFile(oldPath);
+          await backend.deleteFile(oldPath.replace(/\.json$/, '.pdf')).catch(() => {});
+          fileIndex.removeId(entityId);
+        }
+        return;
+      }
+      const { path, content } = serializePdfMeta(pdf);
+      const oldPath = fileIndex.getPath(pdf.id);
+      if (oldPath && oldPath !== path) {
+        await backend.deleteFile(oldPath);
+        await backend.deleteFile(oldPath.replace(/\.json$/, '.pdf')).catch(() => {});
+      }
+      await backend.writeFile(path, content);
+      if (backend.writeBinaryFile) {
+        const binPath = pdfBinaryPath(pdf);
+        const arrayBuf = await pdf.pdfData.arrayBuffer();
+        await backend.writeBinaryFile(binPath, new Uint8Array(arrayBuf));
+      }
+      fileIndex.set(pdf.id, path);
+      break;
+    }
     case 'settings': {
       const s = await db.settings.get('default');
       if (s) {
@@ -534,6 +617,73 @@ export async function handleExternalChange(
   } else if (filePath.startsWith('today/')) {
     const { tasks } = deserializeTodayTasks(content);
     for (const t of tasks) await mergeEntity(db.todayTasks, t);
+  } else if (filePath.startsWith('pdfs/') && filePath.endsWith('.json')) {
+    const content = await backend.readFile(filePath);
+    const pdfMeta = deserializePdfMeta(content);
+    // Try to read the corresponding binary PDF
+    const binPath = filePath.replace(/\.json$/, '.pdf');
+    let pdfData: Blob | null = null;
+    let thumbnail: Blob | null = null;
+    if (backend.readBinaryFile && await backend.exists(binPath)) {
+      const bytes = await backend.readBinaryFile(binPath);
+      pdfData = new Blob([bytes.slice().buffer], { type: 'application/pdf' });
+      try {
+        const { generatePdfThumbnail } = await import('../utils/pdfThumbnail');
+        thumbnail = await generatePdfThumbnail(bytes.buffer as ArrayBuffer);
+      } catch { /* optional */ }
+    }
+    if (pdfData) {
+      const existing = await db.pdfDocuments.get(pdfMeta.id);
+      if (!existing) {
+        await db.pdfDocuments.put({ ...pdfMeta, pdfData, thumbnail, deletedAt: null });
+      } else if (pdfMeta.updatedAt > (existing.updatedAt || '')) {
+        await db.pdfDocuments.put({ ...pdfMeta, pdfData, thumbnail, deletedAt: existing.deletedAt });
+      }
+      fileIndex.set(pdfMeta.id, filePath);
+    }
+  } else if (filePath.startsWith('pdfs/') && filePath.endsWith('.pdf')) {
+    // Binary PDF dropped into folder — look for sidecar .json, otherwise create entry
+    const jsonPath = filePath.replace(/\.pdf$/, '.json');
+    if (await backend.exists(jsonPath)) {
+      // Re-process via the json handler
+      await handleExternalChange(backend, jsonPath, eventType);
+    } else if (backend.readBinaryFile) {
+      // New PDF with no sidecar — create one
+      const bytes = await backend.readBinaryFile(filePath);
+      const pdfData = new Blob([bytes.slice().buffer], { type: 'application/pdf' });
+      let thumbnail: Blob | null = null;
+      let pageCount = 0;
+      try {
+        const { generatePdfThumbnail, getPdfPageCount } = await import('../utils/pdfThumbnail');
+        pageCount = await getPdfPageCount(bytes.buffer as ArrayBuffer);
+        thumbnail = await generatePdfThumbnail(bytes.buffer as ArrayBuffer);
+      } catch { /* optional */ }
+      const { generateId, getDeviceId } = await import('../utils/uuid');
+      const now = new Date().toISOString();
+      const fileName = filePath.split('/').pop() || 'document.pdf';
+      const title = fileName.replace(/\.pdf$/i, '');
+      const pdf = {
+        id: generateId(),
+        title,
+        fileName,
+        fileSize: bytes.length,
+        pageCount,
+        color: '#E04848',
+        isPinned: false,
+        thumbnail,
+        pdfData,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        deviceId: getDeviceId(),
+      };
+      await db.pdfDocuments.put(pdf);
+      // Write sidecar for future sync
+      const { serializePdfMeta: serMeta } = await import('./serializers');
+      const { path, content } = serMeta(pdf);
+      await backend.writeFile(path, content);
+      fileIndex.set(pdf.id, path);
+    }
   } else if (filePath.match(/^projects\/[^/]+\/project\.md$/)) {
     const project = deserializeProject(content);
     const dirName = filePath.split('/')[1] || '';
@@ -552,6 +702,7 @@ function tableFromPath(filePath: string): string | null {
   if (filePath.startsWith('notes/')) return 'notes';
   if (filePath.startsWith('habits/')) return 'habits';
   if (filePath.startsWith('mind-maps/')) return 'mindMaps';
+  if (filePath.startsWith('pdfs/')) return 'pdfDocuments';
   if (filePath.startsWith('time-log/')) return 'timeEntries';
   if (filePath.startsWith('today/')) return 'todayTasks';
   if (filePath.match(/^projects\/[^/]+\/project\.md$/)) return 'projects';

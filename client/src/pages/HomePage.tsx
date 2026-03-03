@@ -7,6 +7,7 @@ import { Modal } from '../components/ui/Modal';
 import { usePomodoroStore } from '../stores/pomodoroStore';
 import { useTranslation } from '../i18n/useTranslation';
 import { NEU } from '../utils/shadows';
+import { StreakXPBanner } from '../components/gamification/StreakXPBanner';
 
 const TomatoIcon = ({ size = 20 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
@@ -84,6 +85,7 @@ export function HomePage() {
         </button>
       </div>
 
+      <StreakXPBanner />
       <TimerDisplay />
       <ActivityList />
 

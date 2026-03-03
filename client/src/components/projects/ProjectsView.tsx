@@ -1,8 +1,9 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useProjects } from '../../hooks/useProjects';
+import { useActivities } from '../../hooks/useActivities';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { NEU } from '../../utils/shadows';
@@ -24,6 +25,7 @@ export function ProjectsView() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { projects, updateProject, deleteProject } = useProjects();
+  const { activities } = useActivities();
   const inboxCount = useLiveQuery(
     () => db.inboxItems.filter((i) => !i.deletedAt).count(),
     [],
@@ -36,6 +38,14 @@ export function ProjectsView() {
   const setSplitDirection = useProjectUIStore((s) => s.setSplitDirection);
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia('(min-width: 768px)').matches);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   // Resizable sidebar width
   const [sidebarWidth, setSidebarWidth] = useState(220);
@@ -140,12 +150,12 @@ export function ProjectsView() {
   }, [taskPanelHeight]);
 
   return (
-    <div className="flex h-[calc(100vh-0px)] md:h-screen overflow-hidden">
+    <div className="flex h-screen-safe overflow-hidden">
       {/* Mobile tree toggle */}
       <button
         onClick={() => setMobileTreeOpen(!mobileTreeOpen)}
-        className="md:hidden fixed top-3 left-2 z-30 px-2 py-1 rounded-lg text-xs text-text-muted bg-bg-primary"
-        style={{ boxShadow: NEU.raisedSm }}
+        className="md:hidden fixed left-2 z-30 px-2 py-1 rounded-lg text-xs text-text-muted bg-bg-primary"
+        style={{ boxShadow: NEU.raisedSm, top: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}
       >
         {mobileTreeOpen ? '✕' : '☰'}
       </button>
@@ -296,26 +306,33 @@ export function ProjectsView() {
                 description={activeProject.description}
                 onSaveTitle={(name) => updateProject(activeProject.id, { name })}
                 onSave={(description) => updateProject(activeProject.id, { description })}
+                linkedActivityId={(activeProject as any).linkedActivityId ?? null}
+                onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
+                activities={activities}
               />
             </div>
-            {/* Task panel resize handle — vertical (col-resize) or horizontal (row-resize) */}
+            {/* Task panel resize handle — desktop only, hidden on mobile (splitters on hold for touch) */}
             {splitDirection === 'vertical' ? (
               <div
                 onMouseDown={handleTaskMouseDown}
                 className="hidden lg:block w-1 shrink-0 cursor-col-resize hover:bg-accent/30 active:bg-accent/50 transition-colors border-l border-border"
               />
             ) : (
-              <div
-                onMouseDown={handleTaskHeightMouseDown}
-                className="h-1 shrink-0 cursor-row-resize hover:bg-accent/30 active:bg-accent/50 transition-colors border-t border-border"
-              />
+              <>
+                {/* Simple border on mobile, draggable handle on desktop */}
+                <div className="h-px shrink-0 bg-border md:hidden" />
+                <div
+                  onMouseDown={handleTaskHeightMouseDown}
+                  className="hidden md:block h-1 shrink-0 cursor-row-resize hover:bg-accent/30 active:bg-accent/50 transition-colors border-t border-border"
+                />
+              </>
             )}
-            {/* Task panel */}
+            {/* Task panel — fixed height only on desktop for horizontal split */}
             <div
               className={`overflow-y-auto p-3 ${
                 splitDirection === 'vertical' ? 'border-t lg:border-t-0' : ''
               }`}
-              style={splitDirection === 'horizontal' ? { height: taskPanelHeight, flexShrink: 0 } : undefined}
+              style={splitDirection === 'horizontal' && isDesktop ? { height: taskPanelHeight, flexShrink: 0 } : undefined}
             >
               {splitDirection === 'vertical' ? (
                 <>

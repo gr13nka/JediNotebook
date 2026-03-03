@@ -12,14 +12,18 @@ import { TaskSelectionPage } from './pages/TaskSelectionPage';
 import { TodayPage } from './pages/TodayPage';
 import { InboxPage } from './pages/InboxPage';
 import { MindMapPage } from './pages/MindMapPage';
+import { ReviewPage } from './pages/ReviewPage';
 import { useSettingsStore } from './stores/settingsStore';
 import { useRecurringTaskCheck } from './hooks/useRecurringTaskCheck';
+import { VaultSetupModal } from './components/ui/VaultSetupModal';
+import { isTauri } from './vault/platform';
 
 export default function App() {
   const loadSettings = useSettingsStore((s) => s.load);
   const loaded = useSettingsStore((s) => s.loaded);
   const vaultEnabled = useSettingsStore((s) => s.vaultEnabled);
   const vaultPath = useSettingsStore((s) => s.vaultPath);
+  const vaultSetupDone = useSettingsStore((s) => s.vaultSetupDone);
   const location = useLocation();
 
   useEffect(() => {
@@ -39,6 +43,10 @@ export default function App() {
   }, [loaded, vaultEnabled, vaultPath]);
 
   useRecurringTaskCheck();
+
+  if (loaded && isTauri() && !vaultSetupDone) {
+    return <VaultSetupModal />;
+  }
 
   return (
     <AppShell>
@@ -60,6 +68,7 @@ export default function App() {
             <Route path="/notes" element={<NotesPage />} />
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/mindmap" element={<MindMapPage />} />
+            <Route path="/review" element={<ReviewPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </motion.div>

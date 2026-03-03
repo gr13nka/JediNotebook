@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { generateId, getDeviceId } from '../utils/uuid';
 import type { InboxItem } from '@shared/types';
+import { awardXP, XP_VALUES } from '../utils/streak';
 
 export function useInbox() {
   const items = useLiveQuery(
@@ -24,6 +25,7 @@ export function useInbox() {
       deviceId: getDeviceId(),
     };
     await db.inboxItems.add(item);
+    awardXP(XP_VALUES.addInboxItem);
     return item;
   };
 

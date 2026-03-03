@@ -99,6 +99,15 @@ interface SettingsState {
   dismissedProcrastinationTaskIds: string[];
   vaultEnabled: boolean;
   vaultPath: string;
+  vaultSetupDone: boolean;
+  taskTimerMinutes: number;
+  currentStreak: number;
+  longestStreak: number;
+  lastActiveDate: string;
+  totalXP: number;
+  todayXP: number;
+  todayXPDate: string;
+  gamificationEnabled: boolean;
   loaded: boolean;
   load: () => Promise<void>;
   update: (patch: Partial<Omit<SettingsState, 'loaded' | 'load' | 'update'>>) => Promise<void>;
@@ -150,6 +159,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         dismissedProcrastinationTaskIds: raw.dismissedProcrastinationTaskIds ?? DEFAULT_SETTINGS.dismissedProcrastinationTaskIds,
         vaultEnabled: raw.vaultEnabled ?? DEFAULT_SETTINGS.vaultEnabled,
         vaultPath: raw.vaultPath ?? DEFAULT_SETTINGS.vaultPath,
+        vaultSetupDone: raw.vaultSetupDone ?? DEFAULT_SETTINGS.vaultSetupDone,
+        taskTimerMinutes: raw.taskTimerMinutes ?? DEFAULT_SETTINGS.taskTimerMinutes,
+        currentStreak: raw.currentStreak ?? DEFAULT_SETTINGS.currentStreak,
+        longestStreak: raw.longestStreak ?? DEFAULT_SETTINGS.longestStreak,
+        lastActiveDate: raw.lastActiveDate ?? DEFAULT_SETTINGS.lastActiveDate,
+        totalXP: raw.totalXP ?? DEFAULT_SETTINGS.totalXP,
+        todayXP: raw.todayXP ?? DEFAULT_SETTINGS.todayXP,
+        todayXPDate: raw.todayXPDate ?? DEFAULT_SETTINGS.todayXPDate,
+        gamificationEnabled: raw.gamificationEnabled ?? DEFAULT_SETTINGS.gamificationEnabled,
         loaded: true,
       });
       applyTheme(theme, customThemeColors);

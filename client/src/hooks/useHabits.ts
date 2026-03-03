@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { generateId, getDeviceId } from '../utils/uuid';
 import type { Habit, HabitType } from '@shared/types';
+import { awardXP, XP_VALUES } from '../utils/streak';
 
 function getWeekDates(): string[] {
   const now = new Date();
@@ -120,6 +121,7 @@ export function useHabits() {
         completed: newValue === 1,
         updatedAt: now,
       });
+      if (newValue === 1) awardXP(XP_VALUES.checkHabit);
     } else {
       await db.habitEntries.add({
         id: generateId(),
@@ -132,6 +134,7 @@ export function useHabits() {
         deletedAt: null,
         deviceId: getDeviceId(),
       });
+      awardXP(XP_VALUES.checkHabit);
     }
   };
 
@@ -147,25 +150,30 @@ export function useHabits() {
 
     const now = new Date().toISOString();
     if (existing) {
+      const wasComplete = existing.value >= habit.targetValue;
       const newValue = Math.max(0, existing.value + value);
+      const nowComplete = newValue >= habit.targetValue;
       await db.habitEntries.update(existing.id, {
         value: newValue,
-        completed: newValue >= habit.targetValue,
+        completed: nowComplete,
         updatedAt: now,
       });
+      if (nowComplete && !wasComplete) awardXP(XP_VALUES.checkHabit);
     } else {
       const newValue = Math.max(0, value);
+      const nowComplete = newValue >= habit.targetValue;
       await db.habitEntries.add({
         id: generateId(),
         habitId,
         date,
         value: newValue,
-        completed: newValue >= habit.targetValue,
+        completed: nowComplete,
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
         deviceId: getDeviceId(),
       });
+      if (nowComplete) awardXP(XP_VALUES.checkHabit);
     }
   };
 

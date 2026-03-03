@@ -93,6 +93,14 @@ const MindMapIcon = () => (
   </svg>
 );
 
+const ReviewIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+    <path d="M9 14l2 2 4-4" />
+  </svg>
+);
+
 const GearIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
@@ -125,6 +133,7 @@ export function BottomNav() {
     { to: '/analytics', label: t('nav.analytics'), icon: ChartIcon },
     { to: '/notes', label: t('nav.ideas'), icon: NoteIcon },
     { to: '/tasks', label: t('nav.taskSelection'), icon: ListIcon },
+    { to: '/review', label: t('nav.review'), icon: ReviewIcon },
     { to: '/settings', label: t('nav.settings'), icon: GearIcon },
   ], [t]);
 
@@ -208,8 +217,8 @@ export function BottomNav() {
               onClick={() => setShowMore(false)}
             />
             <motion.div
-              className="fixed bottom-14 right-2 z-50 rounded-2xl bg-bg-card p-2 md:hidden"
-              style={{ boxShadow: NEU.raised }}
+              className="fixed right-2 z-50 rounded-2xl bg-bg-card p-2 md:hidden"
+              style={{ bottom: 'calc(3.5rem + env(safe-area-inset-bottom, 0px))', boxShadow: NEU.raised }}
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -270,7 +279,7 @@ export function BottomNav() {
 
       <nav
         className="fixed bottom-0 left-0 right-0 z-40 bg-bg-primary md:hidden"
-        style={{ boxShadow: NEU.bottomNavUp }}
+        style={{ boxShadow: NEU.bottomNavUp, paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         <div className="flex items-center justify-around h-14 relative">
           {mainNavItems.map((item) => {

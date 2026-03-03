@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { generateId, getDeviceId } from '../utils/uuid';
 import type { Project } from '@shared/types';
+import { awardXP, XP_VALUES } from '../utils/streak';
 
 export function useProjects() {
   const projects = useLiveQuery(
@@ -13,7 +14,7 @@ export function useProjects() {
     [],
   );
 
-  const createProject = async (data: { name: string; color: string; description?: string; folderId?: string | null }) => {
+  const createProject = async (data: { name: string; color: string; description?: string; folderId?: string | null; linkedActivityId?: string | null }) => {
     const now = new Date().toISOString();
     const all = await db.projects.filter((p) => !p.deletedAt).toArray();
     const project: Project = {
@@ -24,12 +25,14 @@ export function useProjects() {
       sortOrder: all.length,
       isArchived: false,
       folderId: data.folderId ?? null,
+      linkedActivityId: data.linkedActivityId ?? null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
       deviceId: getDeviceId(),
     };
     await db.projects.add(project);
+    awardXP(XP_VALUES.createProject);
     return project;
   };
 
@@ -42,7 +45,7 @@ export function useProjects() {
 
   const updateProject = async (
     id: string,
-    patch: Partial<Pick<Project, 'name' | 'description' | 'color' | 'isArchived' | 'folderId'>>,
+    patch: Partial<Pick<Project, 'name' | 'description' | 'color' | 'isArchived' | 'folderId' | 'linkedActivityId'>>,
   ) => {
     await db.projects.update(id, {
       ...patch,

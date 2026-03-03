@@ -3,6 +3,7 @@ import { db } from '../db';
 import { generateId, getDeviceId } from '../utils/uuid';
 import type { MindMap, MindMapNode } from '@shared/types';
 import { ACTIVITY_COLORS } from '@shared/constants';
+import { awardXP, XP_VALUES } from '../utils/streak';
 
 export function useMindMaps() {
   const mindMaps = useLiveQuery(
@@ -30,6 +31,7 @@ export function useMindMaps() {
       deviceId: getDeviceId(),
     };
     await db.mindMaps.add(mindMap);
+    awardXP(XP_VALUES.createMindMap);
     return mindMap;
   };
 

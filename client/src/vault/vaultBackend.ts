@@ -13,5 +13,7 @@ export interface VaultBackend {
   listDirs(dir: string): Promise<string[]>;
   exists(path: string): Promise<boolean>;
   mkdir(path: string): Promise<void>;
+  readBinaryFile?(path: string): Promise<Uint8Array>;
+  writeBinaryFile?(path: string, data: Uint8Array): Promise<void>;
   watch?(callback: WatchCallback): Promise<() => void>;
 }

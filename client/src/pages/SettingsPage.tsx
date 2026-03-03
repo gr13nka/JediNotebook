@@ -12,6 +12,8 @@ import { AccentColorPicker } from '../components/settings/AccentColorPicker';
 import { ZoomSettings } from '../components/settings/ZoomSettings';
 import { ProcrastinationWordSettings } from '../components/settings/ProcrastinationWordSettings';
 import { VaultSettings } from '../components/settings/VaultSettings';
+import { GamificationSettings } from '../components/settings/GamificationSettings';
+import { TaskTimerSettings } from '../components/settings/TaskTimerSettings';
 import { Card } from '../components/ui/Card';
 import { useTranslation } from '../i18n/useTranslation';
 
@@ -25,8 +27,10 @@ const sectionComponents = [
   { key: 'settings.time', component: DayBoundarySettings },
   { key: 'settings.timezone', component: TimezoneSettings },
   { key: 'settings.tasks', component: TaskSettings },
+  { key: 'settings.taskTimer', component: TaskTimerSettings },
   { key: 'settings.procrastination', component: ProcrastinationWordSettings },
   { key: 'settings.notifications', component: TimerNotificationSettings },
+  { key: 'settings.gamification', component: GamificationSettings },
   { key: 'settings.vault', component: VaultSettings },
 ] as const;
 

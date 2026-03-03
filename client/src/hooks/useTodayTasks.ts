@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { generateId, getDeviceId } from '../utils/uuid';
 import type { TodayTask } from '@shared/types';
+import { awardXP, XP_VALUES } from '../utils/streak';
 
 function getTodayDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -11,6 +12,7 @@ export interface EnrichedTodayTask extends TodayTask {
   taskTitle: string;
   projectName: string;
   projectColor: string;
+  linkedActivityId: string | null;
 }
 
 export function useTodayTasks() {
@@ -34,6 +36,7 @@ export function useTodayTasks() {
             taskTitle: projectTask.title,
             projectName: project.name,
             projectColor: project.color,
+            linkedActivityId: (project as any).linkedActivityId ?? null,
           });
         }
       }
@@ -88,6 +91,7 @@ export function useTodayTasks() {
       completedAt: newCompleted ? now : null,
       updatedAt: now,
     });
+    if (newCompleted) awardXP(XP_VALUES.completeTask);
     // Sync to underlying ProjectTask
     await db.projectTasks.update(tt.projectTaskId, {
       isCompleted: newCompleted,
