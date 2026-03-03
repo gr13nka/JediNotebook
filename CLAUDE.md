@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Full-stack productivity app: time tracking, task management, habit tracking, Pomodoro timer, mind maps, inbox, notes, analytics. Offline-first with optional multi-device sync.
+Full-stack productivity app: time tracking, task management, habit tracking, Pomodoro timer, task timer, mind maps, inbox, notes, analytics, gamification/XP system, PDF storage. Offline-first with optional multi-device sync (REST) and optional Vault sync (Tauri/desktop).
 
 **Tech Stack**: React 19, TypeScript 5.7, Vite 6, Tailwind CSS 4, Zustand 5, Dexie 4 (IndexedDB), Motion (animations), Recharts | Express 4, better-sqlite3, TSX runtime | Shared types in `/shared/`
+
+> **Deep documentation**: See `.planning/research/` for detailed docs on [feature interactions](./planning/research/FEATURE_INTERACTIONS.md), [data flows & hooks](./planning/research/DATA_FLOWS.md), [component catalog](./planning/research/COMPONENT_CATALOG.md), and [dependencies & pitfalls](./planning/research/DEPENDENCIES_AND_PITFALLS.md).
 
 ## Commands
 
@@ -55,14 +57,17 @@ client/src/
 │   ├── taskSelection/       # TaskSelectionView, TaskGroupCard, PointsCounter
 │   ├── timer/               # TimerDisplay, ManualEntry
 │   ├── today/               # TodayTaskCard
-│   └── ui/                  # Button, Card, Input, Modal, ConfirmModal, Toggle, ContextMenu, InfoTooltip, RotaryDial, ProcrastinationConfirmModal
+│   ├── review/              # ReviewPage components
+│   ├── gamification/        # XP display, level progress, streak UI
+│   └── ui/                  # Button, Card, Input, Modal, ConfirmModal, Toggle, ContextMenu, InfoTooltip, RotaryDial, ProcrastinationConfirmModal, VaultSetupModal
 ├── db/                      # index.ts (Dexie schema), seed.ts (default data)
-├── hooks/                   # 19 data hooks (useActivities, useTimer, useHabits, etc.)
+├── hooks/                   # 21 data hooks (useActivities, useTimer, useHabits, useTaskTimer, usePdfDocuments, etc.)
 ├── i18n/                    # translations.ts (5 languages), useTranslation.ts
-├── pages/                   # 10 page components (one per route)
-├── stores/                  # 5 Zustand stores (timer, pomodoro, settings, projectUI, mindMapUI)
+├── pages/                   # 11 page components (one per route)
+├── stores/                  # 6 Zustand stores (timer, pomodoro, settings, projectUI, mindMapUI, taskTimer)
 ├── sync/                    # syncEngine.ts (pull-before-push REST sync)
-├── utils/                   # uuid, time, colors, shadows, recurrence, markdown, procrastinationCheck
+├── vault/                   # vaultStore, vaultSync, tauriBackend (Obsidian-style vault sync, Tauri-only)
+├── utils/                   # uuid, time, colors, shadows, recurrence, markdown, procrastinationCheck, streak
 └── workers/                 # timer.worker.ts, pomodoro.worker.ts
 server/src/
 ├── index.ts                 # Express server + route mounting
@@ -78,11 +83,14 @@ shared/
 ## Architecture
 
 - **Offline-first**: Dexie (IndexedDB) is the primary database. The server is entirely optional — only needed for multi-device sync.
-- **Sync**: REST API with Last-Write-Wins (LWW) conflict resolution by `updatedAt` timestamp. Pull before push. **Only syncs activities, timeEntries, and settings** — habits, notes, projects, tasks, mind maps, inbox are local-only. Client: `sync/syncEngine.ts`. Server: `services/syncService.ts`.
-- **State**: Zustand stores for timer/settings/pomodoro/projectUI/mindMapUI global state. Dexie `useLiveQuery()` for reactive data queries.
-- **Routing**: React Router v6 in `App.tsx`. 10 routes wrapped in `AnimatePresence` for page transitions (y-axis slide + fade, 200ms).
+- **Sync**: Two independent sync systems exist (they don't coordinate):
+  - **REST sync**: LWW conflict resolution by `updatedAt`. Pull before push. **Only syncs activities, timeEntries, and settings** (3 of 14 tables) — everything else is local-only. Client: `sync/syncEngine.ts`. Server: `services/syncService.ts`. Note: `lastSyncedAt` is a module-level variable (not persisted) — full re-pull on every page load.
+  - **Vault sync** (Tauri-only): Obsidian-style file-based sync for all entities. Client: `vault/vaultSync.ts`.
+- **State**: Zustand stores for timer/settings/pomodoro/projectUI/mindMapUI/taskTimer global state. Dexie `useLiveQuery()` for reactive data queries. Two data persistence paths: hook path (Dexie + useLiveQuery for reactivity) and store path (Zustand for high-frequency state, Dexie writes only at lifecycle boundaries). See [DATA_FLOWS.md](.planning/research/DATA_FLOWS.md) for details.
+- **Routing**: React Router v6 in `App.tsx`. 11 routes wrapped in `AnimatePresence` for page transitions (y-axis slide + fade, 200ms).
 - **Navigation**: Three modes (`navPosition` setting): `'left'` (sidebar), `'bottom'` (desktop bottom nav), `'dropdown'` (FAB + dropdown). Responsive — mobile always shows BottomNav (md breakpoint: 768px). Tabs can be hidden/reordered via context menu.
-- **Workers**: Timer and Pomodoro ticks run in Web Workers (just count seconds, no DB/store access). Main thread coordinates everything. Singleton pattern prevents orphaned workers during HMR.
+- **Workers**: Timer and Pomodoro ticks run in Web Workers (just count seconds, no DB/store access). Main thread coordinates everything. Timer and TaskTimer workers use module-level singleton pattern to prevent orphaned workers during HMR. Pomodoro worker uses `useRef` (safe for StrictMode but can leak on HMR). The two workers have different designs: timer.worker computes elapsed from absolute timestamp (self-correcting), pomodoro.worker just fires ticks (store manages countdown).
+- **Gamification**: XP/streak system via `utils/streak.ts`. `awardXP()` called from 8 hooks on create/complete actions. Streaks, levels (quadratic formula), daily XP — all persisted in settingsStore. See [FEATURE_INTERACTIONS.md](.planning/research/FEATURE_INTERACTIONS.md) for all XP touchpoints.
 - **Soft deletes**: All entities use `deletedAt` field, never hard delete. Queries always filter `!deletedAt`. Cascade deletes (e.g., project → tasks → todayTasks) are handled in hooks, not the database.
 - **Logical date**: Configurable day boundary (`dayStartHour`/`dayEndHour`). A "day" can span midnight (e.g., 6am to 2am). TimeEntry `date` field is always logical YYYY-MM-DD via `getLogicalDate()`.
 - **Seeding**: `db/seed.ts` runs on first load — creates break activity, default settings, 4 default habits, 3 pomodoro presets. Idempotent (checks existence before adding).
@@ -100,15 +108,18 @@ shared/
 | `/habits` | `HabitsPage` | Boolean & numeric habits, weekly tracker, streaks |
 | `/analytics` | `AnalyticsPage` | 4 tabs: daily, weekly, monthly, streaks |
 | `/notes` | `NotesPage` | Wide layout. Markdown notes with pin/sort |
+| `/review` | `ReviewPage` | Review/reflection view |
 | `/settings` | `SettingsPage` | 11 settings sections with staggered animation |
 
 **Layout classes** in `AppShell.tsx`: `WIDE_PAGES` (`/projects`, `/tasks`, `/notes`, `/mindmap`) get `max-w-6xl`. `FULL_BLEED_PAGES` (`/projects`, `/mindmap`) get no padding/max-width.
 
+> **Note**: The `/notes` route uses label key `nav.ideas` (not `nav.notes`) — intentional but potentially confusing.
+
 ## Database
 
-**Dexie (client) — 13 tables** (schema version 8):
+**Dexie (client) — 14 tables** (schema version 9):
 
-`activities`, `timeEntries`, `settings`, `habits`, `habitEntries`, `notes`, `pomodoroPresets`, `projects`, `projectTasks`, `todayTasks`, `projectFolders`, `inboxItems`, `mindMaps`
+`activities`, `timeEntries`, `settings`, `habits`, `habitEntries`, `notes`, `pomodoroPresets`, `projects`, `projectTasks`, `todayTasks`, `projectFolders`, `inboxItems`, `mindMaps`, `pdfDocuments`
 
 **SQLite (server) — 3 tables**: `activities`, `time_entries`, `user_settings` (only what syncs)
 
@@ -116,25 +127,37 @@ All records have: `id` (UUID v7, time-sortable), `createdAt`, `updatedAt`, `dele
 
 `deviceId` comes from `getDeviceId()` (localStorage) — attached to every record for sync attribution.
 
-**Schema version history**: v1 (activities, timeEntries, settings) → v2 (+habits, habitEntries) → v3 (+notes) → v4 (+pomodoroPresets) → v5 (+projects, projectTasks, todayTasks) → v6 (+projectFolders, folderId on projects, recurrence fields on tasks — has upgrade function) → v7 (+inboxItems) → v8 (+mindMaps). Only v6 has a custom upgrade function; others are index-only changes handled automatically by Dexie.
+**Schema version history**: v1 (activities, timeEntries, settings) → v2 (+habits, habitEntries) → v3 (+notes) → v4 (+pomodoroPresets) → v5 (+projects, projectTasks, todayTasks) → v6 (+projectFolders, folderId on projects, recurrence fields on tasks — has upgrade function) → v7 (+inboxItems) → v8 (+mindMaps) → v9 (+pdfDocuments). Only v6 has a custom upgrade function; others are index-only changes handled automatically by Dexie.
+
+> See [DATA_FLOWS.md](.planning/research/DATA_FLOWS.md#dexie-database-schema) for full table/index reference and synced vs local-only breakdown.
 
 **Seeding** (`db/seed.ts`): On first load, creates break activity (`isBreak: true`), default settings record (id='default'), 4 habits (Meditate, Read, Steps, Water), 3 pomodoro presets (Classic 25/5, Long Focus 50/10, Short Sprint 15/3).
 
 ## Stores
 
-5 Zustand stores in `client/src/stores/`:
+6 Zustand stores in `client/src/stores/` (+ 1 inline store in Sidebar.tsx):
 
-| Store | Purpose | Key State |
-|-------|---------|-----------|
-| `timerStore` | Active timer lifecycle | `isRunning`, `elapsed`, `activeActivityId`, `startedAt`, `activeEntryId`. Actions: `start()`, `stop()`, `tick()`, `restore()` |
-| `pomodoroStore` | Pomodoro work/break cycles | `isActive`, `isPaused`, `phase` ('work'\|'break'\|'longBreak'), `remainingSeconds`, `currentSession`, `linkedActivityId`, `selectedPresetId`. Actions: `startSession()`, `pause()`, `resume()`, `skip()`, `stop()`, `tick()` |
-| `settingsStore` | User settings + theme + persistence | All settings fields (see below). Actions: `load()`, `update(patch)`. Internal: `applyTheme()`, `applyAccentColor()`, `applyZoom()` |
-| `projectUIStore` | Project view UI state | `openTabs[]`, `activeTabId`, `sidebarCollapsed`, `splitDirection`. Actions: `openTab()`, `closeTab()`, `setActiveTab()`, `toggleSidebar()` |
-| `mindMapUIStore` | Mind map view UI state | `activeMindMapId`, `selectedNodeId`, `mindUnloadActive`, `timerVisible`, `pendingEditNodeId` |
+| Store | Purpose | Key State | Persistence |
+|-------|---------|-----------|-------------|
+| `timerStore` | Active timer lifecycle | `isRunning`, `elapsed`, `activeActivityId`, `startedAt`, `activeEntryId`. Actions: `start()`, `stop()`, `tick()`, `restore()` | Dexie `timeEntries` (on start/stop) |
+| `pomodoroStore` | Pomodoro work/break cycles | `isActive`, `isPaused`, `phase` ('work'\|'break'\|'longBreak'), `remainingSeconds`, `currentSession`, `linkedActivityId`, `selectedPresetId`. Actions: `startSession()`, `pause()`, `resume()`, `skip()`, `stop()`, `tick()` | Ephemeral |
+| `settingsStore` | User settings + theme + persistence | All settings fields (see below). Actions: `load()`, `update(patch)`. Internal: `applyTheme()`, `applyAccentColor()`, `applyZoom()` | Dexie `settings` (every update) |
+| `projectUIStore` | Project view UI state | `openTabs[]`, `activeTabId`, `sidebarCollapsed`, `splitDirection`. Actions: `openTab()`, `closeTab()`, `setActiveTab()`, `toggleSidebar()` | Ephemeral |
+| `mindMapUIStore` | Mind map view UI state | `activeMindMapId`, `selectedNodeId`, `mindUnloadActive`, `timerVisible`, `pendingEditNodeId` | Ephemeral |
+| `taskTimerStore` | Per-task countdown timer | `isRunning`, `remainingSeconds`, `activeTodayTaskId`, `linkedActivityId`, `isOvertime`. Actions: `start()`, `stop()`, `tick()`, `reset()` | Ephemeral |
 
-**Persistence**: `settingsStore` persists to Dexie settings table (id='default') on every `update()`. `timerStore` writes directly to `db.timeEntries`. Other stores are ephemeral (UI state only).
+**Note**: A 7th store (`useSidebarStore`) is defined inline in `Sidebar.tsx` — manages `collapsed` state, imported by `AppShell.tsx`.
 
-**Settings fields**: `dayStartHour` (6), `dayEndHour` (2), `timezone`, `theme` (ThemeMode), `language` (Language), `barStyle`, `uiZoom` (110), `accentColor`, `customThemeColors`, `navPosition` ('left'\|'bottom'\|'dropdown'), `hiddenNavTabs[]`, `navTabOrder[]`, `dropdownFabCorner`, `syncEnabled`, `syncServerUrl`, `syncApiKey`, `maxTasksPerProject` (5), `timerNotificationsEnabled`, `timerNotificationIntervalMinutes` (30), `pointsCounterVisible`, `pointsColorFixed`, `procrastinationWords[]`, `dismissedProcrastinationTaskIds[]`. Defaults in `shared/constants.ts` as `DEFAULT_SETTINGS`.
+**Cross-store interactions** (critical — see [FEATURE_INTERACTIONS.md](.planning/research/FEATURE_INTERACTIONS.md)):
+- `usePomodoro` reads/writes `timerStore` AND `settingsStore` — auto-starts/stops activity timer during work phases
+- `useTaskTimer` reads/writes `timerStore` AND `settingsStore` — starts activity timer when task timer starts with linked activity
+- **No coordination** between Pomodoro and Task Timer for `timerStore` — they can conflict if both active with same linked activity
+
+**Settings fields**: `dayStartHour` (6), `dayEndHour` (2, currently unused), `timezone`, `theme` (ThemeMode), `language` (Language), `barStyle`, `uiZoom` (110), `accentColor`, `customThemeColors`, `navPosition` ('left'\|'bottom'\|'dropdown'), `hiddenNavTabs[]`, `navTabOrder[]`, `dropdownFabCorner`, `syncEnabled`, `syncServerUrl`, `syncApiKey`, `maxTasksPerProject` (5), `timerNotificationsEnabled`, `timerNotificationIntervalMinutes` (30), `pointsCounterVisible`, `pointsColorFixed`, `procrastinationWords[]`, `dismissedProcrastinationTaskIds[]`, `taskTimerMinutes` (20), `gamificationEnabled` (true), `currentStreak`, `longestStreak`, `lastActiveDate`, `totalXP`, `todayXP`, `todayXPDate`, `vaultEnabled`, `vaultPath`, `vaultSetupDone`. Defaults in `shared/constants.ts` as `DEFAULT_SETTINGS`.
+
+> **Type drift warning**: `UserSettings` in `shared/types.ts` only includes sync-relevant fields (~14 fewer than `SettingsState` in the store). The store's `SettingsState` is the canonical runtime type. See [DEPENDENCIES_AND_PITFALLS.md](.planning/research/DEPENDENCIES_AND_PITFALLS.md#10-typescript-type-drift) for the full list of drifted fields.
+
+> See [DEPENDENCIES_AND_PITFALLS.md](.planning/research/DEPENDENCIES_AND_PITFALLS.md#settings-field-impact-map) for which components/features each setting affects.
 
 ## Navigation System
 
@@ -218,7 +241,9 @@ The `ThemeToggle` swatch for Custom renders dynamically using the user's stored 
 
 ## UI Components
 
-Reusable components in `components/ui/`:
+> **Full catalog**: See [COMPONENT_CATALOG.md](.planning/research/COMPONENT_CATALOG.md) for all 88 components across 17 directories with props, shadows, animations, hooks, and page composition reference.
+
+Reusable primitives in `components/ui/` (12 components):
 
 | Component | Shadow | Animation | Notes |
 |-----------|--------|-----------|-------|
@@ -235,8 +260,11 @@ Reusable components in `components/ui/`:
 
 ## Key Patterns
 
+> **Full hook/store reference**: See [DATA_FLOWS.md](.planning/research/DATA_FLOWS.md) for all 21 hooks and 6 stores with inputs, outputs, reactive queries, and side effects.
+
 - **Hook pattern**: All data hooks (e.g., `useActivities()`) wrap `useLiveQuery()` for reactive queries and return `{ data[], createX, updateX, deleteX }`. Create always includes `generateId()`, `getDeviceId()`, timestamps. Delete always sets `deletedAt` (soft delete).
-- **Cascade soft deletes**: Handled in hooks, not DB. E.g., `useProjects.deleteProject()` soft-deletes the project, then soft-deletes all its tasks, then soft-deletes all todayTasks referencing those tasks.
+- **Cascade soft deletes**: Handled in hooks, not DB. E.g., `useProjects.deleteProject()` soft-deletes the project, then soft-deletes all its tasks, then soft-deletes all todayTasks referencing those tasks. **Note**: Habit deletion does NOT cascade to habitEntries (orphaned entries remain in IndexedDB, filtered by `!deletedAt` on the habit). See [DEPENDENCIES_AND_PITFALLS.md](.planning/research/DEPENDENCIES_AND_PITFALLS.md#critical-cascade-soft-delete-chains) for all cascade chains.
+- **XP on mutations**: Most data-mutating hooks call `awardXP()` — complete task (15 XP), check habit (10 XP), stop timer ≥60s (10 XP), create note (10 XP), create task (5 XP), add inbox item (5 XP), create mind map (5 XP), create project (5 XP). New hooks should follow this convention.
 - **Enriched queries**: Some hooks join data — e.g., `useTodayTasks` enriches each todayTask with its project task title and project name. `useAllProjectTasks` groups tasks by project and folder.
 - **Store persistence**: `settingsStore` persists to Dexie on every update via `db.settings.update()`.
 - **Timer restore**: On app load, `timerStore.restore()` checks for `endedAt === null` entries to resume interrupted timers.
@@ -265,6 +293,11 @@ Beyond the core timer, the app includes:
 - **Procrastination Checker**: Detects configurable risk keywords in task titles, 5-second countdown confirmation modal
 - **Points/Staleness Counter**: Gamified scoring based on incomplete task age (quadratic formula), visibility toggle
 - **Task Selection**: Unified view of all projects/tasks grouped by folder, bulk selection
+- **Gamification/XP**: XP earned from create/complete actions across the app, daily streaks, levels (quadratic formula), longest streak tracking. All state in settingsStore. UI in `components/gamification/`. Controlled by `gamificationEnabled` setting.
+- **Task Timer**: Per-task countdown timer separate from Pomodoro. Links to today tasks, can auto-start/stop activity timer via linked activity. Uses `taskTimerStore` + `useTaskTimer` hook. Overtime tracking when countdown reaches zero.
+- **PDF Documents**: Store and manage PDF files (Blob data in IndexedDB). Pin/sort functionality similar to notes. `pdfDocuments` table (v9).
+- **Review**: Review/reflection page at `/review`. Components in `components/review/`.
+- **Vault Sync** (Tauri-only): Obsidian-style file-based sync in `vault/`. Second sync system independent from REST sync. Controlled by `vaultEnabled`/`vaultPath`/`vaultSetupDone` settings. Blocks app rendering if Tauri + vault not configured.
 
 ## Utilities Reference
 
@@ -277,6 +310,7 @@ Beyond the core timer, the app includes:
 | `utils/recurrence.ts` | `getNextOccurrenceDate()`, `shouldCreateRecurrence()` |
 | `utils/markdown.ts` | `renderMarkdown()`, `renderLineMd()`, `stripMarkdown()` |
 | `utils/procrastinationCheck.ts` | `isProcrastinationRisky()`, `getMatchedWords()` |
+| `utils/streak.ts` | `awardXP(xpAmount)`, `XP_VALUES` — gamification system, streak tracking, level calculation |
 
 ## Conventions
 
@@ -290,14 +324,20 @@ Beyond the core timer, the app includes:
 
 ## How to Add...
 
-### New Page
+### New Page (7+ files)
 
-1. **`shared/types.ts`** — No change needed (unless adding new data types).
-2. **`client/src/pages/MyPage.tsx`** — Create page component.
-3. **`client/src/App.tsx`** — Add `<Route path="/mypage" element={<MyPage />} />`.
-4. **`client/src/components/layout/AppShell.tsx`** — Add to `WIDE_PAGES`/`FULL_BLEED_PAGES` if needed.
-5. **Navigation** — Add nav item to `Sidebar.tsx`, `BottomNav.tsx`, `DesktopBottomNav.tsx`, and `DropdownNav.tsx` (all 4 share the same route list pattern).
-6. **`client/src/i18n/translations.ts`** — Add `'nav.mypage': 'My Page'` to all 5 language blocks.
+> See [DEPENDENCIES_AND_PITFALLS.md](.planning/research/DEPENDENCIES_AND_PITFALLS.md#navigation-system-dependency-chain) for the full dependency chain and current route inventory.
+
+1. **`client/src/pages/MyPage.tsx`** — Create page component.
+2. **`client/src/App.tsx`** — Add `<Route path="/mypage" element={<MyPage />} />`.
+3. **`client/src/components/layout/AppShell.tsx`** — Add to `WIDE_PAGES`/`FULL_BLEED_PAGES` if needed.
+4. **`client/src/components/layout/Sidebar.tsx`** — Add to `allNavItems` array with route, label key, icon.
+5. **`client/src/components/layout/BottomNav.tsx`** — Add to `allMainNavItems` (always visible, max 4) OR `allMoreNavItems` (in "More" popup).
+6. **`client/src/components/layout/DesktopBottomNav.tsx`** — Add to `allNavItems` array.
+7. **`client/src/components/layout/DropdownNav.tsx`** — Add to `allNavItems` array **AND** the `iconMap` record (easy to miss).
+8. **`client/src/i18n/translations.ts`** — Add `'nav.mypage': 'My Page'` to all 5 language blocks.
+
+**Note**: SVG icons are duplicated across all 4 nav components (different sizes). Any icon change must be replicated 4 times.
 
 ### New Dexie Table
 
@@ -329,3 +369,21 @@ POST /api/sync/changes                → { status, serverTime } (push)
 ```
 
 Server LWW uses `INSERT ... ON CONFLICT(id) DO UPDATE` with per-field `CASE WHEN excluded.updatedAt > table.updatedAt` logic.
+
+## Deep Documentation (.planning/research/)
+
+For detailed information beyond this overview, see these research docs (4,000+ lines total):
+
+| Document | Lines | What It Covers |
+|----------|-------|----------------|
+| [FEATURE_INTERACTIONS.md](.planning/research/FEATURE_INTERACTIONS.md) | 971 | 25 cross-feature connections, cascade chains, shared state matrix, timer store contention |
+| [DATA_FLOWS.md](.planning/research/DATA_FLOWS.md) | 1,519 | All 21 hooks (inputs/outputs/side effects), all 6 stores, 12 feature flow traces, gamification system, sync flow, worker protocols |
+| [COMPONENT_CATALOG.md](.planning/research/COMPONENT_CATALOG.md) | 1,024 | All 88 components with props interfaces, shadow tokens, animations, hooks consumed, page composition, dependency graph |
+| [DEPENDENCIES_AND_PITFALLS.md](.planning/research/DEPENDENCIES_AND_PITFALLS.md) | 461 | Table→hook map, settings impact map, 16 pitfalls, modification checklists, cascade chains, CLAUDE.md accuracy report |
+| [SUMMARY.md](.planning/research/SUMMARY.md) | 80 | Executive synthesis, discrepancy list, open questions |
+
+**When to consult these docs:**
+- Adding a new feature → check FEATURE_INTERACTIONS for what connects to what
+- Creating/modifying a hook → check DATA_FLOWS for the standard pattern and side effects
+- Building UI → check COMPONENT_CATALOG for existing components, props, shadow conventions
+- Modifying settings/themes/nav/tables → check DEPENDENCIES_AND_PITFALLS for the full change checklist
