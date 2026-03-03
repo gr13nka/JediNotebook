@@ -110,14 +110,39 @@ jobs:
         working-directory: client
         run: npx tauri android build --apk
 
+      - name: Generate signing keystore
+        run: |
+          keytool -genkeypair \
+            -v \
+            -keystore release.keystore \
+            -alias release \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Web Timer, O=Web Timer, C=US"
+
+      - name: Sign APK
+        run: |
+          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)
+          APK_PATH="client/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
+          ${BUILD_TOOLS}zipalign -v 4 "$APK_PATH" app-aligned.apk
+          ${BUILD_TOOLS}apksigner sign \
+            --ks release.keystore \
+            --ks-key-alias release \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out app-signed.apk \
+            app-aligned.apk
+
       - name: Get version from tag
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Rename APK
         run: |
-          cp client/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk \
-             web-timer_${{ steps.version.outputs.version }}.apk
+          cp app-signed.apk web-timer_${{ steps.version.outputs.version }}.apk
 
       - name: Upload APK to release
         uses: softprops/action-gh-release@v2
