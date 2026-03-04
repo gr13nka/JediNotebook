@@ -67,7 +67,7 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    needs: []
+    needs: [desktop]
     steps:
       - uses: actions/checkout@v4
 
