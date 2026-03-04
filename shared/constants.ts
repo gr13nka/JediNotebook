@@ -75,6 +75,7 @@ export const DEFAULT_SETTINGS = {
   vaultEnabled: false,
   vaultPath: '',
   vaultSetupDone: false,
+  recentVaults: [] as Array<{ path: string; name: string; lastOpened: string }>,
   currentStreak: 0,
   longestStreak: 0,
   lastActiveDate: '',

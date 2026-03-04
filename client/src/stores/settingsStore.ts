@@ -100,6 +100,7 @@ interface SettingsState {
   vaultEnabled: boolean;
   vaultPath: string;
   vaultSetupDone: boolean;
+  recentVaults: Array<{ path: string; name: string; lastOpened: string }>;
   taskTimerMinutes: number;
   currentStreak: number;
   longestStreak: number;
@@ -110,7 +111,8 @@ interface SettingsState {
   gamificationEnabled: boolean;
   loaded: boolean;
   load: () => Promise<void>;
-  update: (patch: Partial<Omit<SettingsState, 'loaded' | 'load' | 'update'>>) => Promise<void>;
+  update: (patch: Partial<Omit<SettingsState, 'loaded' | 'load' | 'update' | 'addRecentVault'>>) => Promise<void>;
+  addRecentVault: (path: string, name: string) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -160,6 +162,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         vaultEnabled: raw.vaultEnabled ?? DEFAULT_SETTINGS.vaultEnabled,
         vaultPath: raw.vaultPath ?? DEFAULT_SETTINGS.vaultPath,
         vaultSetupDone: raw.vaultSetupDone ?? DEFAULT_SETTINGS.vaultSetupDone,
+        recentVaults: raw.recentVaults ?? DEFAULT_SETTINGS.recentVaults,
         taskTimerMinutes: raw.taskTimerMinutes ?? DEFAULT_SETTINGS.taskTimerMinutes,
         currentStreak: raw.currentStreak ?? DEFAULT_SETTINGS.currentStreak,
         longestStreak: raw.longestStreak ?? DEFAULT_SETTINGS.longestStreak,
@@ -211,6 +214,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
     await db.settings.update('default', {
       ...patch,
+      updatedAt: new Date().toISOString(),
+    });
+  },
+
+  addRecentVault: async (path: string, name: string) => {
+    const current = get().recentVaults;
+    const entry = { path, name, lastOpened: new Date().toISOString() };
+    const filtered = current.filter((v) => v.path !== path);
+    const updated = [entry, ...filtered].slice(0, 10);
+    set({ recentVaults: updated });
+    await db.settings.update('default', {
+      recentVaults: updated as any,
       updatedAt: new Date().toISOString(),
     });
   },

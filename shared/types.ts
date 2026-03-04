@@ -48,6 +48,7 @@ export interface UserSettings {
   vaultEnabled: boolean;
   vaultPath: string;
   vaultSetupDone: boolean;
+  recentVaults: Array<{ path: string; name: string; lastOpened: string }>;
   updatedAt: string;
   deviceId: string;
 }

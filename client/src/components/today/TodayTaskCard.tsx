@@ -114,7 +114,7 @@ export function TodayTaskCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-      className="rounded-xl bg-bg-card p-4"
+      className="rounded-xl bg-bg-card p-3 sm:p-4"
       style={{
         boxShadow: NEU.raised,
         border: isTaskActive
@@ -126,90 +126,97 @@ export function TodayTaskCard({
               : '2px solid transparent',
       }}
     >
-      <div className="flex items-center gap-3">
-        {/* Move up/down buttons */}
-        {!task.isCompleted && !isTaskActive && (onMoveUp || onMoveDown) && (
-          <div className="flex flex-col gap-0.5 shrink-0">
-            <button
-              onClick={onMoveUp}
-              disabled={!onMoveUp}
-              className="p-0.5 rounded text-text-muted hover:text-text-primary disabled:opacity-20 transition-colors"
-            >
-              <ChevronUp />
-            </button>
-            <button
-              onClick={onMoveDown}
-              disabled={!onMoveDown}
-              className="p-0.5 rounded text-text-muted hover:text-text-primary disabled:opacity-20 transition-colors"
-            >
-              <ChevronDown />
-            </button>
-          </div>
+      {/* Top row: project info + reorder + complete */}
+      <div className="flex items-center gap-2 mb-1.5">
+        <div
+          className="w-2.5 h-2.5 rounded-full shrink-0"
+          style={{ backgroundColor: task.isCompleted ? '#27AE60' : task.projectColor }}
+        />
+        <span className={`text-xs truncate ${task.isCompleted ? 'text-green' : 'text-text-muted'}`}>
+          {task.projectName}
+        </span>
+
+        {/* Countdown display for active task */}
+        {isTaskActive && countdownDisplay && (
+          <span
+            className={`text-xs font-mono font-semibold ml-auto ${
+              countdownComplete ? 'text-amber-500' : 'text-accent'
+            }`}
+          >
+            {countdownDisplay}
+          </span>
         )}
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <div
-              className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: task.isCompleted ? '#27AE60' : task.projectColor }}
-            />
-            <span className={`text-xs truncate ${task.isCompleted ? 'text-green' : 'text-text-muted'}`}>
-              {task.projectName}
-            </span>
-            {/* Countdown display for active task */}
-            {isTaskActive && countdownDisplay && (
-              <span
-                className={`text-xs font-mono font-semibold ml-auto ${
-                  countdownComplete ? 'text-amber-500' : 'text-accent'
-                }`}
+        <div className="flex items-center gap-1 ml-auto shrink-0">
+          {/* Move up/down buttons */}
+          {!task.isCompleted && !isTaskActive && (onMoveUp || onMoveDown) && (
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={onMoveUp}
+                disabled={!onMoveUp}
+                className="p-1 rounded text-text-muted active:text-text-primary disabled:opacity-20 transition-colors"
               >
-                {countdownDisplay}
-              </span>
-            )}
-          </div>
-          {editing ? (
-            <input
-              ref={inputRef}
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onBlur={handleSave}
-              onKeyDown={handleKeyDown}
-              className="text-sm font-medium w-full bg-transparent text-text-primary focus:outline-none border-none py-0"
-              style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
-            />
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <span
-                onClick={() => setEditing(true)}
-                className={`text-sm font-medium truncate transition-colors duration-200 cursor-text ${
-                  task.isCompleted ? 'line-through text-green' : 'text-text-primary'
-                }`}
-                style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
+                <ChevronUp />
+              </button>
+              <button
+                onClick={onMoveDown}
+                disabled={!onMoveDown}
+                className="p-1 rounded text-text-muted active:text-text-primary disabled:opacity-20 transition-colors"
               >
-                {task.taskTitle}
-              </span>
-              {isRisky && (
-                <button
-                  onClick={() => setShowProcrastModal(true)}
-                  title={t('procrastination.matchedWords').replace('{words}', matchedWords.join(', '))}
-                  className="shrink-0 p-0.5 text-amber-500"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-                  </svg>
-                </button>
-              )}
+                <ChevronDown />
+              </button>
             </div>
           )}
         </div>
+      </div>
 
+      {/* Middle row: title */}
+      <div className="mb-2">
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown}
+            className="text-sm font-medium w-full bg-transparent text-text-primary focus:outline-none border-none py-0"
+            style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
+          />
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <span
+              onClick={() => setEditing(true)}
+              className={`text-sm font-medium transition-colors duration-200 cursor-text ${
+                task.isCompleted ? 'line-through text-green' : 'text-text-primary'
+              }`}
+              style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
+            >
+              {task.taskTitle}
+            </span>
+            {isRisky && (
+              <button
+                onClick={() => setShowProcrastModal(true)}
+                title={t('procrastination.matchedWords').replace('{words}', matchedWords.join(', '))}
+                className="shrink-0 p-0.5 text-amber-500"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Bottom row: timer controls + complete button */}
+      <div className="flex items-center gap-2">
         {/* Timer controls */}
         {isTaskActive ? (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5">
             {taskPaused ? (
               <button
                 onClick={onResumeTask}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-accent transition-colors"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-accent transition-colors"
                 style={{ boxShadow: NEU.raisedSm }}
                 title={t('today.resumeTask')}
               >
@@ -218,7 +225,7 @@ export function TodayTaskCard({
             ) : (
               <button
                 onClick={onPauseTask}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary transition-colors"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted active:text-text-primary transition-colors"
                 style={{ boxShadow: NEU.raisedSm }}
                 title={t('today.pauseTask')}
               >
@@ -227,7 +234,7 @@ export function TodayTaskCard({
             )}
             <button
               onClick={onStopTask}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-red transition-colors"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-red transition-colors"
               style={{ boxShadow: NEU.raisedSm }}
               title={t('today.stopTask')}
             >
@@ -237,7 +244,7 @@ export function TodayTaskCard({
         ) : !task.isCompleted && onStartTask ? (
           <button
             onClick={onStartTask}
-            className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-accent transition-colors"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted active:text-accent transition-colors"
             style={{ boxShadow: NEU.raisedSm }}
             title={t('today.startTask')}
           >
@@ -247,7 +254,7 @@ export function TodayTaskCard({
 
         <button
           onClick={onComplete}
-          className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200"
+          className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 ml-auto"
           style={{
             boxShadow: task.isCompleted ? NEU.pressedSm : NEU.raisedSm,
             backgroundColor: task.isCompleted ? '#27AE60' : undefined,

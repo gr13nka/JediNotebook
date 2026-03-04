@@ -308,9 +308,27 @@ export function TaskSelectionView() {
   // Grouped sort mode (only custom/created for grouped view)
   const groupedSortMode: TaskSortMode = sortMode === 'custom' || sortMode === 'created' ? sortMode : 'custom';
 
+  // Available sort options based on view mode
+  const sortOptions: { value: TaskSortMode; label: string }[] = useMemo(() => {
+    if (viewMode === 'flat') {
+      return [
+        { value: 'custom', label: t('taskSelection.sortCustom') },
+        { value: 'points', label: t('taskSelection.sortPoints') },
+        { value: 'suspicious', label: t('taskSelection.sortSuspicious') },
+        { value: 'created-desc', label: t('taskSelection.sortNewest') },
+        { value: 'created-asc', label: t('taskSelection.sortOldest') },
+      ];
+    }
+    return [
+      { value: 'custom', label: t('taskSelection.sortCustom') },
+      { value: 'created', label: t('taskSelection.sortCreated') },
+    ];
+  }, [viewMode, t]);
+
   return (
     <div>
-      <div className="flex items-center gap-2 mb-4">
+      {/* Header row: title + points */}
+      <div className="flex items-center gap-2 mb-2">
         <h1 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
           {t('taskSelection.title')}
         </h1>
@@ -318,127 +336,50 @@ export function TaskSelectionView() {
           text={t('taskSelection.tooltip')}
         />
         <PointsCounter />
+      </div>
 
-        <div className="ml-auto flex items-center gap-1">
-          {/* View mode toggle */}
-          <div className="flex items-center gap-0.5 mr-2 border-r border-border pr-2">
-            <button
-              onClick={() => setViewMode('grouped')}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                viewMode === 'grouped'
-                  ? 'bg-accent/15 text-accent'
-                  : 'text-text-muted hover:text-text-secondary'
-              }`}
-            >
-              {t('taskSelection.viewGrouped')}
-            </button>
-            <button
-              onClick={() => setViewMode('flat')}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                viewMode === 'flat'
-                  ? 'bg-accent/15 text-accent'
-                  : 'text-text-muted hover:text-text-secondary'
-              }`}
-            >
-              {t('taskSelection.viewFlat')}
-            </button>
-          </div>
-
-          {/* Sort buttons */}
+      {/* Controls row: view toggle + sort dropdown */}
+      <div className="flex items-center gap-2 mb-4">
+        {/* View mode toggle */}
+        <div className="flex items-center gap-0.5">
           <button
-            onClick={() => handleSortMode('custom')}
+            onClick={() => setViewMode('grouped')}
             className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-              sortMode === 'custom'
+              viewMode === 'grouped'
                 ? 'bg-accent/15 text-accent'
                 : 'text-text-muted hover:text-text-secondary'
             }`}
-            title={t('taskSelection.sortCustom')}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="15" y2="12" />
-              <line x1="3" y1="18" x2="9" y2="18" />
-            </svg>
+            {t('taskSelection.viewGrouped')}
           </button>
-
-          {viewMode === 'flat' ? (
-            <>
-              <button
-                onClick={() => handleSortMode('points')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  sortMode === 'points'
-                    ? 'bg-accent/15 text-accent'
-                    : 'text-text-muted hover:text-text-secondary'
-                }`}
-                title={t('taskSelection.sortPoints')}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                </svg>
-              </button>
-              <button
-                onClick={() => handleSortMode('suspicious')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  sortMode === 'suspicious'
-                    ? 'bg-accent/15 text-accent'
-                    : 'text-text-muted hover:text-text-secondary'
-                }`}
-                title={t('taskSelection.sortSuspicious')}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className={sortMode === 'suspicious' ? 'text-accent' : ''}>
-                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-                </svg>
-              </button>
-              <button
-                onClick={() => handleSortMode('created-desc')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  sortMode === 'created-desc'
-                    ? 'bg-accent/15 text-accent'
-                    : 'text-text-muted hover:text-text-secondary'
-                }`}
-                title={t('taskSelection.sortNewest')}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="17 1 21 5 17 9" />
-                  <line x1="3" y1="5" x2="21" y2="5" />
-                  <polyline points="7 15 3 19 7 23" />
-                  <line x1="21" y1="19" x2="3" y2="19" />
-                </svg>
-              </button>
-              <button
-                onClick={() => handleSortMode('created-asc')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  sortMode === 'created-asc'
-                    ? 'bg-accent/15 text-accent'
-                    : 'text-text-muted hover:text-text-secondary'
-                }`}
-                title={t('taskSelection.sortOldest')}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="7 1 3 5 7 9" />
-                  <line x1="21" y1="5" x2="3" y2="5" />
-                  <polyline points="17 15 21 19 17 23" />
-                  <line x1="3" y1="19" x2="21" y2="19" />
-                </svg>
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => handleSortMode('created')}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                sortMode === 'created'
-                  ? 'bg-accent/15 text-accent'
-                  : 'text-text-muted hover:text-text-secondary'
-              }`}
-              title={t('taskSelection.sortCreated')}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-            </button>
-          )}
+          <button
+            onClick={() => setViewMode('flat')}
+            className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+              viewMode === 'flat'
+                ? 'bg-accent/15 text-accent'
+                : 'text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            {t('taskSelection.viewFlat')}
+          </button>
         </div>
+
+        {/* Sort dropdown */}
+        <select
+          value={viewMode === 'grouped' ? groupedSortMode : sortMode}
+          onChange={(e) => handleSortMode(e.target.value as TaskSortMode)}
+          className="ml-auto text-xs bg-bg-primary text-text-secondary border border-border rounded-lg px-2 py-1 focus:outline-none focus:border-accent appearance-none"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'right 8px center',
+            paddingRight: '24px',
+          }}
+        >
+          {sortOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
       </div>
 
       {/* Quick add task bar */}

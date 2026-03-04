@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useProjects } from '../../hooks/useProjects';
 import { useActivities } from '../../hooks/useActivities';
 import { useProjectUIStore } from '../../stores/projectUIStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { NEU } from '../../utils/shadows';
 import { db } from '../../db';
@@ -31,14 +32,24 @@ export function ProjectsView() {
     [],
   );
   const activeTabId = useProjectUIStore((s) => s.activeTabId);
+  const openTabs = useProjectUIStore((s) => s.openTabs);
+  const openTab = useProjectUIStore((s) => s.openTab);
+  const setActiveTab = useProjectUIStore((s) => s.setActiveTab);
   const closeTab = useProjectUIStore((s) => s.closeTab);
   const sidebarCollapsed = useProjectUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useProjectUIStore((s) => s.toggleSidebar);
   const splitDirection = useProjectUIStore((s) => s.splitDirection);
   const setSplitDirection = useProjectUIStore((s) => s.setSplitDirection);
+  const navPosition = useSettingsStore((s) => s.navPosition);
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDesktop, setIsDesktop] = useState(() => window.matchMedia('(min-width: 768px)').matches);
+
+  // Mobile bottom sheet state
+  const [sheetHeight, setSheetHeight] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const mobileContainerRef = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef<{ y: number; height: number } | null>(null);
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 768px)');
@@ -46,6 +57,12 @@ export function ProjectsView() {
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, []);
+
+  // Auto-open first project when no tab is active
+  useEffect(() => {
+    if (activeTabId || projects.length === 0) return;
+    openTab(projects[0].id);
+  }, [projects, activeTabId, openTab]);
 
   // Resizable sidebar width
   const [sidebarWidth, setSidebarWidth] = useState(220);
@@ -60,7 +77,11 @@ export function ProjectsView() {
   const taskHeightDragging = useRef(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
+  const hasBottomNav = !isDesktop && navPosition !== 'dropdown';
   const activeProject = projects.find((p) => p.id === activeTabId) ?? null;
+
+  // Map open tab IDs to project objects for mobile selector
+  const openProjects = openTabs.map((id) => projects.find((p) => p.id === id)).filter(Boolean) as typeof projects;
 
   const handleDelete = () => {
     if (!activeProject) return;
@@ -120,6 +141,91 @@ export function ProjectsView() {
     document.addEventListener('mouseup', onMouseUp);
   }, [taskPanelWidth]);
 
+  // Initialize mobile sheet height on first render / resize
+  useEffect(() => {
+    if (isDesktop) return;
+    const container = mobileContainerRef.current;
+    if (!container) return;
+    const update = () => setSheetHeight(container.clientHeight * 0.5);
+    // Set initial height once container is measured
+    if (sheetHeight === null) update();
+    const ro = new ResizeObserver(update);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [isDesktop, activeTabId]); // reset when switching projects too
+
+  const handleSheetTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    dragStartRef.current = { y: touch.clientY, height: sheetHeight ?? 0 };
+    setIsDragging(true);
+  }, [sheetHeight]);
+
+  const handleSheetTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!dragStartRef.current || !mobileContainerRef.current) return;
+    const touch = e.touches[0];
+    const deltaY = dragStartRef.current.y - touch.clientY; // up = positive
+    const containerH = mobileContainerRef.current.clientHeight;
+    const newHeight = Math.min(
+      containerH * 0.85,
+      Math.max(40, dragStartRef.current.height + deltaY),
+    );
+    setSheetHeight(newHeight);
+  }, []);
+
+  const handleSheetTouchEnd = useCallback(() => {
+    setIsDragging(false);
+    dragStartRef.current = null;
+    const container = mobileContainerRef.current;
+    if (!container || sheetHeight === null) return;
+    const containerH = container.clientHeight;
+    const snapPoints = [40, containerH * 0.5, containerH * 0.85];
+    const nearest = snapPoints.reduce((a, b) =>
+      Math.abs(b - sheetHeight) < Math.abs(a - sheetHeight) ? b : a,
+    );
+    setSheetHeight(nearest);
+  }, [sheetHeight]);
+
+  const handleSheetMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragStartRef.current = { y: e.clientY, height: sheetHeight ?? 0 };
+    setIsDragging(true);
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragStartRef.current || !mobileContainerRef.current) return;
+      const deltaY = dragStartRef.current.y - ev.clientY;
+      const containerH = mobileContainerRef.current.clientHeight;
+      const newHeight = Math.min(
+        containerH * 0.85,
+        Math.max(40, dragStartRef.current.height + deltaY),
+      );
+      setSheetHeight(newHeight);
+    };
+
+    const onMouseUp = () => {
+      setIsDragging(false);
+      dragStartRef.current = null;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      const container = mobileContainerRef.current;
+      if (!container) return;
+      const containerH = container.clientHeight;
+      setSheetHeight((prev) => {
+        if (prev === null) return prev;
+        const snapPoints = [40, containerH * 0.5, containerH * 0.85];
+        return snapPoints.reduce((a, b) =>
+          Math.abs(b - prev) < Math.abs(a - prev) ? b : a,
+        );
+      });
+    };
+
+    document.body.style.cursor = 'grab';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [sheetHeight]);
+
   const handleTaskHeightMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     taskHeightDragging.current = true;
@@ -150,16 +256,10 @@ export function ProjectsView() {
   }, [taskPanelHeight]);
 
   return (
-    <div className="flex h-screen-safe overflow-hidden">
-      {/* Mobile tree toggle */}
-      <button
-        onClick={() => setMobileTreeOpen(!mobileTreeOpen)}
-        className="md:hidden fixed left-2 z-30 px-2 py-1 rounded-lg text-xs text-text-muted bg-bg-primary"
-        style={{ boxShadow: NEU.raisedSm, top: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}
-      >
-        {mobileTreeOpen ? '✕' : '☰'}
-      </button>
-
+    <div
+      className={`flex overflow-hidden ${isDesktop ? 'h-screen-safe' : ''}`}
+      style={!isDesktop ? { height: hasBottomNav ? 'calc(100dvh - var(--bottom-nav-h))' : '100dvh' } : undefined}
+    >
       {/* Mobile tree drawer overlay */}
       <AnimatePresence>
         {mobileTreeOpen && (
@@ -206,7 +306,7 @@ export function ProjectsView() {
             exit={{ x: -260 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
           >
-            <div className="px-3 pt-3 pb-1">
+            <div className="px-3 pb-1" style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}>
               <h2 className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70">
                 {t('projects.title')}
               </h2>
@@ -218,12 +318,65 @@ export function ProjectsView() {
 
       {/* Right panel - tabs + content, fills all remaining space */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        {/* Tab bar - compact, flush */}
-        <div className="flex items-center border-b border-border px-2 py-1 shrink-0 bg-bg-primary">
+        {/* Mobile top bar — hamburger + project dropdown + actions */}
+        <div
+          className="flex md:hidden items-center gap-2 border-b border-border px-2 py-1.5 shrink-0 bg-bg-primary"
+          style={{ paddingTop: 'calc(0.375rem + env(safe-area-inset-top, 0px))' }}
+        >
+          <button
+            onClick={() => setMobileTreeOpen(!mobileTreeOpen)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted shrink-0"
+            style={{ boxShadow: NEU.raisedSm }}
+          >
+            {mobileTreeOpen ? '✕' : '☰'}
+          </button>
+
+          {/* Native select for project switching */}
+          {openProjects.length > 0 ? (
+            <select
+              value={activeTabId ?? ''}
+              onChange={(e) => setActiveTab(e.target.value)}
+              className="flex-1 min-w-0 bg-bg-primary text-text-primary text-sm rounded-lg px-2 py-1 border border-border appearance-none truncate"
+              style={{ boxShadow: NEU.pressedSm }}
+            >
+              {openProjects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="flex-1 text-sm text-text-muted truncate">{t('projects.title')}</span>
+          )}
+
+          <div className="flex items-center gap-1 shrink-0">
+            {(inboxCount ?? 0) > 0 && (
+              <button
+                onClick={() => navigate('/inbox?mode=sort')}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:text-accent transition-colors"
+                title={t('projects.sortInbox')}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+                  <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                </svg>
+              </button>
+            )}
+            {activeProject && (
+              <button
+                onClick={handleDelete}
+                className="text-[11px] text-text-muted hover:text-red transition-colors px-1"
+              >
+                {t('projects.delete')}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Desktop tab bar - hidden on mobile */}
+        <div className="hidden md:flex items-center border-b border-border px-2 py-1 shrink-0 bg-bg-primary">
           {/* Sidebar toggle button (desktop only) */}
           <button
             onClick={toggleSidebar}
-            className="hidden md:flex w-6 h-6 items-center justify-center text-text-muted hover:text-text-secondary rounded transition-colors shrink-0 mr-1"
+            className="w-6 h-6 flex items-center justify-center text-text-muted hover:text-text-secondary rounded transition-colors shrink-0 mr-1"
             title={t('projects.toggleSidebar')}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -262,13 +415,11 @@ export function ProjectsView() {
               title={splitDirection === 'vertical' ? t('projects.splitHorizontal') : t('projects.splitVertical')}
             >
               {splitDirection === 'vertical' ? (
-                // Currently side-by-side, icon shows "stack" option
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="3" width="18" height="18" rx="2" />
                   <line x1="3" y1="12" x2="21" y2="12" />
                 </svg>
               ) : (
-                // Currently stacked, icon shows "side-by-side" option
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="3" width="18" height="18" rx="2" />
                   <line x1="12" y1="3" x2="12" y2="21" />
@@ -289,65 +440,102 @@ export function ProjectsView() {
 
         {/* Content area */}
         {activeProject ? (
-          <motion.div
-            ref={contentRef}
-            key={activeProject.id}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.15 }}
-            className={`flex-1 flex min-h-0 overflow-hidden ${
-              splitDirection === 'vertical' ? 'flex-col lg:flex-row' : 'flex-col'
-            }`}
-          >
-            {/* Editor panel */}
-            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-3">
-              <ProjectDraftEditor
-                title={activeProject.name}
-                description={activeProject.description}
-                onSaveTitle={(name) => updateProject(activeProject.id, { name })}
-                onSave={(description) => updateProject(activeProject.id, { description })}
-                linkedActivityId={(activeProject as any).linkedActivityId ?? null}
-                onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
-                activities={activities}
-              />
-            </div>
-            {/* Task panel resize handle — desktop only, hidden on mobile (splitters on hold for touch) */}
-            {splitDirection === 'vertical' ? (
-              <div
-                onMouseDown={handleTaskMouseDown}
-                className="hidden lg:block w-1 shrink-0 cursor-col-resize hover:bg-accent/30 active:bg-accent/50 transition-colors border-l border-border"
-              />
-            ) : (
-              <>
-                {/* Simple border on mobile, draggable handle on desktop */}
-                <div className="h-px shrink-0 bg-border md:hidden" />
+          isDesktop ? (
+            /* Desktop: split pane layout */
+            <motion.div
+              ref={contentRef}
+              key={activeProject.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.15 }}
+              className={`flex-1 flex min-h-0 overflow-hidden ${
+                splitDirection === 'vertical' ? 'flex-row' : 'flex-col'
+              }`}
+            >
+              {/* Editor panel */}
+              <div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-3">
+                <ProjectDraftEditor
+                  title={activeProject.name}
+                  description={activeProject.description}
+                  onSaveTitle={(name) => updateProject(activeProject.id, { name })}
+                  onSave={(description) => updateProject(activeProject.id, { description })}
+                  linkedActivityId={(activeProject as any).linkedActivityId ?? null}
+                  onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
+                  activities={activities}
+                />
+              </div>
+              {/* Task panel resize handle — desktop only */}
+              {splitDirection === 'vertical' ? (
+                <div
+                  onMouseDown={handleTaskMouseDown}
+                  className="w-1 shrink-0 cursor-col-resize hover:bg-accent/30 active:bg-accent/50 transition-colors border-l border-border"
+                />
+              ) : (
                 <div
                   onMouseDown={handleTaskHeightMouseDown}
-                  className="hidden md:block h-1 shrink-0 cursor-row-resize hover:bg-accent/30 active:bg-accent/50 transition-colors border-t border-border"
+                  className="h-1 shrink-0 cursor-row-resize hover:bg-accent/30 active:bg-accent/50 transition-colors border-t border-border"
                 />
-              </>
-            )}
-            {/* Task panel — fixed height only on desktop for horizontal split */}
-            <div
-              className={`overflow-y-auto p-3 ${
-                splitDirection === 'vertical' ? 'border-t lg:border-t-0' : ''
-              }`}
-              style={splitDirection === 'horizontal' && isDesktop ? { height: taskPanelHeight, flexShrink: 0 } : undefined}
-            >
-              {splitDirection === 'vertical' ? (
-                <>
-                  <div className="lg:hidden">
-                    <ProjectTaskList projectId={activeProject.id} />
-                  </div>
-                  <div className="hidden lg:block" style={{ width: taskPanelWidth }}>
-                    <ProjectTaskList projectId={activeProject.id} />
-                  </div>
-                </>
-              ) : (
-                <ProjectTaskList projectId={activeProject.id} />
               )}
-            </div>
-          </motion.div>
+              {/* Task panel */}
+              <div
+                className="overflow-y-auto p-3"
+                style={
+                  splitDirection === 'vertical'
+                    ? { width: taskPanelWidth, flexShrink: 0 }
+                    : { height: taskPanelHeight, flexShrink: 0 }
+                }
+              >
+                <ProjectTaskList projectId={activeProject.id} />
+              </div>
+            </motion.div>
+          ) : (
+            /* Mobile: editor + draggable bottom sheet */
+            <motion.div
+              ref={mobileContainerRef}
+              key={activeProject.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.15 }}
+              className="flex-1 flex flex-col overflow-hidden"
+            >
+              {/* Editor — fills space above sheet */}
+              <div style={{ flex: 1, minHeight: '15%' }} className="overflow-y-auto p-3">
+                <ProjectDraftEditor
+                  title={activeProject.name}
+                  description={activeProject.description}
+                  onSaveTitle={(name) => updateProject(activeProject.id, { name })}
+                  onSave={(description) => updateProject(activeProject.id, { description })}
+                  linkedActivityId={(activeProject as any).linkedActivityId ?? null}
+                  onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
+                  activities={activities}
+                />
+              </div>
+
+              {/* Bottom sheet */}
+              <div
+                style={{
+                  height: sheetHeight ?? 0,
+                  transition: isDragging ? 'none' : 'height 0.3s ease-out',
+                }}
+                className="shrink-0 flex flex-col bg-bg-card rounded-t-2xl border-t border-border"
+              >
+                {/* Drag handle */}
+                <div
+                  onTouchStart={handleSheetTouchStart}
+                  onTouchMove={handleSheetTouchMove}
+                  onTouchEnd={handleSheetTouchEnd}
+                  onMouseDown={handleSheetMouseDown}
+                  className="flex justify-center py-2 cursor-grab touch-none"
+                >
+                  <div className="w-10 h-1 rounded-full bg-text-muted/30" />
+                </div>
+                {/* Task list — scrollable */}
+                <div className="flex-1 overflow-y-auto px-3 pb-3 min-h-0">
+                  <ProjectTaskList projectId={activeProject.id} />
+                </div>
+              </div>
+            </motion.div>
+          )
         ) : (
           <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
             {t('projects.empty')}

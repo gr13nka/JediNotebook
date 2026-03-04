@@ -2,6 +2,8 @@ import React, { useRef, useState } from 'react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { Button } from '../ui/Button';
 import { exportToZip, importFromZip, importFromDirectory } from '../../vault/webExport';
+import { isTauri, isMobileTauri } from '../../vault/platform';
+import { useSettingsStore } from '../../stores/settingsStore';
 
 export function VaultSettings() {
   const { t } = useTranslation();
@@ -9,6 +11,9 @@ export function VaultSettings() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<string>('');
   const [busy, setBusy] = useState(false);
+  const update = useSettingsStore((s) => s.update);
+  const vaultEnabled = useSettingsStore((s) => s.vaultEnabled);
+  const vaultPath = useSettingsStore((s) => s.vaultPath);
 
   const handleExport = async () => {
     setBusy(true);
@@ -90,6 +95,73 @@ export function VaultSettings() {
           onChange={handleImportFolder}
         />
       </div>
+
+      {isTauri() && vaultEnabled && vaultPath && (
+        <div className="mt-4">
+          <p className="text-xs font-medium text-text-secondary mb-1">
+            {t('vault.currentVault')}
+          </p>
+          <p className="text-xs text-text-muted truncate mb-2" title={vaultPath}>
+            {vaultPath}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {isMobileTauri() ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(vaultPath);
+                    setStatus(t('vault.pathCopied'));
+                  } catch {
+                    setStatus(vaultPath);
+                  }
+                }}
+              >
+                {t('vault.copyPath')}
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
+                    await revealItemInDir(vaultPath);
+                  } catch (e) {
+                    setStatus(String(e));
+                  }
+                }}
+              >
+                {t('vault.openFolder')}
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={async () => {
+                await update({ vaultSetupDone: false });
+              }}
+            >
+              {t('vault.switchVault')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isTauri() && !vaultEnabled && (
+        <div className="mt-4">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={async () => {
+              await update({ vaultSetupDone: false });
+            }}
+          >
+            {t('vault.switchVault')}
+          </Button>
+        </div>
+      )}
 
       {status && (
         <p className="text-xs text-text-muted mt-3">{status}</p>

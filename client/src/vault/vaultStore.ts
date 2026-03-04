@@ -5,7 +5,9 @@ import { importAllFromDisk, handleExternalChange } from './vaultSync';
 import { writeQueue } from './writeQueue';
 import { writeGuard } from './writeGuard';
 import { registerVaultMiddleware } from './dexieHooks';
-import { db } from '../db';
+import { db, clearAllTables } from '../db';
+import { seedDatabase } from '../db/seed';
+import { useSettingsStore } from '../stores/settingsStore';
 
 interface VaultState {
   isEnabled: boolean;
@@ -20,6 +22,7 @@ interface VaultState {
   enable: (vaultPath: string) => Promise<void>;
   disable: () => void;
   syncNow: () => Promise<void>;
+  switchVault: (newPath: string) => Promise<void>;
 }
 
 export const useVaultStore = create<VaultState>((set, get) => ({
@@ -111,5 +114,52 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     } catch (err) {
       set({ error: String(err), isSyncing: false });
     }
+  },
+
+  switchVault: async (newPath: string) => {
+    const state = get();
+
+    // Stop any active timers before switching
+    try {
+      const { useTimerStore } = await import('../stores/timerStore');
+      const { usePomodoroStore } = await import('../stores/pomodoroStore');
+      const { useTaskTimerStore } = await import('../stores/taskTimerStore');
+      if (useTimerStore.getState().isRunning) useTimerStore.getState().stop();
+      if (usePomodoroStore.getState().isActive) usePomodoroStore.getState().stop();
+      if (useTaskTimerStore.getState().isActive) useTaskTimerStore.getState().stop();
+    } catch {
+      // Stores may not be loaded yet — safe to ignore
+    }
+
+    // Disable current vault
+    state.disable();
+
+    // Preserve recentVaults before clearing DB
+    const recentVaults = useSettingsStore.getState().recentVaults;
+
+    // Clear all Dexie tables
+    await clearAllTables();
+
+    // Re-seed defaults
+    await seedDatabase();
+
+    // Update settings with new vault path + preserved recentVaults
+    await db.settings.update('default', {
+      vaultEnabled: true,
+      vaultPath: newPath,
+      vaultSetupDone: true,
+      recentVaults: recentVaults as any,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Reload settings store from DB
+    await useSettingsStore.getState().load();
+
+    // Enable new vault (imports all from disk)
+    await state.enable(newPath);
+
+    // Update recent vaults list
+    const name = newPath.split('/').pop() || newPath.split('\\').pop() || 'vault';
+    await useSettingsStore.getState().addRecentVault(newPath, name);
   },
 }));

@@ -2,3 +2,8 @@
 export function isTauri(): boolean {
   return '__TAURI__' in window;
 }
+
+/** Returns true when running inside Tauri on a mobile device (Android/iOS) */
+export function isMobileTauri(): boolean {
+  return isTauri() && /Android|iPhone|iPad/i.test(navigator.userAgent);
+}

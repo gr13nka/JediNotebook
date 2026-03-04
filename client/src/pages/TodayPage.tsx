@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TimerDisplay } from '../components/timer/TimerDisplay';
 import { TodayTaskCard } from '../components/today/TodayTaskCard';
@@ -47,6 +47,18 @@ export function TodayPage() {
   const taskTimer = useTaskTimer();
   const [hideCompleted, setHideCompleted] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+
+  // Android back button / browser back exits focus mode
+  useEffect(() => {
+    if (!focusMode) return;
+    // Push a dummy history entry so "back" pops it instead of leaving the page
+    window.history.pushState({ focusMode: true }, '');
+    const handlePop = () => setFocusMode(false);
+    window.addEventListener('popstate', handlePop);
+    return () => {
+      window.removeEventListener('popstate', handlePop);
+    };
+  }, [focusMode]);
 
   const incompleteTasks = todayTasks.filter((t) => !t.isCompleted);
   const completedTasks = todayTasks.filter((t) => t.isCompleted);
@@ -124,22 +136,32 @@ export function TodayPage() {
               }}
             />
 
-            {/* Exit focus button */}
-            <motion.button
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 0.5, scale: 1 }}
-              whileHover={{ opacity: 1 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => setFocusMode(false)}
-              className="fixed top-3 right-3 z-[53] p-2 rounded-lg bg-bg-card text-text-secondary hover:text-text-primary transition-colors"
-              style={{ boxShadow: NEU.raisedSm }}
-              title={t('today.exitFocus')}
+            {/* Top bar with exit button — safe area aware */}
+            <div
+              className="shrink-0 flex items-center justify-between px-4 z-[53]"
+              style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}
             >
-              <ExpandIcon />
-            </motion.button>
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => setFocusMode(false)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-bg-card text-text-secondary active:text-text-primary transition-colors"
+                style={{ boxShadow: NEU.raisedSm }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+                <span className="text-sm font-medium">{t('today.exitFocus')}</span>
+              </motion.button>
+            </div>
 
-            {/* Centered incomplete tasks only */}
-            <div className="flex-1 overflow-auto px-4 py-4 max-w-2xl mx-auto w-full relative z-[52] flex flex-col justify-center">
+            {/* Centered incomplete tasks only — safe area bottom */}
+            <div
+              className="flex-1 overflow-auto px-4 py-4 max-w-2xl mx-auto w-full relative z-[52] flex flex-col justify-center"
+              style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+            >
               <div className="flex flex-col gap-3">
                 <AnimatePresence mode="popLayout">
                   {incompleteTasks.map((task, i) => renderTaskCard(task, i, incompleteTasks))}

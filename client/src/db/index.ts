@@ -134,4 +134,12 @@ db.version(9).stores({
   pdfDocuments: 'id, isPinned, deletedAt, updatedAt',
 });
 
+export async function clearAllTables() {
+  await db.transaction('rw', db.tables, async () => {
+    for (const table of db.tables) {
+      await table.clear();
+    }
+  });
+}
+
 export { db };
