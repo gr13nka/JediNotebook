@@ -30,10 +30,14 @@ export function ProjectTabs() {
             }`}
             style={{ boxShadow: isActive ? NEU.pressedSm : undefined }}
           >
-            <span
-              className="w-1.5 h-1.5 rounded-full shrink-0"
-              style={{ backgroundColor: project.color }}
-            />
+            {(project as any).icon ? (
+              <span className="text-[11px] shrink-0 leading-none">{(project as any).icon}</span>
+            ) : (
+              <span
+                className="w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ backgroundColor: project.color }}
+              />
+            )}
             <span className="truncate max-w-[100px]">{project.name}</span>
             <span
               onClick={(e) => {

@@ -14,7 +14,7 @@ export function useProjects() {
     [],
   );
 
-  const createProject = async (data: { name: string; color: string; description?: string; folderId?: string | null; linkedActivityId?: string | null }) => {
+  const createProject = async (data: { name: string; color: string; icon?: string; description?: string; folderId?: string | null; linkedActivityId?: string | null }) => {
     const now = new Date().toISOString();
     const all = await db.projects.filter((p) => !p.deletedAt).toArray();
     const project: Project = {
@@ -22,6 +22,7 @@ export function useProjects() {
       name: data.name,
       description: data.description ?? '',
       color: data.color,
+      icon: data.icon ?? '',
       sortOrder: all.length,
       isArchived: false,
       folderId: data.folderId ?? null,
@@ -45,7 +46,7 @@ export function useProjects() {
 
   const updateProject = async (
     id: string,
-    patch: Partial<Pick<Project, 'name' | 'description' | 'color' | 'isArchived' | 'folderId' | 'linkedActivityId'>>,
+    patch: Partial<Pick<Project, 'name' | 'description' | 'color' | 'icon' | 'isArchived' | 'folderId' | 'linkedActivityId'>>,
   ) => {
     await db.projects.update(id, {
       ...patch,

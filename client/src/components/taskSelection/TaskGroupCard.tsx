@@ -120,10 +120,14 @@ export function TaskGroupCard({
         onDragOver={onProjectDragOver}
         onDrop={onProjectDrop}
       >
-        <span
-          className="w-3 h-3 rounded-full flex-shrink-0"
-          style={{ backgroundColor: project.color }}
-        />
+        {(project as any).icon ? (
+          <span className="text-base flex-shrink-0 leading-none">{(project as any).icon}</span>
+        ) : (
+          <span
+            className="w-3 h-3 rounded-full flex-shrink-0"
+            style={{ backgroundColor: project.color }}
+          />
+        )}
         <span className="flex-1 text-[15px] font-semibold text-text-primary">{project.name}</span>
         {selectedCount > 0 && (
           <span className="text-xs text-green font-medium">{selectedCount}</span>

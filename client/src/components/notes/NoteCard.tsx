@@ -54,7 +54,7 @@ export function NoteCard({ note, onClick, onTogglePin }: NoteCardProps) {
       {/* Title */}
       {note.title && (
         <h3 className="text-sm font-semibold text-text-primary mb-1 pr-7 line-clamp-2">
-          {note.title}
+          {stripMarkdown(note.title)}
         </h3>
       )}
 

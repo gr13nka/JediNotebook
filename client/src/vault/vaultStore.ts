@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { VaultBackend } from './vaultBackend';
-import { isTauri } from './platform';
+import { isTauri, isAndroidTauri } from './platform';
 import { importAllFromDisk, handleExternalChange } from './vaultSync';
 import { writeQueue } from './writeQueue';
 import { writeGuard } from './writeGuard';
@@ -18,6 +18,7 @@ interface VaultState {
   error: string | null;
   _unsubMiddleware: (() => void) | null;
   _unwatchFs: (() => void) | null;
+  _visibilityHandler: (() => void) | null;
 
   enable: (vaultPath: string) => Promise<void>;
   disable: () => void;
@@ -34,6 +35,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   error: null,
   _unsubMiddleware: null,
   _unwatchFs: null,
+  _visibilityHandler: null,
 
   enable: async (vaultPath: string) => {
     const state = get();
@@ -85,12 +87,26 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         console.error('[vault] File watcher failed to start:', err);
       }
     }
+
+    // On Android, sync on app resume to pick up Syncthing changes
+    if (isAndroidTauri()) {
+      const handler = () => {
+        if (document.visibilityState === 'visible') {
+          get().syncNow();
+        }
+      };
+      document.addEventListener('visibilitychange', handler);
+      set({ _visibilityHandler: handler });
+    }
   },
 
   disable: () => {
     const state = get();
     state._unsubMiddleware?.();
     state._unwatchFs?.();
+    if (state._visibilityHandler) {
+      document.removeEventListener('visibilitychange', state._visibilityHandler);
+    }
     writeQueue.setBackend(null);
     writeGuard.clear();
     set({
@@ -99,6 +115,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       backend: null,
       _unsubMiddleware: null,
       _unwatchFs: null,
+      _visibilityHandler: null,
     });
   },
 

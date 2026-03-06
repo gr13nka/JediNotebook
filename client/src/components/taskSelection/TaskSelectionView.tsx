@@ -74,9 +74,9 @@ export function TaskSelectionView() {
 
   // Build project lookup for flat view
   const projectMap = useMemo(() => {
-    const map = new Map<string, { name: string; color: string }>();
+    const map = new Map<string, { name: string; color: string; icon: string }>();
     for (const g of groups) {
-      map.set(g.project.id, { name: g.project.name, color: g.project.color });
+      map.set(g.project.id, { name: g.project.name, color: g.project.color, icon: (g.project as any).icon ?? '' });
     }
     return map;
   }, [groups]);

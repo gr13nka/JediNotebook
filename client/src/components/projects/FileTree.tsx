@@ -20,6 +20,7 @@ interface DragState {
   projectId: string;
   projectName: string;
   projectColor: string;
+  projectIcon: string;
   startX: number;
   startY: number;
   active: boolean;
@@ -50,7 +51,7 @@ export function FileTree() {
   const dragRef = useRef<DragState | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [ghostPos, setGhostPos] = useState({ x: 0, y: 0 });
-  const [ghostInfo, setGhostInfo] = useState<{ name: string; color: string } | null>(null);
+  const [ghostInfo, setGhostInfo] = useState<{ name: string; color: string; icon: string } | null>(null);
 
   const activeProjects = projects.filter((p) => !p.isArchived);
   const inactiveProjects = projects.filter((p) => p.isArchived);
@@ -69,7 +70,7 @@ export function FileTree() {
     setConfirmDeleteFolderId(id);
   };
 
-  const handleAddProject = async (data: { name: string; color: string }) => {
+  const handleAddProject = async (data: { name: string; color: string; icon?: string }) => {
     const p = await createProject({ ...data, folderId: addProjectFolderId });
     openTab(p.id);
   };
@@ -132,6 +133,7 @@ export function FileTree() {
       projectId: project.id,
       projectName: project.name,
       projectColor: project.color,
+      projectIcon: (project as any).icon ?? '',
       startX: e.clientX,
       startY: e.clientY,
       active: false,
@@ -149,7 +151,7 @@ export function FileTree() {
         if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
         drag.active = true;
         setIsDragging(true);
-        setGhostInfo({ name: drag.projectName, color: drag.projectColor });
+        setGhostInfo({ name: drag.projectName, color: drag.projectColor, icon: drag.projectIcon });
       }
 
       setGhostPos({ x: e.clientX, y: e.clientY });
@@ -300,10 +302,14 @@ export function FileTree() {
             opacity: 0.9,
           }}
         >
-          <span
-            className="w-2 h-2 rounded-full shrink-0"
-            style={{ backgroundColor: ghostInfo.color }}
-          />
+          {ghostInfo.icon ? (
+            <span className="text-[12px] shrink-0">{ghostInfo.icon}</span>
+          ) : (
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: ghostInfo.color }}
+            />
+          )}
           <span className="text-[12px] text-text-primary whitespace-nowrap">
             {ghostInfo.name}
           </span>
@@ -496,10 +502,14 @@ function ProjectRow({
         isActive ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary hover:bg-bg-elevated/30'
       } ${project.isArchived ? 'opacity-50' : ''}`}
     >
-      <span
-        className="w-2 h-2 rounded-full shrink-0"
-        style={{ backgroundColor: project.color }}
-      />
+      {(project as any).icon ? (
+        <span className="text-[14px] shrink-0 leading-none">{(project as any).icon}</span>
+      ) : (
+        <span
+          className="w-2 h-2 rounded-full shrink-0"
+          style={{ backgroundColor: project.color }}
+        />
+      )}
       <span className="text-[13px] truncate">{project.name}</span>
     </button>
   );

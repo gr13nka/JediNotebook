@@ -58,10 +58,10 @@ export function renderLineMd(line: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  // Headings
-  if (/^### /.test(html)) return `<h3>${html.slice(4)}</h3>`;
-  if (/^## /.test(html)) return `<h2>${html.slice(3)}</h2>`;
-  if (/^# /.test(html)) return `<h1>${html.slice(2)}</h1>`;
+  // Headings — inline styles ensure rendering regardless of CSS cascade/resets
+  if (/^### /.test(html)) return `<span style="font-size:1rem;font-weight:600">${inlineFormat(html.slice(4))}</span>`;
+  if (/^## /.test(html)) return `<span style="font-size:1.1rem;font-weight:600">${inlineFormat(html.slice(3))}</span>`;
+  if (/^# /.test(html)) return `<span style="font-size:1.25rem;font-weight:700">${inlineFormat(html.slice(2))}</span>`;
 
   // List item
   if (/^- /.test(html)) {

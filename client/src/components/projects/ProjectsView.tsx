@@ -257,8 +257,10 @@ export function ProjectsView() {
 
   return (
     <div
-      className={`flex overflow-hidden ${isDesktop ? 'h-screen-safe' : ''}`}
-      style={!isDesktop ? { height: hasBottomNav ? 'calc(100dvh - var(--bottom-nav-h))' : '100dvh' } : undefined}
+      className={`flex overflow-hidden ${
+        isDesktop ? 'h-screen-safe' :
+        hasBottomNav ? 'h-mobile-with-nav' : 'h-mobile-full'
+      }`}
     >
       {/* Mobile tree drawer overlay */}
       <AnimatePresence>
@@ -340,7 +342,7 @@ export function ProjectsView() {
               style={{ boxShadow: NEU.pressedSm }}
             >
               {openProjects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+                <option key={p.id} value={p.id}>{(p as any).icon ? `${(p as any).icon} ${p.name}` : p.name}</option>
               ))}
             </select>
           ) : (
@@ -457,7 +459,9 @@ export function ProjectsView() {
                 <ProjectDraftEditor
                   title={activeProject.name}
                   description={activeProject.description}
-                  onSaveTitle={(name) => updateProject(activeProject.id, { name })}
+                  color={activeProject.color}
+                  icon={(activeProject as any).icon ?? ''}
+                  onSaveProject={(data) => updateProject(activeProject.id, data)}
                   onSave={(description) => updateProject(activeProject.id, { description })}
                   linkedActivityId={(activeProject as any).linkedActivityId ?? null}
                   onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
@@ -503,7 +507,9 @@ export function ProjectsView() {
                 <ProjectDraftEditor
                   title={activeProject.name}
                   description={activeProject.description}
-                  onSaveTitle={(name) => updateProject(activeProject.id, { name })}
+                  color={activeProject.color}
+                  icon={(activeProject as any).icon ?? ''}
+                  onSaveProject={(data) => updateProject(activeProject.id, data)}
                   onSave={(description) => updateProject(activeProject.id, { description })}
                   linkedActivityId={(activeProject as any).linkedActivityId ?? null}
                   onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}

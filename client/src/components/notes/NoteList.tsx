@@ -45,14 +45,6 @@ export function NoteList() {
     setEditorOpen(true);
   };
 
-  const handleSaveNote = async (data: { title: string; content: string; color: string }) => {
-    if (editingNote) {
-      await updateNote(editingNote.id, data);
-    } else {
-      await createNote(data);
-    }
-  };
-
   const handleDeleteNote = () => {
     if (editingNote) {
       deleteNote(editingNote.id);
@@ -122,7 +114,8 @@ export function NoteList() {
       <NoteEditor
         open={editorOpen}
         onClose={() => { setEditorOpen(false); setEditingNote(null); }}
-        onSave={handleSaveNote}
+        createNote={createNote}
+        updateNote={updateNote}
         onDelete={editingNote ? handleDeleteNote : undefined}
         note={editingNote}
       />

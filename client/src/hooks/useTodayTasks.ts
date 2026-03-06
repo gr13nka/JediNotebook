@@ -12,6 +12,7 @@ export interface EnrichedTodayTask extends TodayTask {
   taskTitle: string;
   projectName: string;
   projectColor: string;
+  projectIcon: string;
   linkedActivityId: string | null;
 }
 
@@ -36,6 +37,7 @@ export function useTodayTasks() {
             taskTitle: projectTask.title,
             projectName: project.name,
             projectColor: project.color,
+            projectIcon: (project as any).icon ?? '',
             linkedActivityId: (project as any).linkedActivityId ?? null,
           });
         }

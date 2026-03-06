@@ -99,7 +99,7 @@ export function deserializeNote(content: string): Omit<Note, 'deletedAt'> {
 // ─── Project ──────────────────────────────────────────────────────
 
 const PROJECT_META_KEYS = [
-  'id', 'color', 'sortOrder', 'isArchived', 'folderId',
+  'id', 'color', 'icon', 'sortOrder', 'isArchived', 'folderId', 'linkedActivityId',
   'createdAt', 'updatedAt', 'deviceId',
 ];
 
@@ -161,6 +161,7 @@ export function deserializeProject(projectContent: string): Omit<Project, 'delet
     name: '', // Filled by caller from directory name
     description: body.trim(),
     color: (meta.color as string) || '#2BA89E',
+    icon: (meta.icon as string) || '',
     sortOrder: (meta.sortOrder as number) ?? 0,
     isArchived: (meta.isArchived as boolean) ?? false,
     folderId: (meta.folderId as string) || null,

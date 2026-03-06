@@ -25,10 +25,14 @@ export function ProjectSelector({ projects, selectedId, onSelect, onAdd }: Proje
             }`}
             style={{ boxShadow: isActive ? NEU.pressedSm : NEU.raisedSm }}
           >
-            <span
-              className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: p.color }}
-            />
+            {(p as any).icon ? (
+              <span className="text-[14px] shrink-0 leading-none">{(p as any).icon}</span>
+            ) : (
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: p.color }}
+              />
+            )}
             {p.name}
           </button>
         );

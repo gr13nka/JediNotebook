@@ -13,7 +13,16 @@
     "fs:allow-exists",
     "fs:allow-read-dir",
     "fs:allow-watch",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
     "fs:scope-home",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "/storage/emulated/0/**" },
+        { "path": "/sdcard/**" }
+      ]
+    },
     "dialog:default",
     "dialog:allow-open",
     "opener:default",

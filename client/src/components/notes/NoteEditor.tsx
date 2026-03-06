@@ -16,7 +16,8 @@ const BackIcon = () => (
 interface NoteEditorProps {
   open: boolean;
   onClose: () => void;
-  onSave: (data: { title: string; content: string; color: string }) => void;
+  createNote: (data: { title: string; content: string; color: string }) => Promise<Note>;
+  updateNote: (id: string, patch: Partial<Pick<Note, 'title' | 'content' | 'color'>>) => Promise<void>;
   onDelete?: () => void;
   note?: Note | null;
 }
@@ -27,21 +28,47 @@ function splitLines(text: string): string[] {
   return lines;
 }
 
-export function NoteEditor({ open, onClose, onSave, onDelete, note }: NoteEditorProps) {
+function getLineInputStyle(line: string): React.CSSProperties {
+  const base: React.CSSProperties = { lineHeight: '1.625' };
+  if (/^# /.test(line)) return { ...base, fontSize: '1.25rem', fontWeight: 700 };
+  if (/^## /.test(line)) return { ...base, fontSize: '1.1rem', fontWeight: 600 };
+  if (/^### /.test(line)) return { ...base, fontSize: '1rem', fontWeight: 600 };
+  return base;
+}
+
+const autoResize = (el: HTMLTextAreaElement) => {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+};
+
+export function NoteEditor({ open, onClose, createNote, updateNote, onDelete, note }: NoteEditorProps) {
   const { t } = useTranslation();
   const [title, setTitle] = useState('');
   const [lines, setLines] = useState<string[]>(['']);
   const [color, setColor] = useState<string>(NOTE_COLORS[0]);
   const [editingLine, setEditingLine] = useState<number | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [noteId, setNoteId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const latestRef = useRef({ title: '', lines: [''], color: NOTE_COLORS[0] as string, noteId: null as string | null });
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false);
 
   useEffect(() => {
     if (open) {
+      const id = note?.id ?? null;
       setTitle(note?.title ?? '');
       setLines(splitLines(note?.content ?? ''));
       setColor(note?.color ?? NOTE_COLORS[0]);
       setEditingLine(null);
+      setNoteId(id);
+      latestRef.current = {
+        title: note?.title ?? '',
+        lines: splitLines(note?.content ?? ''),
+        color: note?.color ?? NOTE_COLORS[0],
+        noteId: id,
+      };
+      savingRef.current = false;
     }
   }, [open, note]);
 
@@ -60,30 +87,53 @@ export function NoteEditor({ open, onClose, onSave, onDelete, note }: NoteEditor
   useEffect(() => {
     if (editingLine !== null && inputRef.current) {
       inputRef.current.focus();
+      autoResize(inputRef.current);
       const len = inputRef.current.value.length;
       inputRef.current.setSelectionRange(len, len);
     }
   }, [editingLine]);
 
-  const getContent = useCallback((currentLines: string[]) => {
-    return currentLines.join('\n');
-  }, []);
+  const performSave = useCallback(async () => {
+    if (savingRef.current) return;
+    const { title: t, lines: l, color: c, noteId: id } = latestRef.current;
+    const content = l.join('\n').trim();
+    if (!t.trim() && !content) return;
+    savingRef.current = true;
+    try {
+      if (id) {
+        await updateNote(id, { title: t.trim(), content, color: c });
+      } else {
+        const created = await createNote({ title: t.trim(), content, color: c });
+        setNoteId(created.id);
+        latestRef.current.noteId = created.id;
+      }
+    } finally {
+      savingRef.current = false;
+    }
+  }, [createNote, updateNote]);
 
-  const handleSave = () => {
-    const content = getContent(lines).trim();
-    if (!title.trim() && !content) return;
-    onSave({
-      title: title.trim(),
-      content,
-      color,
-    });
+  const scheduleSave = useCallback(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => performSave(), 800);
+  }, [performSave]);
+
+  const handleClose = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    performSave();
     onClose();
-  };
+  }, [performSave, onClose]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 's' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      handleSave();
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      performSave();
     }
   };
 
@@ -95,25 +145,32 @@ export function NoteEditor({ open, onClose, onSave, onDelete, note }: NoteEditor
     const newLines = [...lines];
     newLines[index] = value;
     setLines(newLines);
+    latestRef.current.lines = newLines;
+    if (inputRef.current) autoResize(inputRef.current);
+    scheduleSave();
   };
 
   const handleLineBlur = () => {
     setEditingLine(null);
   };
 
-  const handleLineKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleLineKeyDown = (index: number, e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const newLines = [...lines];
       newLines.splice(index + 1, 0, '');
       setLines(newLines);
+      latestRef.current.lines = newLines;
       setEditingLine(index + 1);
+      scheduleSave();
     } else if (e.key === 'Backspace' && lines[index] === '' && lines.length > 1) {
       e.preventDefault();
       const newLines = [...lines];
       newLines.splice(index, 1);
       setLines(newLines);
+      latestRef.current.lines = newLines;
       setEditingLine(Math.max(0, index - 1));
+      scheduleSave();
     } else if (e.key === 'ArrowDown') {
       if (index < lines.length - 1) {
         setEditingLine(index + 1);
@@ -153,7 +210,7 @@ export function NoteEditor({ open, onClose, onSave, onDelete, note }: NoteEditor
             style={{ boxShadow: NEU.topBar }}
           >
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary transition-colors"
               style={{ boxShadow: NEU.raisedSm }}
             >
@@ -166,7 +223,7 @@ export function NoteEditor({ open, onClose, onSave, onDelete, note }: NoteEditor
                 <button
                   key={c}
                   type="button"
-                  onClick={() => setColor(c)}
+                  onClick={() => { setColor(c); latestRef.current.color = c; scheduleSave(); }}
                   className="w-5 h-5 rounded-full transition-transform"
                   style={{
                     backgroundColor: c,
@@ -183,6 +240,10 @@ export function NoteEditor({ open, onClose, onSave, onDelete, note }: NoteEditor
                 variant="danger"
                 size="sm"
                 onClick={() => {
+                  if (saveTimerRef.current) {
+                    clearTimeout(saveTimerRef.current);
+                    saveTimerRef.current = null;
+                  }
                   onDelete();
                   onClose();
                 }}
@@ -190,10 +251,6 @@ export function NoteEditor({ open, onClose, onSave, onDelete, note }: NoteEditor
                 {t('ideas.deleteBtnLabel')}
               </Button>
             )}
-
-            <Button size="sm" onClick={handleSave} disabled={!title.trim() && !hasContent}>
-              {t('ideas.save')}
-            </Button>
           </div>
 
           {/* Editor body */}
@@ -201,7 +258,7 @@ export function NoteEditor({ open, onClose, onSave, onDelete, note }: NoteEditor
             {/* Title */}
             <input
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => { setTitle(e.target.value); latestRef.current.title = e.target.value; scheduleSave(); }}
               placeholder={t('ideas.titlePlaceholder')}
               autoFocus
               className="w-full bg-transparent text-2xl font-bold text-text-primary placeholder:text-text-muted/50 focus:outline-none mb-4 border-none"
@@ -222,15 +279,16 @@ export function NoteEditor({ open, onClose, onSave, onDelete, note }: NoteEditor
                 {lines.map((line, i) => {
                   if (editingLine === i) {
                     return (
-                      <input
+                      <textarea
                         key={i}
+                        rows={1}
                         ref={inputRef}
                         value={line}
                         onChange={(e) => handleLineChange(i, e.target.value)}
                         onBlur={handleLineBlur}
                         onKeyDown={(e) => handleLineKeyDown(i, e)}
-                        className="w-full bg-transparent text-sm text-text-primary focus:outline-none border-none py-0.5 font-mono"
-                        style={{ lineHeight: '1.625' }}
+                        className="w-full bg-transparent text-text-primary focus:outline-none border-none resize-none overflow-hidden py-0.5"
+                        style={getLineInputStyle(line)}
                       />
                     );
                   }
@@ -242,15 +300,17 @@ export function NoteEditor({ open, onClose, onSave, onDelete, note }: NoteEditor
                       <div
                         key={i}
                         onClick={() => handleLineClick(i)}
-                        className="h-6 cursor-text"
-                      />
+                        className="cursor-text py-0.5"
+                        style={{ lineHeight: '1.625' }}
+                      >&nbsp;</div>
                     );
                   }
                   return (
                     <div
                       key={i}
                       onClick={() => handleLineClick(i)}
-                      className="cursor-text py-0.5 markdown-preview"
+                      className="cursor-text py-0.5 markdown-preview break-words"
+                      style={getLineInputStyle(line)}
                       dangerouslySetInnerHTML={{ __html: rendered }}
                     />
                   );

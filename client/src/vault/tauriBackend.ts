@@ -86,6 +86,16 @@ export class TauriVaultBackend implements VaultBackend {
   }
 
   async watch(callback: WatchCallback): Promise<() => void> {
+    // On Android, native inotify watchers may not work on external storage.
+    // Use a polling watcher instead.
+    const { isAndroidTauri } = await import('./platform');
+    if (isAndroidTauri()) {
+      const { PollingWatcher } = await import('./pollingWatcher');
+      const poller = new PollingWatcher(this.basePath, callback);
+      await poller.start();
+      return () => { poller.stop(); };
+    }
+
     const { watch } = await import('@tauri-apps/plugin-fs');
     const unwatch = await watch(
       this.basePath,

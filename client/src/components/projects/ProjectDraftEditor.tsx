@@ -2,32 +2,31 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NEU } from '../../utils/shadows';
 import { renderLineMd } from '../../utils/markdown';
 import { useTranslation } from '../../i18n/useTranslation';
+import { EditProjectModal } from './EditProjectModal';
 import type { Activity } from '@shared/types';
 
 interface ProjectDraftEditorProps {
   title: string;
   description: string;
-  onSaveTitle: (title: string) => void;
+  color: string;
+  icon?: string;
+  onSaveProject: (data: { name: string; color: string; icon: string }) => void;
   onSave: (description: string) => void;
   linkedActivityId?: string | null;
   onLinkActivity?: (activityId: string | null) => void;
   activities?: Activity[];
 }
 
-export function ProjectDraftEditor({ title, description, onSaveTitle, onSave, linkedActivityId, onLinkActivity, activities }: ProjectDraftEditorProps) {
-  const [localTitle, setLocalTitle] = useState(title);
+export function ProjectDraftEditor({ title, description, color, icon, onSaveProject, onSave, linkedActivityId, onLinkActivity, activities }: ProjectDraftEditorProps) {
   const [localDesc, setLocalDesc] = useState(description);
   const [isEditing, setIsEditing] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLocalDesc(description);
   }, [description]);
-
-  useEffect(() => {
-    setLocalTitle(title);
-  }, [title]);
 
   // Auto-resize and focus when entering edit mode
   useEffect(() => {
@@ -50,12 +49,6 @@ export function ProjectDraftEditor({ title, description, onSaveTitle, onSave, li
       ta.style.height = ta.scrollHeight + 'px';
     }
   }, []);
-
-  const handleTitleBlur = () => {
-    if (localTitle !== title) {
-      onSaveTitle(localTitle.trim());
-    }
-  };
 
   const handleDescChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setLocalDesc(e.target.value);
@@ -105,13 +98,46 @@ export function ProjectDraftEditor({ title, description, onSaveTitle, onSave, li
 
   return (
     <div className="flex flex-col h-full">
-      {/* Title input - Google Keep style */}
-      <input
-        value={localTitle}
-        onChange={(e) => setLocalTitle(e.target.value)}
-        onBlur={handleTitleBlur}
-        placeholder="Title"
-        className="w-full bg-transparent text-xl font-bold text-text-primary placeholder:text-text-muted/40 focus:outline-none border-none mb-2 px-1"
+      {/* Clickable header row — opens edit modal */}
+      <button
+        type="button"
+        onClick={() => setEditModalOpen(true)}
+        className="flex items-center gap-2 mb-2 px-1 py-1 rounded-lg hover:bg-bg-elevated/50 transition-colors cursor-pointer text-left w-full group"
+      >
+        {icon ? (
+          <span className="text-2xl leading-none shrink-0">{icon}</span>
+        ) : (
+          <span
+            className="w-5 h-5 rounded-full shrink-0"
+            style={{ backgroundColor: color }}
+          />
+        )}
+        <span className="text-xl font-bold text-text-primary truncate flex-1">
+          {title}
+        </span>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-text-muted/0 group-hover:text-text-muted transition-colors shrink-0"
+        >
+          <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+          <path d="m15 5 4 4" />
+        </svg>
+      </button>
+
+      <EditProjectModal
+        open={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        name={title}
+        color={color}
+        icon={icon ?? ''}
+        onSave={onSaveProject}
       />
 
       {/* Activity link selector */}
@@ -148,7 +174,7 @@ export function ProjectDraftEditor({ title, description, onSaveTitle, onSave, li
               value={localDesc}
               onChange={handleDescChange}
               onBlur={handleDescBlur}
-              className="w-full bg-transparent text-sm text-text-primary focus:outline-none border-none font-mono resize-none overflow-hidden selection:bg-accent/30 selection:text-text-primary"
+              className="w-full bg-transparent text-sm text-text-primary focus:outline-none border-none resize-none overflow-hidden selection:bg-accent/30 selection:text-text-primary"
               style={{ lineHeight: '1.625', whiteSpace: 'pre-wrap' }}
             />
           ) : (

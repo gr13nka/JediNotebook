@@ -1,6 +1,19 @@
 import JSZip from 'jszip';
 import { MemoryBackend } from './memoryBackend';
 import { exportAllToDisk, importAllFromDisk } from './vaultSync';
+import { db } from '../db';
+
+/** Clear all data tables except settings (used before import to prevent duplicates) */
+async function clearDataTables(): Promise<void> {
+  const tableNames = db.tables
+    .map(t => t.name)
+    .filter(name => name !== 'settings');
+  await db.transaction('rw', db.tables, async () => {
+    for (const name of tableNames) {
+      await db.table(name).clear();
+    }
+  });
+}
 
 export async function exportToZip(): Promise<void> {
   const backend = new MemoryBackend();
@@ -37,6 +50,7 @@ export async function importFromZip(file: File): Promise<void> {
   });
   await Promise.all(entries);
 
+  await clearDataTables();
   await importAllFromDisk(backend);
 }
 
@@ -58,5 +72,6 @@ export async function importFromDirectory(files: FileList): Promise<void> {
     await backend.writeFile(relativePath, content);
   }
 
+  await clearDataTables();
   await importAllFromDisk(backend);
 }

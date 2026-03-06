@@ -4,40 +4,79 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Platforms to build (macos, windows, linux, android, or all)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - macos
+          - windows
+          - linux
+          - android
 
 jobs:
   desktop:
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.platforms == 'all' ||
+      github.event.inputs.platforms == 'macos' ||
+      github.event.inputs.platforms == 'windows' ||
+      github.event.inputs.platforms == 'linux'
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
+          - name: macos
+            platform: macos-latest
             args: --target universal-apple-darwin
-          - platform: ubuntu-22.04
+          - name: linux
+            platform: ubuntu-22.04
             args: ''
-          - platform: windows-latest
+          - name: windows
+            platform: windows-latest
             args: ''
 
     runs-on: ${{ matrix.platform }}
     steps:
+      - name: Check if this platform should run
+        id: check
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.inputs.platforms }}" = "all" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.inputs.platforms }}" = "${{ matrix.name }}" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.check.outputs.should_run == 'true'
 
       - name: Setup Node.js
+        if: steps.check.outputs.should_run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Setup Rust
+        if: steps.check.outputs.should_run == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Add macOS universal target
-        if: matrix.platform == 'macos-latest'
+        if: steps.check.outputs.should_run == 'true' && matrix.platform == 'macos-latest'
         run: rustup target add x86_64-apple-darwin
 
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: steps.check.outputs.should_run == 'true' && matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -47,23 +86,39 @@ jobs:
             patchelf
 
       - name: Install frontend dependencies
+        if: steps.check.outputs.should_run == 'true'
         working-directory: client
         run: npm ci
 
+      - name: Get version from tauri config
+        if: steps.check.outputs.should_run == 'true' && github.event_name == 'workflow_dispatch'
+        id: tauri_version
+        shell: bash
+        run: |
+          version=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | head -1 | grep -o '"[^"]*"$' | tr -d '"')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build and release (Tauri)
+        if: steps.check.outputs.should_run == 'true'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: client
           args: ${{ matrix.args }}
-          tagName: v__VERSION__
-          releaseName: 'Web Timer v__VERSION__'
+          tagName: ${{ github.event_name == 'push' && 'v__VERSION__' || format('v{0}', steps.tauri_version.outputs.version) }}
+          releaseName: ${{ github.event_name == 'push' && 'Web Timer v__VERSION__' || format('Web Timer v{0}', steps.tauri_version.outputs.version) }}
           releaseBody: 'See the assets below to download and install.'
           releaseDraft: true
           prerelease: false
 
   android:
+    if: >-
+      always() &&
+      (github.event_name == 'push' ||
+       github.event.inputs.platforms == 'all' ||
+       github.event.inputs.platforms == 'android') &&
+      (needs.desktop.result == 'success' || needs.desktop.result == 'skipped')
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -136,9 +191,16 @@ jobs:
             --out app-signed.apk \
             app-aligned.apk
 
-      - name: Get version from tag
+      - name: Get version
         id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            version=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | head -1 | grep -o '"[^"]*"$' | tr -d '"')
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Rename APK
         run: |
@@ -148,4 +210,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          tag_name: v${{ steps.version.outputs.version }}
           files: web-timer_${{ steps.version.outputs.version }}.apk

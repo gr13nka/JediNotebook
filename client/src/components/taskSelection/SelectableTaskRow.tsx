@@ -17,7 +17,7 @@ interface SelectableTaskRowProps {
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
   isDragOver?: 'above' | 'below' | null;
-  projectInfo?: { name: string; color: string };
+  projectInfo?: { name: string; color: string; icon?: string };
 }
 
 function getTaskScore(createdAt: string): number {
@@ -133,7 +133,11 @@ export function SelectableTaskRow({
           <div className="flex-1 min-w-0">
             {projectInfo && (
               <div className="flex items-center gap-1.5 mb-0.5">
-                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: projectInfo.color }} />
+                {projectInfo.icon ? (
+                  <span className="text-[12px] flex-shrink-0 leading-none">{projectInfo.icon}</span>
+                ) : (
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: projectInfo.color }} />
+                )}
                 <span className="text-[11px] text-text-muted truncate">{projectInfo.name}</span>
               </div>
             )}

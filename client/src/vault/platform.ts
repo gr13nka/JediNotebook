@@ -7,3 +7,8 @@ export function isTauri(): boolean {
 export function isMobileTauri(): boolean {
   return isTauri() && /Android|iPhone|iPad/i.test(navigator.userAgent);
 }
+
+/** Returns true when running inside Tauri on Android */
+export function isAndroidTauri(): boolean {
+  return isTauri() && /Android/i.test(navigator.userAgent);
+}

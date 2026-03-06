@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { isAndroidTauri } from '../../vault/platform';
 
 function getVaultDisplayName(path: string): string {
   const name = path.split('/').pop() || path.split('\\').pop() || 'vault';
@@ -21,6 +22,158 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+/** Android-specific flow: permission check + path input */
+function AndroidVaultSetup({
+  onOpenVault,
+  loading,
+  error,
+}: {
+  onOpenVault: (path: string) => void;
+  loading: boolean;
+  error: string | null;
+}) {
+  const { t } = useTranslation();
+  const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
+  const [vaultPath, setVaultPath] = useState('');
+  const [pathError, setPathError] = useState<string | null>(null);
+
+  const checkPermission = useCallback(async () => {
+    try {
+      const { checkStoragePermission } = await import('../../vault/androidStorage');
+      const granted = await checkStoragePermission();
+      setPermissionGranted(granted);
+    } catch {
+      // If plugin not available, assume granted (older Android)
+      setPermissionGranted(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkPermission();
+  }, [checkPermission]);
+
+  // Re-check permission when user returns from Settings
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === 'visible') {
+        checkPermission();
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [checkPermission]);
+
+  // Load default path once permission is granted
+  useEffect(() => {
+    if (permissionGranted && !vaultPath) {
+      import('../../vault/androidStorage').then(({ getDefaultVaultPath }) => {
+        getDefaultVaultPath().then(setVaultPath).catch(() => {
+          setVaultPath('/storage/emulated/0/Documents/WebTimer');
+        });
+      });
+    }
+  }, [permissionGranted, vaultPath]);
+
+  const handleRequestPermission = async () => {
+    try {
+      const { requestStoragePermission } = await import('../../vault/androidStorage');
+      await requestStoragePermission();
+    } catch {
+      // Intent may fail on some devices
+    }
+  };
+
+  const handleOpenVault = () => {
+    const trimmed = vaultPath.trim();
+    if (!trimmed) {
+      setPathError(t('vault.androidPathError'));
+      return;
+    }
+    setPathError(null);
+    onOpenVault(trimmed);
+  };
+
+  const handleUseDefault = async () => {
+    try {
+      const { getDefaultVaultPath } = await import('../../vault/androidStorage');
+      const defaultPath = await getDefaultVaultPath();
+      setVaultPath(defaultPath);
+    } catch {
+      setVaultPath('/storage/emulated/0/Documents/WebTimer');
+    }
+  };
+
+  // Loading state — checking permission
+  if (permissionGranted === null) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-4">
+        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Step 1: Permission not granted
+  if (!permissionGranted) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="p-4 rounded-xl bg-bg-elevated border border-border">
+          <h3 className="text-sm font-semibold text-text-primary mb-2">
+            {t('vault.androidPermissionTitle')}
+          </h3>
+          <p className="text-xs text-text-secondary leading-relaxed">
+            {t('vault.androidPermissionDesc')}
+          </p>
+        </div>
+        <button
+          onClick={handleRequestPermission}
+          className="w-full rounded-xl px-4 py-3 font-medium text-accent-fg bg-accent transition-opacity"
+          style={{ boxShadow: NEU.raisedSm }}
+        >
+          {t('vault.androidGrantPermission')}
+        </button>
+      </div>
+    );
+  }
+
+  // Step 2: Permission granted — show path input
+  return (
+    <div className="flex flex-col gap-3">
+      {(error || pathError) && (
+        <div className="p-3 rounded-xl bg-red/10 text-red text-xs">
+          {error || pathError}
+        </div>
+      )}
+      <div>
+        <label className="block text-xs font-medium text-text-secondary mb-1.5">
+          {t('vault.androidPathLabel')}
+        </label>
+        <input
+          type="text"
+          value={vaultPath}
+          onChange={(e) => setVaultPath(e.target.value)}
+          placeholder={t('vault.androidPathHint')}
+          className="w-full rounded-xl px-4 py-2.5 text-sm bg-bg-primary text-text-primary border border-border focus:border-accent focus:outline-none transition-colors"
+          style={{ boxShadow: NEU.pressed }}
+        />
+        <button
+          onClick={handleUseDefault}
+          className="mt-1.5 text-xs text-accent hover:underline"
+        >
+          {t('vault.androidUseDefault')}
+        </button>
+      </div>
+      <button
+        onClick={handleOpenVault}
+        disabled={loading || !vaultPath.trim()}
+        className="w-full rounded-xl px-4 py-3 font-medium text-accent-fg bg-accent transition-opacity disabled:opacity-50"
+        style={{ boxShadow: NEU.raisedSm }}
+      >
+        {t('vault.openExisting')}
+      </button>
+    </div>
+  );
+}
+
 export function VaultSetupModal() {
   const { t } = useTranslation();
   const update = useSettingsStore((s) => s.update);
@@ -28,6 +181,7 @@ export function VaultSetupModal() {
   const recentVaults = useSettingsStore((s) => s.recentVaults);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isAndroid = isAndroidTauri();
 
   const openVault = async (path: string) => {
     setLoading(true);
@@ -118,7 +272,7 @@ export function VaultSetupModal() {
           </p>
         </div>
 
-        {error && (
+        {!isAndroid && error && (
           <div className="mb-4 p-3 rounded-xl bg-red/10 text-red text-xs">
             {error}
           </div>
@@ -176,31 +330,40 @@ export function VaultSetupModal() {
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={handleCreateNew}
-            disabled={loading}
-            className="w-full rounded-xl px-4 py-3 font-medium text-accent-fg bg-accent transition-opacity disabled:opacity-50"
-            style={{ boxShadow: NEU.raisedSm }}
-          >
-            {t('vault.createNew')}
-          </button>
-          <button
-            onClick={handleOpenExisting}
-            disabled={loading}
-            className="w-full rounded-xl px-4 py-3 font-medium text-text-primary bg-bg-elevated transition-opacity disabled:opacity-50"
-            style={{ boxShadow: NEU.raisedSm }}
-          >
-            {t('vault.openExisting')}
-          </button>
-          <button
-            onClick={handleSkip}
-            disabled={loading}
-            className="w-full rounded-xl px-4 py-3 text-sm text-text-muted hover:text-text-secondary transition-colors"
-          >
-            {t('vault.setupSkip')}
-          </button>
-        </div>
+        {isAndroid ? (
+          <AndroidVaultSetup
+            onOpenVault={openVault}
+            loading={loading}
+            error={error}
+          />
+        ) : (
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={handleCreateNew}
+              disabled={loading}
+              className="w-full rounded-xl px-4 py-3 font-medium text-accent-fg bg-accent transition-opacity disabled:opacity-50"
+              style={{ boxShadow: NEU.raisedSm }}
+            >
+              {t('vault.createNew')}
+            </button>
+            <button
+              onClick={handleOpenExisting}
+              disabled={loading}
+              className="w-full rounded-xl px-4 py-3 font-medium text-text-primary bg-bg-elevated transition-opacity disabled:opacity-50"
+              style={{ boxShadow: NEU.raisedSm }}
+            >
+              {t('vault.openExisting')}
+            </button>
+          </div>
+        )}
+
+        <button
+          onClick={handleSkip}
+          disabled={loading}
+          className="w-full rounded-xl px-4 py-3 text-sm text-text-muted hover:text-text-secondary transition-colors mt-3"
+        >
+          {t('vault.setupSkip')}
+        </button>
       </motion.div>
     </div>
   );

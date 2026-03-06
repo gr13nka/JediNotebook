@@ -294,26 +294,17 @@ html.tokyonight {
 }
 
 * {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-text-muted) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-text-muted);
-  border-radius: 3px;
+  display: none;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
-  color: var(--color-text-primary);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
 }
 
 .no-scrollbar {
@@ -331,6 +322,8 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Safe area insets for tall Android phones (18:9+) and notched devices */
@@ -358,6 +351,22 @@ body {
   padding-bottom: var(--bottom-nav-h);
 }
 
+/* Full-bleed mobile container heights with dvh/vh fallback */
+.h-mobile-full {
+  height: 100vh;
+}
+.h-mobile-with-nav {
+  height: calc(100vh - var(--bottom-nav-h));
+}
+@supports (height: 100dvh) {
+  .h-mobile-full {
+    height: 100dvh;
+  }
+  .h-mobile-with-nav {
+    height: calc(100dvh - var(--bottom-nav-h));
+  }
+}
+
 /* Button active state */
 .neu-btn:active:not(:disabled) {
   opacity: 0.85;
@@ -372,21 +381,21 @@ body {
 .markdown-preview h1 {
   font-size: 1.25rem;
   font-weight: 700;
-  margin-bottom: 0.5rem;
+  line-height: 1.625;
   color: var(--color-text-primary);
 }
 
 .markdown-preview h2 {
   font-size: 1.1rem;
   font-weight: 600;
-  margin-bottom: 0.4rem;
+  line-height: 1.625;
   color: var(--color-text-primary);
 }
 
 .markdown-preview h3 {
   font-size: 1rem;
   font-weight: 600;
-  margin-bottom: 0.3rem;
+  line-height: 1.625;
   color: var(--color-text-primary);
 }
 
