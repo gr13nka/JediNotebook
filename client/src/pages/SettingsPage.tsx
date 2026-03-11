@@ -8,10 +8,12 @@ import { TaskSettings } from '../components/settings/TaskSettings';
 import { TimerNotificationSettings } from '../components/settings/TimerNotificationSettings';
 import { LanguagePicker } from '../components/settings/LanguagePicker';
 import { NavPositionPicker } from '../components/settings/NavPositionPicker';
+import { BottomNavSettings } from '../components/settings/BottomNavSettings';
 import { AccentColorPicker } from '../components/settings/AccentColorPicker';
 import { ZoomSettings } from '../components/settings/ZoomSettings';
 import { ProcrastinationWordSettings } from '../components/settings/ProcrastinationWordSettings';
 import { VaultSettings } from '../components/settings/VaultSettings';
+import { MobileProjectSettings } from '../components/settings/MobileProjectSettings';
 import { GamificationSettings } from '../components/settings/GamificationSettings';
 import { TaskTimerSettings } from '../components/settings/TaskTimerSettings';
 import { Card } from '../components/ui/Card';
@@ -23,9 +25,11 @@ const sectionComponents = [
   { key: 'settings.accent', component: AccentColorPicker },
   { key: 'settings.appearance', component: BarStylePicker },
   { key: 'settings.navPosition', component: NavPositionPicker },
+  { key: 'settings.bottomNav', component: BottomNavSettings },
   { key: 'settings.zoom', component: ZoomSettings },
   { key: 'settings.time', component: DayBoundarySettings },
   { key: 'settings.timezone', component: TimezoneSettings },
+  { key: 'settings.mobileProjects', component: MobileProjectSettings },
   { key: 'settings.tasks', component: TaskSettings },
   { key: 'settings.taskTimer', component: TaskTimerSettings },
   { key: 'settings.procrastination', component: ProcrastinationWordSettings },

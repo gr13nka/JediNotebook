@@ -41,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {isFullBleed ? (
           <div className="h-full">{children}</div>
         ) : (
-          <div className={`mx-auto p-4 md:p-6 ${isWidePage ? 'max-w-6xl' : 'max-w-2xl'}`}>
+          <div className={`mx-auto px-4 pb-4 pt-safe-area md:px-6 md:pb-6 ${isWidePage ? 'max-w-6xl' : 'max-w-2xl'}`}>
             {children}
           </div>
         )}

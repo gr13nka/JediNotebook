@@ -43,7 +43,8 @@ export class TauriVaultBackend implements VaultBackend {
         files = files.filter((f: string) => f.endsWith(extension));
       }
       return files.sort();
-    } catch {
+    } catch (err) {
+      console.warn(`[vault] listFiles failed for "${this.resolve(dir)}":`, err);
       return [];
     }
   }
@@ -56,7 +57,8 @@ export class TauriVaultBackend implements VaultBackend {
         .filter(e => e.isDirectory)
         .map(e => `${dir}/${e.name}`)
         .sort();
-    } catch {
+    } catch (err) {
+      console.warn(`[vault] listDirs failed for "${this.resolve(dir)}":`, err);
       return [];
     }
   }
@@ -86,36 +88,36 @@ export class TauriVaultBackend implements VaultBackend {
   }
 
   async watch(callback: WatchCallback): Promise<() => void> {
-    // On Android, native inotify watchers may not work on external storage.
-    // Use a polling watcher instead.
-    const { isAndroidTauri } = await import('./platform');
-    if (isAndroidTauri()) {
-      const { PollingWatcher } = await import('./pollingWatcher');
-      const poller = new PollingWatcher(this.basePath, callback);
-      await poller.start();
-      return () => { poller.stop(); };
+    // Try native file watcher first (works on desktop)
+    try {
+      const { watch } = await import('@tauri-apps/plugin-fs');
+      const unwatch = await watch(
+        this.basePath,
+        (event) => {
+          const events: FileEvent[] = [];
+          if (event.paths) {
+            for (const fullPath of event.paths) {
+              const relativePath = fullPath.replace(this.basePath + '/', '');
+              if (relativePath.startsWith('.')) continue;
+              events.push({
+                type: mapEventKind(event.type),
+                path: relativePath,
+              });
+            }
+          }
+          if (events.length > 0) callback(events);
+        },
+        { recursive: true },
+      );
+      return () => { unwatch(); };
+    } catch {
+      // Native watch failed (e.g. Android external storage) — fall back to polling
     }
 
-    const { watch } = await import('@tauri-apps/plugin-fs');
-    const unwatch = await watch(
-      this.basePath,
-      (event) => {
-        const events: FileEvent[] = [];
-        if (event.paths) {
-          for (const fullPath of event.paths) {
-            const relativePath = fullPath.replace(this.basePath + '/', '');
-            if (relativePath.startsWith('.')) continue;
-            events.push({
-              type: mapEventKind(event.type),
-              path: relativePath,
-            });
-          }
-        }
-        if (events.length > 0) callback(events);
-      },
-      { recursive: true },
-    );
-    return () => { unwatch(); };
+    const { PollingWatcher } = await import('./pollingWatcher');
+    const poller = new PollingWatcher(this.basePath, callback);
+    await poller.start();
+    return () => { poller.stop(); };
   }
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useMindMaps } from '../../hooks/useMindMaps';
 import { useMindMapUIStore } from '../../stores/mindMapUIStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { NEU } from '../../utils/shadows';
 import { MindMapCanvas } from './MindMapCanvas';
@@ -20,8 +21,19 @@ export function MindMapView() {
   const mindUnloadActive = useMindMapUIStore((s) => s.mindUnloadActive);
   const timerVisible = useMindMapUIStore((s) => s.timerVisible);
   const setPendingEditNode = useMindMapUIStore((s) => s.setPendingEditNode);
+  const navPosition = useSettingsStore((s) => s.navPosition);
 
   const [mobileTab, setMobileTab] = useState<'map' | 'inbox'>('map');
+  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia('(min-width: 768px)').matches);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const hasBottomNav = !isDesktop && navPosition !== 'dropdown';
 
   const activeMindMap = mindMaps.find((m) => m.id === activeMindMapId) ?? null;
 
@@ -189,7 +201,10 @@ export function MindMapView() {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-0px)] md:h-screen overflow-hidden">
+    <div className={`flex flex-col overflow-hidden ${
+      isDesktop ? 'h-screen-safe' :
+      hasBottomNav ? 'h-mobile-with-nav' : 'h-mobile-full'
+    }`}>
       <MindMapToolbar
         activeMindMap={activeMindMap}
         onAddChild={handleAddChild}

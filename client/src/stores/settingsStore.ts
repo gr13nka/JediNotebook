@@ -109,6 +109,9 @@ interface SettingsState {
   todayXP: number;
   todayXPDate: string;
   gamificationEnabled: boolean;
+  bottomNavTabs: string[];
+  bottomNavScrollable: boolean;
+  mobileProjectGrid: boolean;
   loaded: boolean;
   load: () => Promise<void>;
   update: (patch: Partial<Omit<SettingsState, 'loaded' | 'load' | 'update' | 'addRecentVault'>>) => Promise<void>;
@@ -171,6 +174,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         todayXP: raw.todayXP ?? DEFAULT_SETTINGS.todayXP,
         todayXPDate: raw.todayXPDate ?? DEFAULT_SETTINGS.todayXPDate,
         gamificationEnabled: raw.gamificationEnabled ?? DEFAULT_SETTINGS.gamificationEnabled,
+        bottomNavTabs: raw.bottomNavTabs ?? DEFAULT_SETTINGS.bottomNavTabs,
+        bottomNavScrollable: raw.bottomNavScrollable ?? DEFAULT_SETTINGS.bottomNavScrollable,
+        mobileProjectGrid: raw.mobileProjectGrid ?? DEFAULT_SETTINGS.mobileProjectGrid,
         loaded: true,
       });
       applyTheme(theme, customThemeColors);

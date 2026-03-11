@@ -84,6 +84,9 @@ export const DEFAULT_SETTINGS = {
   todayXPDate: '',
   gamificationEnabled: true,
   taskTimerMinutes: 20,
+  bottomNavTabs: ['/inbox', '/projects', '/tasks', '/today', '/settings'] as string[],
+  bottomNavScrollable: false,
+  mobileProjectGrid: false,
 };
 
 export const BREAK_ACTIVITY = {

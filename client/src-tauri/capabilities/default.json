@@ -15,17 +15,21 @@
     "fs:allow-watch",
     "fs:allow-read-file",
     "fs:allow-write-file",
-    "fs:scope-home",
     {
       "identifier": "fs:scope",
       "allow": [
+        { "path": "$HOME" },
+        { "path": "$HOME/**" },
+        { "path": "/storage/emulated/0" },
         { "path": "/storage/emulated/0/**" },
+        { "path": "/sdcard" },
         { "path": "/sdcard/**" }
       ]
     },
     "dialog:default",
     "dialog:allow-open",
     "opener:default",
-    "opener:allow-reveal-item-in-dir"
+    "opener:allow-reveal-item-in-dir",
+    "android-storage:default"
   ]
 }

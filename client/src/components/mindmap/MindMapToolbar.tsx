@@ -46,7 +46,10 @@ export function MindMapToolbar({ activeMindMap, onAddChild, onDeleteNode }: Prop
   };
 
   return (
-    <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border bg-bg-primary shrink-0 flex-wrap">
+    <div
+      className="flex items-center gap-1.5 px-3 py-2 border-b border-border bg-bg-primary shrink-0 flex-wrap"
+      style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
+    >
       {/* Mind map selector */}
       <div className="relative">
         <button

@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
-import { isAndroidTauri } from '../../vault/platform';
+import { useIsAndroid } from '../../vault/platform';
+import { FolderBrowserModal } from './FolderBrowserModal';
 
 function getVaultDisplayName(path: string): string {
   const name = path.split('/').pop() || path.split('\\').pop() || 'vault';
@@ -22,7 +23,7 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-/** Android-specific flow: permission check + path input */
+/** Android-specific flow: check permission → redirect to Settings if needed → browse path */
 function AndroidVaultSetup({
   onOpenVault,
   loading,
@@ -36,6 +37,7 @@ function AndroidVaultSetup({
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
   const [vaultPath, setVaultPath] = useState('');
   const [pathError, setPathError] = useState<string | null>(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
 
   const checkPermission = useCallback(async () => {
     try {
@@ -43,21 +45,17 @@ function AndroidVaultSetup({
       const granted = await checkStoragePermission();
       setPermissionGranted(granted);
     } catch {
-      // If plugin not available, assume granted (older Android)
+      // Plugin unavailable — skip permission gate, let import handle errors
       setPermissionGranted(true);
     }
   }, []);
 
-  useEffect(() => {
-    checkPermission();
-  }, [checkPermission]);
+  useEffect(() => { checkPermission(); }, [checkPermission]);
 
-  // Re-check permission when user returns from Settings
+  // Re-check when user returns from Settings
   useEffect(() => {
     const handler = () => {
-      if (document.visibilityState === 'visible') {
-        checkPermission();
-      }
+      if (document.visibilityState === 'visible') checkPermission();
     };
     document.addEventListener('visibilitychange', handler);
     return () => document.removeEventListener('visibilitychange', handler);
@@ -74,12 +72,17 @@ function AndroidVaultSetup({
     }
   }, [permissionGranted, vaultPath]);
 
+  const [permError, setPermError] = useState<string | null>(null);
+
   const handleRequestPermission = async () => {
+    setPermError(null);
     try {
       const { requestStoragePermission } = await import('../../vault/androidStorage');
       await requestStoragePermission();
-    } catch {
-      // Intent may fail on some devices
+    } catch (err) {
+      setPermError(
+        'Could not open Settings automatically. Go to Settings > Apps > Web Timer > Permissions > All files access and toggle it ON.'
+      );
     }
   };
 
@@ -103,7 +106,7 @@ function AndroidVaultSetup({
     }
   };
 
-  // Loading state — checking permission
+  // Loading state
   if (permissionGranted === null) {
     return (
       <div className="flex flex-col items-center gap-3 py-4">
@@ -112,7 +115,7 @@ function AndroidVaultSetup({
     );
   }
 
-  // Step 1: Permission not granted
+  // Permission not granted — show redirect to Settings
   if (!permissionGranted) {
     return (
       <div className="flex flex-col gap-4">
@@ -120,10 +123,18 @@ function AndroidVaultSetup({
           <h3 className="text-sm font-semibold text-text-primary mb-2">
             {t('vault.androidPermissionTitle')}
           </h3>
-          <p className="text-xs text-text-secondary leading-relaxed">
+          <p className="text-xs text-text-secondary leading-relaxed mb-2">
             {t('vault.androidPermissionDesc')}
           </p>
+          <p className="text-xs text-text-muted leading-relaxed">
+            A settings page will open — toggle ON "All files access" for Web Timer, then come back.
+          </p>
         </div>
+        {permError && (
+          <div className="p-3 rounded-xl bg-red/10 text-red text-xs leading-relaxed">
+            {permError}
+          </div>
+        )}
         <button
           onClick={handleRequestPermission}
           className="w-full rounded-xl px-4 py-3 font-medium text-accent-fg bg-accent transition-opacity"
@@ -131,45 +142,68 @@ function AndroidVaultSetup({
         >
           {t('vault.androidGrantPermission')}
         </button>
+        <button
+          onClick={() => setPermissionGranted(true)}
+          className="text-xs text-text-muted hover:text-text-secondary self-center"
+        >
+          Skip (try without permission)
+        </button>
       </div>
     );
   }
 
-  // Step 2: Permission granted — show path input
+  // Permission granted — browse or type path
   return (
     <div className="flex flex-col gap-3">
-      {(error || pathError) && (
+      {pathError && (
         <div className="p-3 rounded-xl bg-red/10 text-red text-xs">
-          {error || pathError}
+          {pathError}
         </div>
       )}
-      <div>
-        <label className="block text-xs font-medium text-text-secondary mb-1.5">
-          {t('vault.androidPathLabel')}
-        </label>
-        <input
-          type="text"
-          value={vaultPath}
-          onChange={(e) => setVaultPath(e.target.value)}
-          placeholder={t('vault.androidPathHint')}
-          className="w-full rounded-xl px-4 py-2.5 text-sm bg-bg-primary text-text-primary border border-border focus:border-accent focus:outline-none transition-colors"
-          style={{ boxShadow: NEU.pressed }}
-        />
-        <button
-          onClick={handleUseDefault}
-          className="mt-1.5 text-xs text-accent hover:underline"
-        >
-          {t('vault.androidUseDefault')}
-        </button>
-      </div>
+
+      {/* Browse folders button */}
       <button
-        onClick={handleOpenVault}
-        disabled={loading || !vaultPath.trim()}
+        onClick={() => setBrowserOpen(true)}
+        disabled={loading}
         className="w-full rounded-xl px-4 py-3 font-medium text-accent-fg bg-accent transition-opacity disabled:opacity-50"
         style={{ boxShadow: NEU.raisedSm }}
       >
-        {t('vault.openExisting')}
+        {t('vault.folderBrowserBrowse')}
       </button>
+
+      {/* Selected path display */}
+      {vaultPath && (
+        <div className="p-3 rounded-xl bg-bg-elevated border border-border">
+          <p className="text-xs text-text-muted mb-1">{t('vault.androidPathLabel')}</p>
+          <p className="text-sm text-text-primary break-all">{vaultPath}</p>
+        </div>
+      )}
+
+      {/* Open as vault */}
+      {vaultPath && (
+        <button
+          onClick={handleOpenVault}
+          disabled={loading}
+          className="w-full rounded-xl px-4 py-3 font-medium text-text-primary bg-bg-elevated transition-opacity disabled:opacity-50"
+          style={{ boxShadow: NEU.raisedSm }}
+        >
+          {t('vault.openExisting')}
+        </button>
+      )}
+
+      {/* Manual path fallback */}
+      <button
+        onClick={handleUseDefault}
+        className="text-xs text-accent hover:underline self-center"
+      >
+        {t('vault.androidUseDefault')}
+      </button>
+
+      <FolderBrowserModal
+        open={browserOpen}
+        onClose={() => setBrowserOpen(false)}
+        onSelect={(path) => setVaultPath(path)}
+      />
     </div>
   );
 }
@@ -181,7 +215,7 @@ export function VaultSetupModal() {
   const recentVaults = useSettingsStore((s) => s.recentVaults);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isAndroid = isAndroidTauri();
+  const isAndroid = useIsAndroid();
 
   const openVault = async (path: string) => {
     setLoading(true);
@@ -272,7 +306,7 @@ export function VaultSetupModal() {
           </p>
         </div>
 
-        {!isAndroid && error && (
+        {error && (
           <div className="mb-4 p-3 rounded-xl bg-red/10 text-red text-xs">
             {error}
           </div>

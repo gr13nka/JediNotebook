@@ -141,7 +141,7 @@ export function SelectableTaskRow({
                 <span className="text-[11px] text-text-muted truncate">{projectInfo.name}</span>
               </div>
             )}
-            <span className={`block text-[15px] leading-snug truncate ${
+            <span className={`block text-[15px] leading-snug ${
               isCompleted
                 ? 'line-through text-text-muted'
                 : isInToday

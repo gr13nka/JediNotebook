@@ -16,7 +16,7 @@ import { ReviewPage } from './pages/ReviewPage';
 import { useSettingsStore } from './stores/settingsStore';
 import { useRecurringTaskCheck } from './hooks/useRecurringTaskCheck';
 import { VaultSetupModal } from './components/ui/VaultSetupModal';
-import { isTauri } from './vault/platform';
+import { isTauri, detectAndroidOnce } from './vault/platform';
 
 export default function App() {
   const loadSettings = useSettingsStore((s) => s.load);
@@ -28,6 +28,7 @@ export default function App() {
 
   useEffect(() => {
     loadSettings();
+    detectAndroidOnce();
   }, []);
 
   useEffect(() => {
@@ -35,7 +36,9 @@ export default function App() {
       import('./vault/platform').then(({ isTauri }) => {
         if (isTauri()) {
           import('./vault/vaultStore').then(({ useVaultStore }) => {
-            useVaultStore.getState().enable(vaultPath);
+            if (!useVaultStore.getState().isEnabled) {
+              useVaultStore.getState().enable(vaultPath);
+            }
           });
         }
       });

@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { Button } from '../ui/Button';
-import { exportToZip, importFromZip, importFromDirectory } from '../../vault/webExport';
+import { exportToZip, importFromZip, importFromDirectory, importFromPath } from '../../vault/webExport';
 import { isTauri, isMobileTauri } from '../../vault/platform';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { FolderBrowserModal } from '../ui/FolderBrowserModal';
 
 export function VaultSettings() {
   const { t } = useTranslation();
@@ -14,6 +15,7 @@ export function VaultSettings() {
   const update = useSettingsStore((s) => s.update);
   const vaultEnabled = useSettingsStore((s) => s.vaultEnabled);
   const vaultPath = useSettingsStore((s) => s.vaultPath);
+  const [folderBrowserOpen, setFolderBrowserOpen] = useState(false);
 
   const handleExport = async () => {
     setBusy(true);
@@ -81,20 +83,50 @@ export function VaultSettings() {
           onChange={handleImportZip}
         />
 
-        <Button variant="secondary" size="sm" onClick={() => folderInputRef.current?.click()} disabled={busy}>
-          {t('vault.importFolder')}
-        </Button>
-        <input
-          ref={folderInputRef}
-          type="file"
-          // @ts-expect-error webkitdirectory is non-standard
-          webkitdirectory=""
-          directory=""
-          multiple
-          className="hidden"
-          onChange={handleImportFolder}
-        />
+        {isTauri() ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setFolderBrowserOpen(true)}
+            disabled={busy}
+          >
+            {t('vault.importFolder')}
+          </Button>
+        ) : (
+          <>
+            <Button variant="secondary" size="sm" onClick={() => folderInputRef.current?.click()} disabled={busy}>
+              {t('vault.importFolder')}
+            </Button>
+            <input
+              ref={folderInputRef}
+              type="file"
+              // @ts-expect-error webkitdirectory is non-standard
+              webkitdirectory=""
+              directory=""
+              multiple
+              className="hidden"
+              onChange={handleImportFolder}
+            />
+          </>
+        )}
       </div>
+
+      <FolderBrowserModal
+        open={folderBrowserOpen}
+        onClose={() => setFolderBrowserOpen(false)}
+        onSelect={async (path) => {
+          setBusy(true);
+          setStatus(t('vault.importing'));
+          try {
+            await importFromPath(path);
+            setStatus(t('vault.importSuccess'));
+          } catch (err) {
+            setStatus(String(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
 
       {isTauri() && vaultEnabled && vaultPath && (
         <div className="mt-4">

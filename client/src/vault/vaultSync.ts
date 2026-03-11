@@ -25,7 +25,7 @@ export const fileIndex = new FileIndex();
 
 export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
   // Write vault marker
-  await backend.writeFile('.vault.json', JSON.stringify({
+  await backend.writeFile('vault.json', JSON.stringify({
     version: VAULT_VERSION,
     exportedAt: new Date().toISOString(),
   }, null, 2) + '\n');
@@ -163,177 +163,233 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
 
 // ─── Import all data from disk ────────────────────────────────────
 
-export async function importAllFromDisk(backend: VaultBackend): Promise<void> {
+export async function importAllFromDisk(backend: VaultBackend): Promise<number> {
   fileIndex.clear();
+  const counts: Record<string, number> = {};
+  const errors: string[] = [];
+
+  // Helper: try exists() without aborting — returns false on error
+  async function safeExists(path: string): Promise<boolean> {
+    try {
+      return await backend.exists(path);
+    } catch (err) {
+      errors.push(`exists("${path}"): ${err}`);
+      return false;
+    }
+  }
 
   // Settings
-  if (await backend.exists('settings.json')) {
-    const content = await backend.readFile('settings.json');
-    const imported = deserializeSettings(content);
-    const existing = await db.settings.get('default');
-    if (!existing || (imported.updatedAt && imported.updatedAt > (existing.updatedAt || ''))) {
-      await db.settings.put({ id: 'default', ...imported } as any);
+  try {
+    if (await safeExists('settings.json')) {
+      const content = await backend.readFile('settings.json');
+      const imported = deserializeSettings(content);
+      const existing = await db.settings.get('default');
+      if (!existing || (imported.updatedAt && imported.updatedAt > (existing.updatedAt || ''))) {
+        await db.settings.put({ id: 'default', ...imported } as any);
+        counts.settings = 1;
+      }
     }
-  }
+  } catch (err) { errors.push(`settings: ${err}`); }
 
   // Pomodoro presets
-  if (await backend.exists('pomodoro-presets.json')) {
-    const content = await backend.readFile('pomodoro-presets.json');
-    const presets = deserializePomodoroPresets(content);
-    for (const p of presets) {
-      await mergeEntity(db.pomodoroPresets, p);
+  try {
+    if (await safeExists('pomodoro-presets.json')) {
+      const content = await backend.readFile('pomodoro-presets.json');
+      const presets = deserializePomodoroPresets(content);
+      for (const p of presets) {
+        await mergeEntity(db.pomodoroPresets, p);
+      }
     }
-  }
+  } catch (err) { errors.push(`presets: ${err}`); }
 
   // Folders
-  if (await backend.exists('folders.json')) {
-    const content = await backend.readFile('folders.json');
-    const folders = deserializeFolders(content);
-    for (const f of folders) {
-      await mergeEntity(db.projectFolders, f);
+  try {
+    if (await safeExists('folders.json')) {
+      const content = await backend.readFile('folders.json');
+      const folders = deserializeFolders(content);
+      for (const f of folders) {
+        await mergeEntity(db.projectFolders, f);
+      }
     }
-  }
+  } catch (err) { errors.push(`folders: ${err}`); }
 
   // Activities
-  const activityFiles = await backend.listFiles('activities', '.md');
-  for (const filePath of activityFiles) {
-    const content = await backend.readFile(filePath);
-    const activity = deserializeActivity(content);
-    await mergeEntity(db.activities, activity);
-    fileIndex.set(activity.id, filePath);
-  }
+  try {
+    const activityFiles = await backend.listFiles('activities', '.md');
+    for (const filePath of activityFiles) {
+      const content = await backend.readFile(filePath);
+      const activity = deserializeActivity(content);
+      await mergeEntity(db.activities, activity);
+      fileIndex.set(activity.id, filePath);
+    }
+    counts.activities = activityFiles.length;
+  } catch (err) { errors.push(`activities: ${err}`); }
 
   // Notes
-  const noteFiles = await backend.listFiles('notes', '.md');
-  for (const filePath of noteFiles) {
-    const content = await backend.readFile(filePath);
-    const note = deserializeNote(content);
-    await mergeEntity(db.notes, note);
-    fileIndex.set(note.id, filePath);
-  }
+  try {
+    const noteFiles = await backend.listFiles('notes', '.md');
+    for (const filePath of noteFiles) {
+      const content = await backend.readFile(filePath);
+      const note = deserializeNote(content);
+      await mergeEntity(db.notes, note);
+      fileIndex.set(note.id, filePath);
+    }
+    counts.notes = noteFiles.length;
+  } catch (err) { errors.push(`notes: ${err}`); }
 
   // Projects + Tasks
-  const projectDirs = await backend.listDirs('projects');
-  for (const dirPath of projectDirs) {
-    const projectPath = dirPath + '/project.md';
-    if (!(await backend.exists(projectPath))) continue;
+  try {
+    let projectCount = 0;
+    const projectDirs = await backend.listDirs('projects');
+    for (const dirPath of projectDirs) {
+      const projectPath = dirPath + '/project.md';
+      if (!(await safeExists(projectPath))) continue;
 
-    const projectContent = await backend.readFile(projectPath);
-    const project = deserializeProject(projectContent);
+      const projectContent = await backend.readFile(projectPath);
+      const project = deserializeProject(projectContent);
 
-    // Extract name from directory
-    const dirName = dirPath.split('/').pop() || '';
-    const nameMatch = dirName.match(/^(.+)\s+\([a-f0-9]{6}\)$/);
-    project.name = nameMatch ? nameMatch[1] : dirName;
+      // Extract name from directory
+      const dirName = dirPath.split('/').pop() || '';
+      const nameMatch = dirName.match(/^(.+)\s+\([a-f0-9]{6}\)$/);
+      project.name = nameMatch ? nameMatch[1] : dirName;
 
-    await mergeEntity(db.projects, project);
-    fileIndex.set(project.id, projectPath);
+      await mergeEntity(db.projects, project);
+      fileIndex.set(project.id, projectPath);
+      projectCount++;
 
-    // Tasks
-    const tasksPath = dirPath + '/tasks.md';
-    if (await backend.exists(tasksPath)) {
-      const tasksContent = await backend.readFile(tasksPath);
-      const tasks = deserializeTasks(tasksContent);
-      for (const t of tasks) {
-        await mergeEntity(db.projectTasks, t);
+      // Tasks
+      const tasksPath = dirPath + '/tasks.md';
+      if (await safeExists(tasksPath)) {
+        const tasksContent = await backend.readFile(tasksPath);
+        const tasks = deserializeTasks(tasksContent);
+        for (const t of tasks) {
+          await mergeEntity(db.projectTasks, t);
+        }
       }
     }
-  }
+    counts.projects = projectCount;
+  } catch (err) { errors.push(`projects: ${err}`); }
 
   // Habits
-  const habitFiles = await backend.listFiles('habits', '.md');
-  for (const filePath of habitFiles) {
-    const content = await backend.readFile(filePath);
-    const { habit, entries } = deserializeHabit(content);
-    await mergeEntity(db.habits, habit);
-    fileIndex.set(habit.id, filePath);
-    for (const e of entries) {
-      await mergeEntity(db.habitEntries, e);
+  try {
+    const habitFiles = await backend.listFiles('habits', '.md');
+    for (const filePath of habitFiles) {
+      const content = await backend.readFile(filePath);
+      const { habit, entries } = deserializeHabit(content);
+      await mergeEntity(db.habits, habit);
+      fileIndex.set(habit.id, filePath);
+      for (const e of entries) {
+        await mergeEntity(db.habitEntries, e);
+      }
     }
-  }
+    counts.habits = habitFiles.length;
+  } catch (err) { errors.push(`habits: ${err}`); }
 
   // Mind maps
-  const mindMapFiles = await backend.listFiles('mind-maps', '.md');
-  for (const filePath of mindMapFiles) {
-    const content = await backend.readFile(filePath);
-    const mindMap = deserializeMindMap(content);
-    await mergeEntity(db.mindMaps, mindMap);
-    fileIndex.set(mindMap.id, filePath);
-  }
+  try {
+    const mindMapFiles = await backend.listFiles('mind-maps', '.md');
+    for (const filePath of mindMapFiles) {
+      const content = await backend.readFile(filePath);
+      const mindMap = deserializeMindMap(content);
+      await mergeEntity(db.mindMaps, mindMap);
+      fileIndex.set(mindMap.id, filePath);
+    }
+    counts.mindMaps = mindMapFiles.length;
+  } catch (err) { errors.push(`mindMaps: ${err}`); }
 
   // Inbox
-  if (await backend.exists('inbox.md')) {
-    const content = await backend.readFile('inbox.md');
-    const items = deserializeInbox(content);
-    for (const item of items) {
-      await mergeEntity(db.inboxItems, item);
+  try {
+    if (await safeExists('inbox.md')) {
+      const content = await backend.readFile('inbox.md');
+      const items = deserializeInbox(content);
+      for (const item of items) {
+        await mergeEntity(db.inboxItems, item);
+      }
     }
-  }
+  } catch (err) { errors.push(`inbox: ${err}`); }
 
   // PDF documents
-  if (await backend.exists('pdfs')) {
-    const pdfMetaFiles = await backend.listFiles('pdfs', '.json');
-    for (const filePath of pdfMetaFiles) {
-      const content = await backend.readFile(filePath);
-      const pdfMeta = deserializePdfMeta(content);
-      // Try to read the binary PDF
-      const binPath = filePath.replace(/\.json$/, '.pdf');
-      let pdfData: Blob | null = null;
-      let thumbnail: Blob | null = null;
-      if (backend.readBinaryFile && await backend.exists(binPath)) {
-        const bytes = await backend.readBinaryFile(binPath);
-        pdfData = new Blob([bytes.slice().buffer], { type: 'application/pdf' });
-        // Generate thumbnail
-        try {
-          const { generatePdfThumbnail } = await import('../utils/pdfThumbnail');
-          thumbnail = await generatePdfThumbnail(bytes.buffer as ArrayBuffer);
-        } catch { /* thumbnail generation is optional */ }
-      }
-      if (pdfData) {
-        const existing = await db.pdfDocuments.get(pdfMeta.id);
-        if (!existing) {
-          await db.pdfDocuments.put({
-            ...pdfMeta,
-            pdfData,
-            thumbnail,
-            deletedAt: null,
-          });
-        } else if (pdfMeta.updatedAt > (existing.updatedAt || '')) {
-          await db.pdfDocuments.put({
-            ...pdfMeta,
-            pdfData,
-            thumbnail,
-            deletedAt: existing.deletedAt,
-          });
+  try {
+    if (await safeExists('pdfs')) {
+      const pdfMetaFiles = await backend.listFiles('pdfs', '.json');
+      for (const filePath of pdfMetaFiles) {
+        const content = await backend.readFile(filePath);
+        const pdfMeta = deserializePdfMeta(content);
+        // Try to read the binary PDF
+        const binPath = filePath.replace(/\.json$/, '.pdf');
+        let pdfData: Blob | null = null;
+        let thumbnail: Blob | null = null;
+        if (backend.readBinaryFile && await safeExists(binPath)) {
+          const bytes = await backend.readBinaryFile(binPath);
+          pdfData = new Blob([bytes.slice().buffer], { type: 'application/pdf' });
+          // Generate thumbnail
+          try {
+            const { generatePdfThumbnail } = await import('../utils/pdfThumbnail');
+            thumbnail = await generatePdfThumbnail(bytes.buffer as ArrayBuffer);
+          } catch { /* thumbnail generation is optional */ }
         }
-        fileIndex.set(pdfMeta.id, filePath);
+        if (pdfData) {
+          const existing = await db.pdfDocuments.get(pdfMeta.id);
+          if (!existing) {
+            await db.pdfDocuments.put({
+              ...pdfMeta,
+              pdfData,
+              thumbnail,
+              deletedAt: null,
+            });
+          } else if (pdfMeta.updatedAt > (existing.updatedAt || '')) {
+            await db.pdfDocuments.put({
+              ...pdfMeta,
+              pdfData,
+              thumbnail,
+              deletedAt: existing.deletedAt,
+            });
+          }
+          fileIndex.set(pdfMeta.id, filePath);
+        }
       }
     }
-  }
+  } catch (err) { errors.push(`pdfs: ${err}`); }
 
   // Time logs
-  if (await backend.exists('time-log')) {
-    const timeLogFiles = await backend.listFiles('time-log', '.md');
-    for (const filePath of timeLogFiles) {
-      const content = await backend.readFile(filePath);
-      const { entries } = deserializeTimeLog(content);
-      for (const e of entries) {
-        await mergeEntity(db.timeEntries, e);
+  try {
+    if (await safeExists('time-log')) {
+      const timeLogFiles = await backend.listFiles('time-log', '.md');
+      for (const filePath of timeLogFiles) {
+        const content = await backend.readFile(filePath);
+        const { entries } = deserializeTimeLog(content);
+        for (const e of entries) {
+          await mergeEntity(db.timeEntries, e);
+        }
       }
     }
-  }
+  } catch (err) { errors.push(`timeLogs: ${err}`); }
 
   // Today tasks
-  if (await backend.exists('today')) {
-    const todayFiles = await backend.listFiles('today', '.md');
-    for (const filePath of todayFiles) {
-      const content = await backend.readFile(filePath);
-      const { tasks } = deserializeTodayTasks(content);
-      for (const t of tasks) {
-        await mergeEntity(db.todayTasks, t);
+  try {
+    if (await safeExists('today')) {
+      const todayFiles = await backend.listFiles('today', '.md');
+      for (const filePath of todayFiles) {
+        const content = await backend.readFile(filePath);
+        const { tasks } = deserializeTodayTasks(content);
+        for (const t of tasks) {
+          await mergeEntity(db.todayTasks, t);
+        }
       }
+      counts.todayTasks = todayFiles.length;
     }
+  } catch (err) { errors.push(`todayTasks: ${err}`); }
+
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  if (errors.length > 0) {
+    console.error('[vault] Import errors:', errors);
   }
+  console.log('[vault] Import complete:', counts, `(${total} total)`);
+  // If we had errors and imported nothing, something is fundamentally wrong — surface it
+  if (total === 0 && errors.length > 0) {
+    throw new Error(`Vault import failed: ${errors.slice(0, 3).join('; ')}`);
+  }
+  return total;
 }
 
 // ─── LWW Merge ────────────────────────────────────────────────────

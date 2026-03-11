@@ -75,3 +75,35 @@ export async function importFromDirectory(files: FileList): Promise<void> {
   await clearDataTables();
   await importAllFromDisk(backend);
 }
+
+/**
+ * Import vault data from a filesystem path using Tauri FS.
+ * Used on Android where webkitdirectory is not supported.
+ */
+export async function importFromPath(folderPath: string): Promise<void> {
+  const { readDir, readTextFile } = await import('@tauri-apps/plugin-fs');
+  const backend = new MemoryBackend();
+
+  async function scanDir(dir: string, prefix: string): Promise<void> {
+    const entries = await readDir(dir);
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      const fullPath = `${dir}/${entry.name}`;
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory) {
+        await scanDir(fullPath, relativePath);
+      } else {
+        try {
+          const content = await readTextFile(fullPath);
+          await backend.writeFile(relativePath, content);
+        } catch {
+          // Skip binary/unreadable files
+        }
+      }
+    }
+  }
+
+  await scanDir(folderPath, '');
+  await clearDataTables();
+  await importAllFromDisk(backend);
+}

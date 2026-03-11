@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useProjects } from '../../hooks/useProjects';
 import { useActivities } from '../../hooks/useActivities';
+import { useFolders } from '../../hooks/useFolders';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -13,6 +14,8 @@ import { FileTree } from './FileTree';
 import { ProjectTabs } from './ProjectTabs';
 import { ProjectDraftEditor } from './ProjectDraftEditor';
 import { ProjectTaskList } from './ProjectTaskList';
+import { AddProjectModal } from './AddProjectModal';
+import { AddFolderModal } from './AddFolderModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
 
 const MIN_SIDEBAR = 160;
@@ -25,28 +28,48 @@ const MAX_TASK_PANEL_HEIGHT_RATIO = 0.7;
 export function ProjectsView() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { projects, updateProject, deleteProject } = useProjects();
+  const { projects, createProject, updateProject, deleteProject } = useProjects();
   const { activities } = useActivities();
+  const { folders, createFolder } = useFolders();
   const inboxCount = useLiveQuery(
     () => db.inboxItems.filter((i) => !i.deletedAt).count(),
+    [],
+  );
+  const taskCounts = useLiveQuery(
+    () => db.projectTasks.filter(t => !t.deletedAt).toArray().then(tasks => {
+      const counts: Record<string, { total: number; done: number }> = {};
+      for (const task of tasks) {
+        if (!counts[task.projectId]) counts[task.projectId] = { total: 0, done: 0 };
+        counts[task.projectId].total++;
+        if (task.completedAt) counts[task.projectId].done++;
+      }
+      return counts;
+    }),
     [],
   );
   const activeTabId = useProjectUIStore((s) => s.activeTabId);
   const openTabs = useProjectUIStore((s) => s.openTabs);
   const openTab = useProjectUIStore((s) => s.openTab);
   const setActiveTab = useProjectUIStore((s) => s.setActiveTab);
+  const clearActiveTab = useProjectUIStore((s) => s.clearActiveTab);
   const closeTab = useProjectUIStore((s) => s.closeTab);
   const sidebarCollapsed = useProjectUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useProjectUIStore((s) => s.toggleSidebar);
   const splitDirection = useProjectUIStore((s) => s.splitDirection);
   const setSplitDirection = useProjectUIStore((s) => s.setSplitDirection);
   const navPosition = useSettingsStore((s) => s.navPosition);
+  const mobileProjectGrid = useSettingsStore((s) => s.mobileProjectGrid);
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [gridDeleteProject, setGridDeleteProject] = useState<typeof projects[0] | null>(null);
+  const [showAddProject, setShowAddProject] = useState(false);
+  const [showAddFolder, setShowAddFolder] = useState(false);
   const [isDesktop, setIsDesktop] = useState(() => window.matchMedia('(min-width: 768px)').matches);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Mobile bottom sheet state
-  const [sheetHeight, setSheetHeight] = useState<number | null>(null);
+  // Mobile bottom sheet state (persisted in store to survive navigation)
+  const sheetHeight = useProjectUIStore((s) => s.mobileSheetHeight);
+  const setSheetHeight = useProjectUIStore((s) => s.setMobileSheetHeight);
   const [isDragging, setIsDragging] = useState(false);
   const mobileContainerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ y: number; height: number } | null>(null);
@@ -59,10 +82,12 @@ export function ProjectsView() {
   }, []);
 
   // Auto-open first project when no tab is active
+  // Skip on mobile when grid view is enabled (user picks from grid instead)
   useEffect(() => {
+    if (!isDesktop && mobileProjectGrid) return;
     if (activeTabId || projects.length === 0) return;
     openTab(projects[0].id);
-  }, [projects, activeTabId, openTab]);
+  }, [projects, activeTabId, openTab, isDesktop, mobileProjectGrid]);
 
   // Resizable sidebar width
   const [sidebarWidth, setSidebarWidth] = useState(220);
@@ -79,6 +104,7 @@ export function ProjectsView() {
 
   const hasBottomNav = !isDesktop && navPosition !== 'dropdown';
   const activeProject = projects.find((p) => p.id === activeTabId) ?? null;
+  const hasActiveProject = !!activeProject;
 
   // Map open tab IDs to project objects for mobile selector
   const openProjects = openTabs.map((id) => projects.find((p) => p.id === id)).filter(Boolean) as typeof projects;
@@ -146,13 +172,22 @@ export function ProjectsView() {
     if (isDesktop) return;
     const container = mobileContainerRef.current;
     if (!container) return;
-    const update = () => setSheetHeight(container.clientHeight * 0.5);
-    // Set initial height once container is measured
-    if (sheetHeight === null) update();
-    const ro = new ResizeObserver(update);
+    // Only initialize when null; on resize, clamp to valid range
+    if (useProjectUIStore.getState().mobileSheetHeight === null) {
+      setSheetHeight(container.clientHeight * 0.5);
+    }
+    const ro = new ResizeObserver(() => {
+      const current = useProjectUIStore.getState().mobileSheetHeight;
+      if (current === null) {
+        setSheetHeight(container.clientHeight * 0.5);
+      } else {
+        const clamped = Math.min(container.clientHeight * 0.85, Math.max(40, current));
+        if (clamped !== current) setSheetHeight(clamped);
+      }
+    });
     ro.observe(container);
     return () => ro.disconnect();
-  }, [isDesktop, activeTabId]); // reset when switching projects too
+  }, [isDesktop, hasActiveProject]); // re-run when project loads (container appears)
 
   const handleSheetTouchStart = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
@@ -211,13 +246,13 @@ export function ProjectsView() {
       const container = mobileContainerRef.current;
       if (!container) return;
       const containerH = container.clientHeight;
-      setSheetHeight((prev) => {
-        if (prev === null) return prev;
-        const snapPoints = [40, containerH * 0.5, containerH * 0.85];
-        return snapPoints.reduce((a, b) =>
-          Math.abs(b - prev) < Math.abs(a - prev) ? b : a,
-        );
-      });
+      const current = useProjectUIStore.getState().mobileSheetHeight;
+      if (current === null) return;
+      const snapPoints = [40, containerH * 0.5, containerH * 0.85];
+      const nearest = snapPoints.reduce((a, b) =>
+        Math.abs(b - current) < Math.abs(a - current) ? b : a,
+      );
+      setSheetHeight(nearest);
     };
 
     document.body.style.cursor = 'grab';
@@ -301,15 +336,15 @@ export function ProjectsView() {
       <AnimatePresence>
         {mobileTreeOpen && (
           <motion.div
-            className="fixed top-0 left-0 bottom-0 z-20 w-[260px] bg-bg-primary md:hidden flex flex-col"
+            className="fixed top-0 left-0 bottom-0 z-20 w-[87.5vw] bg-bg-primary md:hidden flex flex-col text-[15px]"
             style={{ boxShadow: NEU.sidebarRight }}
-            initial={{ x: -260 }}
+            initial={{ x: '-100%' }}
             animate={{ x: 0 }}
-            exit={{ x: -260 }}
+            exit={{ x: '-100%' }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
           >
-            <div className="px-3 pb-1" style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}>
-              <h2 className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70">
+            <div className="px-4 pb-1" style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}>
+              <h2 className="text-[11px] font-semibold uppercase tracking-widest text-text-muted/70">
                 {t('projects.title')}
               </h2>
             </div>
@@ -320,57 +355,115 @@ export function ProjectsView() {
 
       {/* Right panel - tabs + content, fills all remaining space */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        {/* Mobile top bar — hamburger + project dropdown + actions */}
+        {/* Mobile top bar */}
         <div
           className="flex md:hidden items-center gap-2 border-b border-border px-2 py-1.5 shrink-0 bg-bg-primary"
           style={{ paddingTop: 'calc(0.375rem + env(safe-area-inset-top, 0px))' }}
         >
-          <button
-            onClick={() => setMobileTreeOpen(!mobileTreeOpen)}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted shrink-0"
-            style={{ boxShadow: NEU.raisedSm }}
-          >
-            {mobileTreeOpen ? '✕' : '☰'}
-          </button>
-
-          {/* Native select for project switching */}
-          {openProjects.length > 0 ? (
-            <select
-              value={activeTabId ?? ''}
-              onChange={(e) => setActiveTab(e.target.value)}
-              className="flex-1 min-w-0 bg-bg-primary text-text-primary text-sm rounded-lg px-2 py-1 border border-border appearance-none truncate"
-              style={{ boxShadow: NEU.pressedSm }}
-            >
-              {openProjects.map((p) => (
-                <option key={p.id} value={p.id}>{(p as any).icon ? `${(p as any).icon} ${p.name}` : p.name}</option>
-              ))}
-            </select>
-          ) : (
-            <span className="flex-1 text-sm text-text-muted truncate">{t('projects.title')}</span>
-          )}
-
-          <div className="flex items-center gap-1 shrink-0">
-            {(inboxCount ?? 0) > 0 && (
+          {mobileProjectGrid && activeProject ? (
+            /* Grid mode: editor bar — back + name + hamburger */
+            <>
               <button
-                onClick={() => navigate('/inbox?mode=sort')}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:text-accent transition-colors"
-                title={t('projects.sortInbox')}
+                onClick={clearActiveTab}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted shrink-0"
+                style={{ boxShadow: NEU.raisedSm }}
+                title={t('projects.back')}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
-                  <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                  <polyline points="15 18 9 12 15 6" />
                 </svg>
               </button>
-            )}
-            {activeProject && (
+              <span className="flex-1 text-sm text-text-primary font-medium truncate">
+                {(activeProject as any).icon ? `${(activeProject as any).icon} ` : ''}{activeProject.name}
+              </span>
               <button
-                onClick={handleDelete}
-                className="text-[11px] text-text-muted hover:text-red transition-colors px-1"
+                onClick={() => setMobileTreeOpen(!mobileTreeOpen)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted shrink-0"
+                style={{ boxShadow: NEU.raisedSm }}
               >
-                {t('projects.delete')}
+                {mobileTreeOpen ? '✕' : '☰'}
               </button>
-            )}
-          </div>
+            </>
+          ) : mobileProjectGrid && !activeProject ? (
+            /* Grid mode: grid title bar */
+            <>
+              <span className="flex-1 text-sm text-text-primary font-medium">{t('projects.title')}</span>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => setShowAddFolder(true)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:text-accent transition-colors"
+                  style={{ boxShadow: NEU.raisedSm }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    <line x1="12" y1="11" x2="12" y2="17" />
+                    <line x1="9" y1="14" x2="15" y2="14" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setShowAddProject(true)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:text-accent transition-colors"
+                  style={{ boxShadow: NEU.raisedSm }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+                {(inboxCount ?? 0) > 0 && (
+                  <button
+                    onClick={() => navigate('/inbox?mode=sort')}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:text-accent transition-colors"
+                    title={t('projects.sortInbox')}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+                      <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            /* Sidemenu mode (default): hamburger + select dropdown */
+            <>
+              <button
+                onClick={() => setMobileTreeOpen(!mobileTreeOpen)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted shrink-0"
+                style={{ boxShadow: NEU.raisedSm }}
+              >
+                {mobileTreeOpen ? '✕' : '☰'}
+              </button>
+              {openProjects.length > 0 ? (
+                <select
+                  value={activeTabId ?? ''}
+                  onChange={(e) => setActiveTab(e.target.value)}
+                  className="flex-1 min-w-0 bg-bg-primary text-text-primary text-sm rounded-lg px-2 py-1 border border-border appearance-none truncate"
+                  style={{ boxShadow: NEU.pressedSm }}
+                >
+                  {openProjects.map((p) => (
+                    <option key={p.id} value={p.id}>{(p as any).icon ? `${(p as any).icon} ${p.name}` : p.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="flex-1 text-sm text-text-muted truncate">{t('projects.title')}</span>
+              )}
+              <div className="flex items-center gap-1 shrink-0">
+                {(inboxCount ?? 0) > 0 && (
+                  <button
+                    onClick={() => navigate('/inbox?mode=sort')}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:text-accent transition-colors"
+                    title={t('projects.sortInbox')}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+                      <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Desktop tab bar - hidden on mobile */}
@@ -542,12 +635,118 @@ export function ProjectsView() {
               </div>
             </motion.div>
           )
+        ) : !isDesktop && mobileProjectGrid ? (
+          /* Mobile grid view */
+          <div className="flex-1 overflow-y-auto p-3">
+            <div className="grid grid-cols-2 gap-3">
+              {(() => {
+                const grouped: { folderId: string | null; folderName: string; folderColor: string; items: typeof projects }[] = [];
+                const byFolder = new Map<string | null, typeof projects>();
+
+                for (const p of projects) {
+                  const fid = (p as any).folderId ?? null;
+                  if (!byFolder.has(fid)) byFolder.set(fid, []);
+                  byFolder.get(fid)!.push(p);
+                }
+
+                for (const folder of folders) {
+                  const items = byFolder.get(folder.id);
+                  if (items && items.length > 0) {
+                    grouped.push({ folderId: folder.id, folderName: folder.name, folderColor: folder.color, items });
+                  }
+                }
+
+                const unfiled = byFolder.get(null);
+                if (unfiled && unfiled.length > 0) {
+                  grouped.push({ folderId: null, folderName: '', folderColor: '', items: unfiled });
+                }
+
+                return grouped.map((group) => (
+                  <React.Fragment key={group.folderId ?? '__unfiled'}>
+                    {group.folderId && (
+                      <div className="col-span-2 flex items-center gap-2 mt-2 first:mt-0">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: group.folderColor }} />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-text-muted/70">{group.folderName}</span>
+                      </div>
+                    )}
+                    {!group.folderId && grouped.length > 1 && (
+                      <div className="col-span-2 flex items-center gap-2 mt-2 first:mt-0">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-text-muted/70">Unfiled</span>
+                      </div>
+                    )}
+
+                    {group.items.map((p) => {
+                      const counts = taskCounts?.[p.id];
+                      return (
+                        <motion.button
+                          key={p.id}
+                          whileTap={{ scale: 0.96 }}
+                          onClick={() => openTab(p.id)}
+                          onTouchStart={() => {
+                            longPressTimerRef.current = setTimeout(() => {
+                              setGridDeleteProject(p);
+                            }, 600);
+                          }}
+                          onTouchEnd={() => {
+                            if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+                          }}
+                          onTouchMove={() => {
+                            if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+                          }}
+                          className="flex flex-col items-start gap-1.5 p-3 rounded-2xl bg-bg-card text-left"
+                          style={{ boxShadow: NEU.raised }}
+                        >
+                          <div className="flex items-center gap-2 w-full">
+                            {(p as any).icon ? (
+                              <span className="text-lg">{(p as any).icon}</span>
+                            ) : (
+                              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                            )}
+                            <span className="text-sm font-medium text-text-primary truncate">{p.name}</span>
+                          </div>
+                          {counts && (
+                            <span className="text-[11px] text-text-muted">
+                              {counts.done}/{counts.total} tasks
+                            </span>
+                          )}
+                        </motion.button>
+                      );
+                    })}
+                  </React.Fragment>
+                ));
+              })()}
+
+              <motion.button
+                whileTap={{ scale: 0.96 }}
+                onClick={() => setShowAddProject(true)}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-2xl border-2 border-dashed border-border text-text-muted"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span className="text-xs">{t('projects.newTitle')}</span>
+              </motion.button>
+            </div>
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
             {t('projects.empty')}
           </div>
         )}
       </div>
+
+      {/* Modals for mobile grid */}
+      <AddFolderModal
+        open={showAddFolder}
+        onClose={() => setShowAddFolder(false)}
+        onAdd={async (data) => { await createFolder(data.name, data.color); }}
+      />
+      <AddProjectModal
+        open={showAddProject}
+        onClose={() => setShowAddProject(false)}
+        onAdd={async (data) => { const p = await createProject(data); openTab(p.id); }}
+      />
 
       <ConfirmModal
         open={showDeleteConfirm}
@@ -556,6 +755,21 @@ export function ProjectsView() {
           if (activeProject) {
             closeTab(activeProject.id);
             deleteProject(activeProject.id);
+          }
+        }}
+        title={t('projects.delete')}
+        message={t('projects.deleteConfirm')}
+      />
+
+      {/* Grid long-press delete */}
+      <ConfirmModal
+        open={!!gridDeleteProject}
+        onClose={() => setGridDeleteProject(null)}
+        onConfirm={() => {
+          if (gridDeleteProject) {
+            closeTab(gridDeleteProject.id);
+            deleteProject(gridDeleteProject.id);
+            setGridDeleteProject(null);
           }
         }}
         title={t('projects.delete')}

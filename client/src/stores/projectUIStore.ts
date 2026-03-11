@@ -7,11 +7,14 @@ interface ProjectUIState {
   activeTabId: string | null;
   sidebarCollapsed: boolean;
   splitDirection: SplitDirection;
+  mobileSheetHeight: number | null;
   openTab: (id: string) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
+  clearActiveTab: () => void;
   toggleSidebar: () => void;
   setSplitDirection: (dir: SplitDirection) => void;
+  setMobileSheetHeight: (height: number | null) => void;
 }
 
 export const useProjectUIStore = create<ProjectUIState>((set, get) => ({
@@ -19,6 +22,7 @@ export const useProjectUIStore = create<ProjectUIState>((set, get) => ({
   activeTabId: null,
   sidebarCollapsed: false,
   splitDirection: 'vertical',
+  mobileSheetHeight: null,
   openTab: (id) => {
     const { openTabs } = get();
     if (!openTabs.includes(id)) {
@@ -38,6 +42,8 @@ export const useProjectUIStore = create<ProjectUIState>((set, get) => ({
     set({ openTabs: newTabs, activeTabId: newActive });
   },
   setActiveTab: (id) => set({ activeTabId: id }),
+  clearActiveTab: () => set({ activeTabId: null }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSplitDirection: (dir) => set({ splitDirection: dir }),
+  setMobileSheetHeight: (height) => set({ mobileSheetHeight: height }),
 }));
