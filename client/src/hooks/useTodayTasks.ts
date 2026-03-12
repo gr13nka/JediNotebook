@@ -1,12 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { generateId, getDeviceId } from '../utils/uuid';
+import { getLogicalDate } from '../utils/time';
+import { useSettingsStore } from '../stores/settingsStore';
 import type { TodayTask } from '@shared/types';
 import { awardXP, XP_VALUES } from '../utils/streak';
-
-function getTodayDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export interface EnrichedTodayTask extends TodayTask {
   taskTitle: string;
@@ -17,7 +15,8 @@ export interface EnrichedTodayTask extends TodayTask {
 }
 
 export function useTodayTasks() {
-  const date = getTodayDate();
+  const dayStartHour = useSettingsStore((s) => s.dayStartHour);
+  const date = getLogicalDate(dayStartHour);
 
   const enrichedTasks = useLiveQuery(
     async () => {
@@ -88,18 +87,20 @@ export function useTodayTasks() {
     if (!tt) return;
     const now = new Date().toISOString();
     const newCompleted = !tt.isCompleted;
-    await db.todayTasks.update(id, {
-      isCompleted: newCompleted,
-      completedAt: newCompleted ? now : null,
-      updatedAt: now,
+    await db.transaction('rw', [db.todayTasks, db.projectTasks], async () => {
+      await db.todayTasks.update(id, {
+        isCompleted: newCompleted,
+        completedAt: newCompleted ? now : null,
+        updatedAt: now,
+      });
+      // Sync to underlying ProjectTask
+      await db.projectTasks.update(tt.projectTaskId, {
+        isCompleted: newCompleted,
+        completedAt: newCompleted ? now : null,
+        updatedAt: now,
+      });
     });
     if (newCompleted) awardXP(XP_VALUES.completeTask);
-    // Sync to underlying ProjectTask
-    await db.projectTasks.update(tt.projectTaskId, {
-      isCompleted: newCompleted,
-      completedAt: newCompleted ? now : null,
-      updatedAt: now,
-    });
   };
 
   const toggleToday = async (projectTaskId: string, projectId: string) => {

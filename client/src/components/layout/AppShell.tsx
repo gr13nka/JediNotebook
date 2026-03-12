@@ -6,7 +6,7 @@ import { DesktopBottomNav } from './DesktopBottomNav';
 import { DropdownNav } from './DropdownNav';
 import { useSettingsStore } from '../../stores/settingsStore';
 
-const WIDE_PAGES = ['/projects', '/tasks', '/notes', '/mindmap'];
+const WIDE_PAGES = ['/projects', '/tasks', '/notes', '/mindmap', '/settings'];
 const FULL_BLEED_PAGES = ['/projects', '/mindmap'];
 const HIDE_NAV_PAGES: string[] = [];
 

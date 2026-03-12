@@ -86,6 +86,10 @@ export const DEFAULT_SETTINGS = {
   taskTimerMinutes: 20,
   bottomNavTabs: ['/inbox', '/projects', '/tasks', '/today', '/settings'] as string[],
   bottomNavScrollable: false,
+  bottomNavPages: [
+    ['/', '/today', '/projects', '/habits', '/inbox'],
+    ['/mindmap', '/notes', '/tasks', '/settings'],
+  ] as string[][],
   mobileProjectGrid: false,
 };
 

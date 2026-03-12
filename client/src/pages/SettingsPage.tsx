@@ -1,5 +1,5 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ThemeToggle } from '../components/settings/ThemeToggle';
 import { BarStylePicker } from '../components/settings/BarStylePicker';
 import { DayBoundarySettings } from '../components/settings/DayBoundarySettings';
@@ -17,22 +17,79 @@ import { MobileProjectSettings } from '../components/settings/MobileProjectSetti
 import { GamificationSettings } from '../components/settings/GamificationSettings';
 import { TaskTimerSettings } from '../components/settings/TaskTimerSettings';
 import { Card } from '../components/ui/Card';
+import { NEU } from '../utils/shadows';
 import { useTranslation } from '../i18n/useTranslation';
+import { DailyView } from '../components/analytics/DailyView';
+import { WeeklyView } from '../components/analytics/WeeklyView';
+import { MonthlyView } from '../components/analytics/MonthlyView';
+import { StreaksView } from '../components/analytics/StreaksView';
+
+type TopTab = 'settings' | 'analytics';
+type AnalyticsTab = 'daily' | 'weekly' | 'monthly' | 'streaks';
+
+const Divider = () => <div className="border-t border-border my-3" />;
+
+function ThemeSection() {
+  return (
+    <>
+      <ThemeToggle />
+      <Divider />
+      <AccentColorPicker />
+    </>
+  );
+}
+
+function AppearanceSection() {
+  return (
+    <>
+      <BarStylePicker />
+      <Divider />
+      <ZoomSettings />
+    </>
+  );
+}
+
+function NavigationSection() {
+  return (
+    <>
+      <NavPositionPicker />
+      <Divider />
+      <BottomNavSettings />
+      <Divider />
+      <MobileProjectSettings />
+    </>
+  );
+}
+
+function TimeSection() {
+  return (
+    <>
+      <DayBoundarySettings />
+      <Divider />
+      <TimezoneSettings />
+    </>
+  );
+}
+
+function TasksSection() {
+  return (
+    <>
+      <TaskSettings />
+      <Divider />
+      <TaskTimerSettings />
+      <Divider />
+      <ProcrastinationWordSettings />
+    </>
+  );
+}
 
 const sectionComponents = [
   { key: 'settings.language', component: LanguagePicker },
-  { key: 'settings.theme', component: ThemeToggle },
-  { key: 'settings.accent', component: AccentColorPicker },
-  { key: 'settings.appearance', component: BarStylePicker },
-  { key: 'settings.navPosition', component: NavPositionPicker },
-  { key: 'settings.bottomNav', component: BottomNavSettings },
-  { key: 'settings.zoom', component: ZoomSettings },
-  { key: 'settings.time', component: DayBoundarySettings },
-  { key: 'settings.timezone', component: TimezoneSettings },
-  { key: 'settings.mobileProjects', component: MobileProjectSettings },
-  { key: 'settings.tasks', component: TaskSettings },
-  { key: 'settings.taskTimer', component: TaskTimerSettings },
-  { key: 'settings.procrastination', component: ProcrastinationWordSettings },
+  { key: 'settings.theme', component: ThemeSection },
+  { key: 'settings.appearance', component: AppearanceSection },
+  { key: 'settings.navPosition', component: NavigationSection },
+  { key: 'settings.time', component: TimeSection },
+  { key: 'settings.tasks', component: TasksSection },
   { key: 'settings.notifications', component: TimerNotificationSettings },
   { key: 'settings.gamification', component: GamificationSettings },
   { key: 'settings.vault', component: VaultSettings },
@@ -53,27 +110,133 @@ const item = {
 
 export function SettingsPage() {
   const { t } = useTranslation();
+  const [topTab, setTopTab] = useState<TopTab>('settings');
+  const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>('daily');
+
+  const topTabs: { value: TopTab; label: string }[] = [
+    { value: 'settings', label: t('settings.tabSettings') },
+    { value: 'analytics', label: t('settings.tabAnalytics') },
+  ];
+
+  const analyticsTabs: { value: AnalyticsTab; label: string }[] = [
+    { value: 'daily', label: t('analytics.daily') },
+    { value: 'weekly', label: t('analytics.weekly') },
+    { value: 'monthly', label: t('analytics.monthly') },
+    { value: 'streaks', label: t('analytics.streaks') },
+  ];
 
   return (
     <div>
-      <h1 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-6">{t('settings.title')}</h1>
-      <motion.div
-        className="flex flex-col gap-8"
-        variants={container}
-        initial="hidden"
-        animate="show"
+      <h1 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-4">{t('settings.title')}</h1>
+
+      {/* Top-level tab bar */}
+      <div
+        className="flex gap-1 mb-6 bg-bg-card rounded-lg p-1"
+        style={{ boxShadow: NEU.pressed }}
       >
-        {sectionComponents.map((section) => (
-          <motion.div key={section.key} variants={item}>
-            <span className="block text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-2 pl-1">
-              {t(section.key)}
-            </span>
-            <Card>
-              <section.component />
-            </Card>
-          </motion.div>
+        {topTabs.map((tb) => (
+          <button
+            key={tb.value}
+            onClick={() => setTopTab(tb.value)}
+            className={`relative flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              topTab === tb.value
+                ? 'text-text-primary'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            {topTab === tb.value && (
+              <motion.div
+                layoutId="settings-tab"
+                className="absolute inset-0 rounded-md bg-bg-primary"
+                style={{ boxShadow: NEU.raisedSm }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              />
+            )}
+            <span className="relative z-10">{tb.label}</span>
+          </button>
         ))}
-      </motion.div>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {topTab === 'settings' ? (
+          <motion.div
+            key="settings"
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -8 }}
+            transition={{ duration: 0.15 }}
+          >
+            <motion.div
+              className="flex flex-col gap-8"
+              variants={container}
+              initial="hidden"
+              animate="show"
+            >
+              {sectionComponents.map((section) => (
+                <motion.div key={section.key} variants={item}>
+                  <span className="block text-[10px] font-semibold uppercase tracking-widest text-text-muted/70 mb-2 pl-1">
+                    {t(section.key)}
+                  </span>
+                  <Card>
+                    <section.component />
+                  </Card>
+                </motion.div>
+              ))}
+            </motion.div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="analytics"
+            initial={{ opacity: 0, x: 8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 8 }}
+            transition={{ duration: 0.15 }}
+          >
+            {/* Analytics sub-tabs */}
+            <div
+              className="flex gap-1 mb-6 bg-bg-card rounded-lg p-1"
+              style={{ boxShadow: NEU.pressed }}
+            >
+              {analyticsTabs.map((tb) => (
+                <button
+                  key={tb.value}
+                  onClick={() => setAnalyticsTab(tb.value)}
+                  className={`relative flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    analyticsTab === tb.value
+                      ? 'text-text-primary'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  {analyticsTab === tb.value && (
+                    <motion.div
+                      layoutId="analytics-subtab"
+                      className="absolute inset-0 rounded-md bg-bg-primary"
+                      style={{ boxShadow: NEU.raisedSm }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10">{tb.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={analyticsTab}
+                initial={{ opacity: 0, x: 8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                {analyticsTab === 'daily' && <DailyView />}
+                {analyticsTab === 'weekly' && <WeeklyView />}
+                {analyticsTab === 'monthly' && <MonthlyView />}
+                {analyticsTab === 'streaks' && <StreaksView />}
+              </motion.div>
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

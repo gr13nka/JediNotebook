@@ -163,7 +163,7 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
 
 // ─── Import all data from disk ────────────────────────────────────
 
-export async function importAllFromDisk(backend: VaultBackend): Promise<number> {
+export async function importAllFromDisk(backend: VaultBackend): Promise<{ total: number; counts: Record<string, number>; errors: string[] }> {
   fileIndex.clear();
   const counts: Record<string, number> = {};
   const errors: string[] = [];
@@ -320,33 +320,38 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<number> 
         let pdfData: Blob | null = null;
         let thumbnail: Blob | null = null;
         if (backend.readBinaryFile && await safeExists(binPath)) {
-          const bytes = await backend.readBinaryFile(binPath);
-          pdfData = new Blob([bytes.slice().buffer], { type: 'application/pdf' });
-          // Generate thumbnail
           try {
-            const { generatePdfThumbnail } = await import('../utils/pdfThumbnail');
-            thumbnail = await generatePdfThumbnail(bytes.buffer as ArrayBuffer);
-          } catch { /* thumbnail generation is optional */ }
-        }
-        if (pdfData) {
-          const existing = await db.pdfDocuments.get(pdfMeta.id);
-          if (!existing) {
-            await db.pdfDocuments.put({
-              ...pdfMeta,
-              pdfData,
-              thumbnail,
-              deletedAt: null,
-            });
-          } else if (pdfMeta.updatedAt > (existing.updatedAt || '')) {
-            await db.pdfDocuments.put({
-              ...pdfMeta,
-              pdfData,
-              thumbnail,
-              deletedAt: existing.deletedAt,
-            });
+            const bytes = await backend.readBinaryFile(binPath);
+            pdfData = new Blob([bytes.slice().buffer], { type: 'application/pdf' });
+            // Generate thumbnail
+            try {
+              const { generatePdfThumbnail } = await import('../utils/pdfThumbnail');
+              thumbnail = await generatePdfThumbnail(bytes.buffer as ArrayBuffer);
+            } catch { /* thumbnail generation is optional */ }
+          } catch (binErr) {
+            errors.push(`pdf binary "${binPath}": ${binErr}`);
           }
-          fileIndex.set(pdfMeta.id, filePath);
         }
+        // Import metadata even if binary read failed — use existing local binary or empty placeholder
+        const existing = await db.pdfDocuments.get(pdfMeta.id);
+        const effectivePdfData = pdfData || (existing?.pdfData?.size ? existing.pdfData : new Blob([], { type: 'application/pdf' }));
+        const effectiveThumbnail = thumbnail || existing?.thumbnail || null;
+        if (!existing) {
+          await db.pdfDocuments.put({
+            ...pdfMeta,
+            pdfData: effectivePdfData,
+            thumbnail: effectiveThumbnail,
+            deletedAt: null,
+          });
+        } else if (pdfMeta.updatedAt > (existing.updatedAt || '')) {
+          await db.pdfDocuments.put({
+            ...pdfMeta,
+            pdfData: effectivePdfData,
+            thumbnail: effectiveThumbnail,
+            deletedAt: existing.deletedAt,
+          });
+        }
+        fileIndex.set(pdfMeta.id, filePath);
       }
     }
   } catch (err) { errors.push(`pdfs: ${err}`); }
@@ -389,7 +394,7 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<number> 
   if (total === 0 && errors.length > 0) {
     throw new Error(`Vault import failed: ${errors.slice(0, 3).join('; ')}`);
   }
-  return total;
+  return { total, counts, errors };
 }
 
 // ─── LWW Merge ────────────────────────────────────────────────────
@@ -542,7 +547,7 @@ export async function writeEntityToDisk(
       if (activeItems.length === 0) {
         if (await backend.exists('inbox.md')) await backend.deleteFile('inbox.md');
       } else {
-        const { path, content } = serializeInbox(allItems);
+        const { path, content } = serializeInbox(activeItems);
         await backend.writeFile(path, content);
       }
       break;
@@ -567,9 +572,17 @@ export async function writeEntityToDisk(
       }
       await backend.writeFile(path, content);
       if (backend.writeBinaryFile) {
-        const binPath = pdfBinaryPath(pdf);
-        const arrayBuf = await pdf.pdfData.arrayBuffer();
-        await backend.writeBinaryFile(binPath, new Uint8Array(arrayBuf));
+        try {
+          const binPath = pdfBinaryPath(pdf);
+          const arrayBuf = await pdf.pdfData.arrayBuffer();
+          await backend.writeBinaryFile(binPath, new Uint8Array(arrayBuf));
+        } catch (binErr) {
+          // Binary write failed — remove orphaned metadata file so next sync retries fully
+          await backend.deleteFile(path).catch(() => {});
+          fileIndex.removeId(pdf.id);
+          console.error('[vault] PDF binary write failed, removed metadata:', binErr);
+          break;
+        }
       }
       fileIndex.set(pdf.id, path);
       break;

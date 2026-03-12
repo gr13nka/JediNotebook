@@ -8,6 +8,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { db } from '../../db';
 import { generateId, getDeviceId } from '../../utils/uuid';
 import { ACTIVITY_COLORS, NOTE_COLORS } from '@shared/constants';
+import { awardXP, XP_VALUES } from '../../utils/streak';
 import { Card } from '../ui/Card';
 import { ReviewView } from '../review/ReviewView';
 
@@ -150,6 +151,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
       deletedAt: null,
       deviceId: getDeviceId(),
     });
+    awardXP(XP_VALUES.createTask);
     await deleteItem(itemId);
     setTaskModePickerId(null);
   };
@@ -229,6 +231,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
       deletedAt: null,
       deviceId: getDeviceId(),
     });
+    awardXP(XP_VALUES.createTask);
     await deleteItem(currentItem.id);
     moveToNext();
   };
@@ -270,6 +273,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
       deletedAt: null,
       deviceId: getDeviceId(),
     });
+    awardXP(XP_VALUES.createNote);
     await deleteItem(currentItem.id);
     moveToNext();
   };

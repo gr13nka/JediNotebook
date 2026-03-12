@@ -111,6 +111,7 @@ interface SettingsState {
   gamificationEnabled: boolean;
   bottomNavTabs: string[];
   bottomNavScrollable: boolean;
+  bottomNavPages: string[][];
   mobileProjectGrid: boolean;
   loaded: boolean;
   load: () => Promise<void>;
@@ -176,6 +177,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         gamificationEnabled: raw.gamificationEnabled ?? DEFAULT_SETTINGS.gamificationEnabled,
         bottomNavTabs: raw.bottomNavTabs ?? DEFAULT_SETTINGS.bottomNavTabs,
         bottomNavScrollable: raw.bottomNavScrollable ?? DEFAULT_SETTINGS.bottomNavScrollable,
+        bottomNavPages: raw.bottomNavPages ?? DEFAULT_SETTINGS.bottomNavPages,
         mobileProjectGrid: raw.mobileProjectGrid ?? DEFAULT_SETTINGS.mobileProjectGrid,
         loaded: true,
       });

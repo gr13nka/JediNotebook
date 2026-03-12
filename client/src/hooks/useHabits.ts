@@ -107,35 +107,39 @@ export function useHabits() {
   };
 
   const toggleBooleanHabit = async (habitId: string, date: string) => {
-    const existing = await db.habitEntries
-      .where('[habitId+date]')
-      .equals([habitId, date])
-      .and((e) => !e.deletedAt)
-      .first();
+    let shouldAwardXP = false;
+    await db.transaction('rw', db.habitEntries, async () => {
+      const existing = await db.habitEntries
+        .where('[habitId+date]')
+        .equals([habitId, date])
+        .and((e) => !e.deletedAt)
+        .first();
 
-    const now = new Date().toISOString();
-    if (existing) {
-      const newValue = existing.value === 1 ? 0 : 1;
-      await db.habitEntries.update(existing.id, {
-        value: newValue,
-        completed: newValue === 1,
-        updatedAt: now,
-      });
-      if (newValue === 1) awardXP(XP_VALUES.checkHabit);
-    } else {
-      await db.habitEntries.add({
-        id: generateId(),
-        habitId,
-        date,
-        value: 1,
-        completed: true,
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
-        deviceId: getDeviceId(),
-      });
-      awardXP(XP_VALUES.checkHabit);
-    }
+      const now = new Date().toISOString();
+      if (existing) {
+        const newValue = existing.value === 1 ? 0 : 1;
+        await db.habitEntries.update(existing.id, {
+          value: newValue,
+          completed: newValue === 1,
+          updatedAt: now,
+        });
+        if (newValue === 1) shouldAwardXP = true;
+      } else {
+        await db.habitEntries.add({
+          id: generateId(),
+          habitId,
+          date,
+          value: 1,
+          completed: true,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+          deviceId: getDeviceId(),
+        });
+        shouldAwardXP = true;
+      }
+    });
+    if (shouldAwardXP) awardXP(XP_VALUES.checkHabit);
   };
 
   const logNumericHabit = async (habitId: string, date: string, value: number) => {

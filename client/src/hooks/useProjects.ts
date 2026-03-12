@@ -56,21 +56,23 @@ export function useProjects() {
 
   const deleteProject = async (id: string) => {
     const now = new Date().toISOString();
-    await db.projects.update(id, { deletedAt: now, updatedAt: now });
-    // Cascade soft-delete tasks
-    const tasks = await db.projectTasks.where('projectId').equals(id).toArray();
-    for (const task of tasks) {
-      if (!task.deletedAt) {
-        await db.projectTasks.update(task.id, { deletedAt: now, updatedAt: now });
+    await db.transaction('rw', [db.projects, db.projectTasks, db.todayTasks], async () => {
+      await db.projects.update(id, { deletedAt: now, updatedAt: now });
+      // Cascade soft-delete tasks
+      const tasks = await db.projectTasks.where('projectId').equals(id).toArray();
+      for (const task of tasks) {
+        if (!task.deletedAt) {
+          await db.projectTasks.update(task.id, { deletedAt: now, updatedAt: now });
+        }
       }
-    }
-    // Also remove from today
-    const todayTasks = await db.todayTasks.where('projectId').equals(id).toArray();
-    for (const tt of todayTasks) {
-      if (!tt.deletedAt) {
-        await db.todayTasks.update(tt.id, { deletedAt: now, updatedAt: now });
+      // Also remove from today
+      const todayTasks = await db.todayTasks.where('projectId').equals(id).toArray();
+      for (const tt of todayTasks) {
+        if (!tt.deletedAt) {
+          await db.todayTasks.update(tt.id, { deletedAt: now, updatedAt: now });
+        }
       }
-    }
+    });
   };
 
   const reorderProjects = async (orderedIds: string[]) => {

@@ -48,5 +48,14 @@ export function useRecurringTaskCheck() {
       }
     };
     checkRecurring();
+
+    // Re-check when app resumes (e.g., after overnight sleep)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkRecurring();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, []);
 }

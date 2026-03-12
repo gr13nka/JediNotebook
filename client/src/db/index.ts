@@ -142,4 +142,24 @@ export async function clearAllTables() {
   });
 }
 
+export async function snapshotAllTables(): Promise<Map<string, any[]>> {
+  const snapshot = new Map<string, any[]>();
+  for (const table of db.tables) {
+    snapshot.set(table.name, await table.toArray());
+  }
+  return snapshot;
+}
+
+export async function restoreFromSnapshot(snapshot: Map<string, any[]>): Promise<void> {
+  await db.transaction('rw', db.tables, async () => {
+    for (const table of db.tables) {
+      await table.clear();
+    }
+    for (const table of db.tables) {
+      const rows = snapshot.get(table.name);
+      if (rows?.length) await table.bulkPut(rows);
+    }
+  });
+}
+
 export { db };

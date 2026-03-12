@@ -18,7 +18,14 @@ function getYesterday(today: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Serialize awardXP calls to prevent read-modify-write race conditions
+let xpQueue: Promise<void> = Promise.resolve();
+
 export function awardXP(amount: number) {
+  xpQueue = xpQueue.then(() => doAwardXP(amount)).catch(console.error);
+}
+
+function doAwardXP(amount: number) {
   const state = useSettingsStore.getState();
   if (!state.gamificationEnabled) return;
 

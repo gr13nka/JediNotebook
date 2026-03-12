@@ -5,8 +5,10 @@ import { importAllFromDisk, handleExternalChange } from './vaultSync';
 import { writeQueue } from './writeQueue';
 import { writeGuard } from './writeGuard';
 import { registerVaultMiddleware } from './dexieHooks';
-import { db, clearAllTables } from '../db';
+import { db, clearAllTables, snapshotAllTables, restoreFromSnapshot } from '../db';
 import { seedDatabase } from '../db/seed';
+import { DEFAULT_SETTINGS } from '@shared/constants';
+import { getDeviceId } from '../utils/uuid';
 import { useSettingsStore } from '../stores/settingsStore';
 
 /**
@@ -76,7 +78,7 @@ interface VaultState {
   _visibilityHandler: (() => void) | null;
 
   enable: (vaultPath: string) => Promise<number>;
-  disable: () => void;
+  disable: () => Promise<void>;
   syncNow: () => Promise<void>;
   switchVault: (newPath: string) => Promise<void>;
 }
@@ -94,7 +96,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
 
   enable: async (vaultPath: string) => {
     const state = get();
-    if (state.isEnabled) state.disable();
+    if (state.isEnabled) await state.disable();
 
     let backend: VaultBackend;
     if (isTauri()) {
@@ -126,7 +128,11 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     try {
       set({ isSyncing: true });
       const readBackend = await scanToMemoryBackend(vaultPath);
-      importCount = await importAllFromDisk(readBackend);
+      const result = await importAllFromDisk(readBackend);
+      importCount = result.total;
+      if (result.errors.length > 0) {
+        set({ error: `Import completed with ${result.errors.length} error(s): ${result.errors.slice(0, 2).join('; ')}` });
+      }
       set({ lastSyncAt: new Date().toISOString(), isSyncing: false });
     } catch (err) {
       set({ error: String(err), isSyncing: false });
@@ -162,13 +168,15 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     return importCount;
   },
 
-  disable: () => {
+  disable: async () => {
     const state = get();
     state._unsubMiddleware?.();
     state._unwatchFs?.();
     if (state._visibilityHandler) {
       document.removeEventListener('visibilitychange', state._visibilityHandler);
     }
+    // Flush any pending vault writes before dropping the backend
+    await writeQueue.flush();
     writeQueue.setBackend(null);
     writeGuard.clear();
     set({
@@ -189,7 +197,10 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       set({ isSyncing: true, error: null });
       await writeQueue.flush();
       const readBackend = await scanToMemoryBackend(vaultPath);
-      await importAllFromDisk(readBackend);
+      const result = await importAllFromDisk(readBackend);
+      if (result.errors.length > 0) {
+        set({ error: `Sync completed with ${result.errors.length} error(s): ${result.errors.slice(0, 2).join('; ')}` });
+      }
       set({ lastSyncAt: new Date().toISOString(), isSyncing: false });
     } catch (err) {
       set({ error: String(err), isSyncing: false });
@@ -211,17 +222,30 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       // Stores may not be loaded yet — safe to ignore
     }
 
-    // Disable current vault
-    state.disable();
+    // Disable current vault (flushes pending writes to disk first)
+    await state.disable();
 
     // Preserve recentVaults before clearing DB
     const recentVaults = useSettingsStore.getState().recentVaults;
 
+    // Snapshot all data before clearing — allows restore on failure
+    const snapshot = await snapshotAllTables();
+
+    try {
     // Clear all Dexie tables
     await clearAllTables();
 
-    // Re-seed defaults
-    await seedDatabase();
+    // Seed only settings (needed for LWW backdate trick)
+    const existingSettings = await db.settings.get('default');
+    if (!existingSettings) {
+      const now = new Date().toISOString();
+      await db.settings.add({
+        id: 'default',
+        ...DEFAULT_SETTINGS,
+        updatedAt: now,
+        deviceId: getDeviceId(),
+      });
+    }
 
     // Backdate seed settings so imported data always wins LWW merge
     await db.settings.update('default', {
@@ -230,6 +254,9 @@ export const useVaultStore = create<VaultState>((set, get) => ({
 
     // Enable new vault (imports all from disk — seed settings lose LWW, imported win)
     const imported = await state.enable(newPath);
+
+    // Seed any remaining defaults the vault didn't provide
+    await seedDatabase();
 
     // Export imported data back to vault — non-critical, must not block settings update
     if (imported > 0) {
@@ -259,5 +286,11 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     // Update recent vaults list
     const name = newPath.split('/').pop() || newPath.split('\\').pop() || 'vault';
     await useSettingsStore.getState().addRecentVault(newPath, name);
+    } catch (err) {
+      // Restore original data from snapshot on any failure
+      await restoreFromSnapshot(snapshot);
+      await useSettingsStore.getState().load();
+      throw err;
+    }
   },
 }));

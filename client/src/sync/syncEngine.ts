@@ -2,7 +2,7 @@ import { db } from '../db';
 import { useSettingsStore } from '../stores/settingsStore';
 import type { SyncPayload, SyncResponse } from '@shared/types';
 
-let lastSyncedAt = '1970-01-01T00:00:00.000Z';
+let lastSyncedAt = localStorage.getItem('web_timer_lastSyncedAt') || '1970-01-01T00:00:00.000Z';
 
 export async function syncNow(): Promise<void> {
   const settings = useSettingsStore.getState();
@@ -80,4 +80,5 @@ export async function syncNow(): Promise<void> {
   }
 
   lastSyncedAt = serverData.serverTime || new Date().toISOString();
+  localStorage.setItem('web_timer_lastSyncedAt', lastSyncedAt);
 }

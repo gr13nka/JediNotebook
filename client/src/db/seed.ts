@@ -5,7 +5,7 @@ import type { Habit, PomodoroPreset, UserSettings } from '@shared/types';
 
 export async function seedDatabase() {
   const existingBreak = await db.activities
-    .filter((a) => a.isBreak && !a.deletedAt)
+    .filter((a) => a.isBreak)
     .first();
 
   if (!existingBreak) {
@@ -35,7 +35,7 @@ export async function seedDatabase() {
     });
   }
 
-  const existingHabits = await db.habits.filter((h) => !h.deletedAt).count();
+  const existingHabits = await db.habits.count();
   if (existingHabits === 0) {
     const now = new Date().toISOString();
     const deviceId = getDeviceId();
@@ -56,7 +56,7 @@ export async function seedDatabase() {
     );
   }
 
-  const existingPresets = await db.pomodoroPresets.filter((p) => !p.deletedAt).count();
+  const existingPresets = await db.pomodoroPresets.count();
   if (existingPresets === 0) {
     const now = new Date().toISOString();
     const deviceId = getDeviceId();

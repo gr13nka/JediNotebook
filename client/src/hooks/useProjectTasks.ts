@@ -65,6 +65,14 @@ export function useProjectTasks(projectId: string | null) {
     if (newCompleted) awardXP(XP_VALUES.completeTask);
     // If completing a recurring task, auto-create next occurrence
     if (newCompleted && task.recurrenceRule) {
+      // Dedup guard: don't create if an incomplete task with same title already exists
+      const existingIncomplete = await db.projectTasks
+        .where('projectId')
+        .equals(task.projectId)
+        .filter((t) => !t.deletedAt && !t.isCompleted && t.title === task.title)
+        .first();
+      if (existingIncomplete) return;
+
       const today = now.slice(0, 10);
       const all = await db.projectTasks
         .where('projectId')
@@ -97,16 +105,18 @@ export function useProjectTasks(projectId: string | null) {
 
   const deleteTask = async (id: string) => {
     const now = new Date().toISOString();
-    await db.projectTasks.update(id, { deletedAt: now, updatedAt: now });
-    // Also remove from today
-    const todayTasks = await db.todayTasks
-      .where('projectTaskId')
-      .equals(id)
-      .filter((t) => !t.deletedAt)
-      .toArray();
-    for (const tt of todayTasks) {
-      await db.todayTasks.update(tt.id, { deletedAt: now, updatedAt: now });
-    }
+    await db.transaction('rw', [db.projectTasks, db.todayTasks], async () => {
+      await db.projectTasks.update(id, { deletedAt: now, updatedAt: now });
+      // Also remove from today
+      const todayTasks = await db.todayTasks
+        .where('projectTaskId')
+        .equals(id)
+        .filter((t) => !t.deletedAt)
+        .toArray();
+      for (const tt of todayTasks) {
+        await db.todayTasks.update(tt.id, { deletedAt: now, updatedAt: now });
+      }
+    });
   };
 
   const reorderTasks = async (orderedIds: string[]) => {

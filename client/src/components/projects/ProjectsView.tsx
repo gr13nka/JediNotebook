@@ -73,6 +73,7 @@ export function ProjectsView() {
   const [isDragging, setIsDragging] = useState(false);
   const mobileContainerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ y: number; height: number } | null>(null);
+  const didDragRef = useRef(false);
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 768px)');
@@ -181,7 +182,7 @@ export function ProjectsView() {
       if (current === null) {
         setSheetHeight(container.clientHeight * 0.5);
       } else {
-        const clamped = Math.min(container.clientHeight * 0.85, Math.max(40, current));
+        const clamped = Math.min(container.clientHeight * 0.85, Math.max(48, current));
         if (clamped !== current) setSheetHeight(clamped);
       }
     });
@@ -189,9 +190,23 @@ export function ProjectsView() {
     return () => ro.disconnect();
   }, [isDesktop, hasActiveProject]); // re-run when project loads (container appears)
 
+  const handleSheetTap = useCallback(() => {
+    const container = mobileContainerRef.current;
+    if (!container) return;
+    const containerH = container.clientHeight;
+    const current = useProjectUIStore.getState().mobileSheetHeight;
+    if (current === null) return;
+    const snapPoints = [48, containerH * 0.5, containerH * 0.85];
+    const nearestIdx = snapPoints.reduce((bestIdx, sp, idx) =>
+      Math.abs(sp - current) < Math.abs(snapPoints[bestIdx] - current) ? idx : bestIdx, 0);
+    const nextIdx = (nearestIdx + 1) % snapPoints.length;
+    setSheetHeight(snapPoints[nextIdx]);
+  }, [setSheetHeight]);
+
   const handleSheetTouchStart = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
     dragStartRef.current = { y: touch.clientY, height: sheetHeight ?? 0 };
+    didDragRef.current = false;
     setIsDragging(true);
   }, [sheetHeight]);
 
@@ -199,10 +214,11 @@ export function ProjectsView() {
     if (!dragStartRef.current || !mobileContainerRef.current) return;
     const touch = e.touches[0];
     const deltaY = dragStartRef.current.y - touch.clientY; // up = positive
+    if (Math.abs(deltaY) > 5) didDragRef.current = true;
     const containerH = mobileContainerRef.current.clientHeight;
     const newHeight = Math.min(
       containerH * 0.85,
-      Math.max(40, dragStartRef.current.height + deltaY),
+      Math.max(48, dragStartRef.current.height + deltaY),
     );
     setSheetHeight(newHeight);
   }, []);
@@ -210,28 +226,34 @@ export function ProjectsView() {
   const handleSheetTouchEnd = useCallback(() => {
     setIsDragging(false);
     dragStartRef.current = null;
+    if (!didDragRef.current) {
+      handleSheetTap();
+      return;
+    }
     const container = mobileContainerRef.current;
     if (!container || sheetHeight === null) return;
     const containerH = container.clientHeight;
-    const snapPoints = [40, containerH * 0.5, containerH * 0.85];
+    const snapPoints = [48, containerH * 0.5, containerH * 0.85];
     const nearest = snapPoints.reduce((a, b) =>
       Math.abs(b - sheetHeight) < Math.abs(a - sheetHeight) ? b : a,
     );
     setSheetHeight(nearest);
-  }, [sheetHeight]);
+  }, [sheetHeight, handleSheetTap]);
 
   const handleSheetMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     dragStartRef.current = { y: e.clientY, height: sheetHeight ?? 0 };
+    didDragRef.current = false;
     setIsDragging(true);
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!dragStartRef.current || !mobileContainerRef.current) return;
       const deltaY = dragStartRef.current.y - ev.clientY;
+      if (Math.abs(deltaY) > 5) didDragRef.current = true;
       const containerH = mobileContainerRef.current.clientHeight;
       const newHeight = Math.min(
         containerH * 0.85,
-        Math.max(40, dragStartRef.current.height + deltaY),
+        Math.max(48, dragStartRef.current.height + deltaY),
       );
       setSheetHeight(newHeight);
     };
@@ -243,12 +265,16 @@ export function ProjectsView() {
       document.removeEventListener('mouseup', onMouseUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      if (!didDragRef.current) {
+        handleSheetTap();
+        return;
+      }
       const container = mobileContainerRef.current;
       if (!container) return;
       const containerH = container.clientHeight;
       const current = useProjectUIStore.getState().mobileSheetHeight;
       if (current === null) return;
-      const snapPoints = [40, containerH * 0.5, containerH * 0.85];
+      const snapPoints = [48, containerH * 0.5, containerH * 0.85];
       const nearest = snapPoints.reduce((a, b) =>
         Math.abs(b - current) < Math.abs(a - current) ? b : a,
       );
@@ -259,7 +285,7 @@ export function ProjectsView() {
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [sheetHeight]);
+  }, [sheetHeight, handleSheetTap]);
 
   const handleTaskHeightMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -624,9 +650,9 @@ export function ProjectsView() {
                   onTouchMove={handleSheetTouchMove}
                   onTouchEnd={handleSheetTouchEnd}
                   onMouseDown={handleSheetMouseDown}
-                  className="flex justify-center py-2 cursor-grab touch-none"
+                  className="flex justify-center py-3 cursor-grab touch-none"
                 >
-                  <div className="w-10 h-1 rounded-full bg-text-muted/30" />
+                  <div className="w-12 h-1.5 rounded-full bg-text-muted/40" />
                 </div>
                 {/* Task list — scrollable */}
                 <div className="flex-1 overflow-y-auto px-3 pb-3 min-h-0">

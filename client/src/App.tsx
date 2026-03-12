@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { AppShell } from './components/layout/AppShell';
 import { HomePage } from './pages/HomePage';
 import { HabitsPage } from './pages/HabitsPage';
-import { AnalyticsPage } from './pages/AnalyticsPage';
+
 import { NotesPage } from './pages/NotesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -12,7 +12,7 @@ import { TaskSelectionPage } from './pages/TaskSelectionPage';
 import { TodayPage } from './pages/TodayPage';
 import { InboxPage } from './pages/InboxPage';
 import { MindMapPage } from './pages/MindMapPage';
-import { ReviewPage } from './pages/ReviewPage';
+
 import { useSettingsStore } from './stores/settingsStore';
 import { useRecurringTaskCheck } from './hooks/useRecurringTaskCheck';
 import { VaultSetupModal } from './components/ui/VaultSetupModal';
@@ -67,11 +67,9 @@ export default function App() {
             <Route path="/tasks" element={<TaskSelectionPage />} />
             <Route path="/today" element={<TodayPage />} />
             <Route path="/habits" element={<HabitsPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/notes" element={<NotesPage />} />
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/mindmap" element={<MindMapPage />} />
-            <Route path="/review" element={<ReviewPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </motion.div>
