@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedayfor/tauri/refs/heads/v2/crates/tauri-cli/schema.json",
-  "productName": "Web Timer",
+  "productName": "JediNotebook",
   "version": "0.3.0",
-  "identifier": "com.webtimer.app",
+  "identifier": "com.jedinotebook.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Web Timer",
+        "title": "JediNotebook",
         "width": 1000,
         "height": 700,
         "resizable": true,

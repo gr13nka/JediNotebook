@@ -16,15 +16,15 @@ if [ -z "$APP" ]; then
   exit 1
 fi
 
-echo "==> Closing existing Web Timer if running..."
-osascript -e 'quit app "Web Timer"' 2>/dev/null || true
+echo "==> Closing existing JediNotebook if running..."
+osascript -e 'quit app "JediNotebook"' 2>/dev/null || true
 sleep 1
 
 echo "==> Installing $APP to /Applications..."
 rm -rf "/Applications/$(basename "$APP")"
 cp -R "$APP" /Applications/
 
-echo "==> Launching Web Timer..."
+echo "==> Launching JediNotebook..."
 open "/Applications/$(basename "$APP")"
 
 echo "Done."

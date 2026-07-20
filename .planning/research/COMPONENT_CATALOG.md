@@ -1,6 +1,6 @@
 # UI Component Catalog
 
-**Project:** web_timer productivity app
+**Project:** JediNotebook productivity app
 **Cataloged:** 2026-03-03
 **Total components:** 89 files across 17 directories
 **Framework:** React 19 + TypeScript 5.7 + Tailwind CSS 4 + Motion + Zustand 5

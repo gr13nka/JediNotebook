@@ -1,10 +1,10 @@
 [package]
-name = "web-timer"
+name = "jedinotebook"
 version = "0.3.0"
 edition = "2021"
 
 [lib]
-name = "web_timer_lib"
+name = "jedinotebook_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

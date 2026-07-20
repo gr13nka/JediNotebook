@@ -1,4 +1,4 @@
-# Research Summary: Web Timer Codebase Documentation
+# Research Summary: JediNotebook Codebase Documentation
 
 **Researched:** 2026-03-03
 **Overall confidence:** HIGH (all source files read directly)
@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-The web_timer app is larger and more complex than CLAUDE.md documents. Research uncovered **21 hooks** (not 19), **6 stores** (not 5), **14 Dexie tables** (not 13), **88 components** across 17 directories, and several undocumented features (gamification/XP system, task timer, vault sync, PDF documents).
+The JediNotebook app is larger and more complex than CLAUDE.md documents. Research uncovered **21 hooks** (not 19), **6 stores** (not 5), **14 Dexie tables** (not 13), **88 components** across 17 directories, and several undocumented features (gamification/XP system, task timer, vault sync, PDF documents).
 
 Two distinct data paths exist: Dexie hooks with `useLiveQuery()` for automatic reactivity (15 of 21 hooks), and Zustand stores for high-frequency state that persists only at lifecycle boundaries.
 

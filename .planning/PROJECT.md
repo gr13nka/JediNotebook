@@ -1,4 +1,4 @@
-# Web Timer — Comprehensive Documentation
+# JediNotebook — Comprehensive Documentation
 
 ## What This Is
 

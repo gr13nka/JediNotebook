@@ -42,7 +42,7 @@ fi
 
 echo "==> Using device: $ANDROID_SERIAL (${#DEVICES[@]} device(s) connected)"
 
-PACKAGE="com.webtimer.app"
+PACKAGE="com.jedinotebook.app"
 
 echo "==> Uninstalling existing $PACKAGE if present..."
 adb -s "$ANDROID_SERIAL" uninstall "$PACKAGE" 2>/dev/null || true

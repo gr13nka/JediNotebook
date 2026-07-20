@@ -1,4 +1,4 @@
-package com.webtimer.app
+package com.jedinotebook.app
 
 import android.os.Bundle
 

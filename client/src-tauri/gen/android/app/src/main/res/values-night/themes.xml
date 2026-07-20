@@ -1,5 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.web_timer" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <style name="Theme.JediNotebook" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="android:windowBackground">#1e1e1e</item>
     </style>
 </resources>

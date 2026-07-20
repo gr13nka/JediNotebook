@@ -1,4 +1,4 @@
-package com.webtimer.app
+package com.jedinotebook.app
 
 import android.app.Activity
 import android.content.Intent
@@ -75,7 +75,7 @@ class AndroidStoragePlugin(private val activity: Activity) : Plugin(activity) {
     fun getDefaultVaultPath(invoke: Invoke) {
         val documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
         val result = app.tauri.plugin.JSObject()
-        result.put("path", "${documentsDir.absolutePath}/WebTimer")
+        result.put("path", "${documentsDir.absolutePath}/JediNotebook")
         invoke.resolve(result)
     }
 }

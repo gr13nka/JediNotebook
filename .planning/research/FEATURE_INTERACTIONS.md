@@ -1,6 +1,6 @@
 # Feature Interaction Map
 
-**Project:** web_timer productivity app
+**Project:** JediNotebook productivity app
 **Researched:** 2026-03-03
 **Method:** Full source code analysis of hooks, stores, pages, and components
 

@@ -107,7 +107,7 @@ jobs:
           projectPath: client
           args: ${{ matrix.args }}
           tagName: ${{ github.event_name == 'push' && 'v__VERSION__' || format('v{0}', steps.tauri_version.outputs.version) }}
-          releaseName: ${{ github.event_name == 'push' && 'Web Timer v__VERSION__' || format('Web Timer v{0}', steps.tauri_version.outputs.version) }}
+          releaseName: ${{ github.event_name == 'push' && 'JediNotebook v__VERSION__' || format('JediNotebook v{0}', steps.tauri_version.outputs.version) }}
           releaseBody: 'See the assets below to download and install.'
           releaseDraft: true
           prerelease: false
@@ -176,7 +176,7 @@ jobs:
             -validity 10000 \
             -storepass android \
             -keypass android \
-            -dname "CN=Web Timer, O=Web Timer, C=US"
+            -dname "CN=JediNotebook, O=JediNotebook, C=US"
 
       - name: Sign APK
         run: |
@@ -204,11 +204,11 @@ jobs:
 
       - name: Rename APK
         run: |
-          cp app-signed.apk web-timer_${{ steps.version.outputs.version }}.apk
+          cp app-signed.apk jedinotebook_${{ steps.version.outputs.version }}.apk
 
       - name: Upload APK to release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           tag_name: v${{ steps.version.outputs.version }}
-          files: web-timer_${{ steps.version.outputs.version }}.apk
+          files: jedinotebook_${{ steps.version.outputs.version }}.apk

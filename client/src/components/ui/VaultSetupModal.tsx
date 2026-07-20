@@ -66,7 +66,7 @@ function AndroidVaultSetup({
     if (permissionGranted && !vaultPath) {
       import('../../vault/androidStorage').then(({ getDefaultVaultPath }) => {
         getDefaultVaultPath().then(setVaultPath).catch(() => {
-          setVaultPath('/storage/emulated/0/Documents/WebTimer');
+          setVaultPath('/storage/emulated/0/Documents/JediNotebook');
         });
       });
     }
@@ -81,7 +81,7 @@ function AndroidVaultSetup({
       await requestStoragePermission();
     } catch (err) {
       setPermError(
-        'Could not open Settings automatically. Go to Settings > Apps > Web Timer > Permissions > All files access and toggle it ON.'
+        'Could not open Settings automatically. Go to Settings > Apps > JediNotebook > Permissions > All files access and toggle it ON.'
       );
     }
   };
@@ -102,7 +102,7 @@ function AndroidVaultSetup({
       const defaultPath = await getDefaultVaultPath();
       setVaultPath(defaultPath);
     } catch {
-      setVaultPath('/storage/emulated/0/Documents/WebTimer');
+      setVaultPath('/storage/emulated/0/Documents/JediNotebook');
     }
   };
 
@@ -127,7 +127,7 @@ function AndroidVaultSetup({
             {t('vault.androidPermissionDesc')}
           </p>
           <p className="text-xs text-text-muted leading-relaxed">
-            A settings page will open — toggle ON "All files access" for Web Timer, then come back.
+            A settings page will open — toggle ON "All files access" for JediNotebook, then come back.
           </p>
         </div>
         {permError && (

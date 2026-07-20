@@ -1,6 +1,6 @@
 # Data Flow Reference
 
-**Project:** web_timer (productivity app)
+**Project:** JediNotebook (productivity app)
 **Documented:** 2026-03-03
 **Source of truth:** Every hook, store, worker, and sync file was read in full.
 

@@ -1,6 +1,6 @@
 # Cross-Feature Dependencies & Pitfalls
 
-**Project:** web_timer (productivity app)
+**Project:** JediNotebook (productivity app)
 **Researched:** 2026-03-03
 **Confidence:** HIGH (all findings based on direct source code inspection)
 
