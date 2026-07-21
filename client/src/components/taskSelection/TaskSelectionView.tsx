@@ -5,9 +5,7 @@ import { useTodayTasks } from '../../hooks/useTodayTasks';
 import { useProjects } from '../../hooks/useProjects';
 import { useProjectTasks } from '../../hooks/useProjectTasks';
 import { useTranslation } from '../../i18n/useTranslation';
-import { useSettingsStore } from '../../stores/settingsStore';
 import { useProjectUIStore } from '../../stores/projectUIStore';
-import { isProcrastinationRisky } from '../../utils/procrastinationCheck';
 import { InfoTooltip } from '../ui/InfoTooltip';
 import { PointsCounter } from './PointsCounter';
 import { TaskGroupCard, type TaskSortMode } from './TaskGroupCard';
@@ -65,8 +63,6 @@ export function TaskSelectionView() {
   // Flat view completed section
   const [flatCompletedCollapsed, setFlatCompletedCollapsed] = useState(true);
 
-  const procrastinationWords = useSettingsStore((s) => s.procrastinationWords);
-
   // Project drag state (grouped mode)
   const projectDragIdx = useRef<number | null>(null);
   const [projectDropTarget, setProjectDropTarget] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
@@ -109,14 +105,6 @@ export function TaskSelectionView() {
     switch (sortMode) {
       case 'points':
         return tasks.sort((a, b) => getTaskScore(b.createdAt) - getTaskScore(a.createdAt));
-      case 'suspicious': {
-        return tasks.sort((a, b) => {
-          const aRisky = isProcrastinationRisky(a.title, procrastinationWords) ? 1 : 0;
-          const bRisky = isProcrastinationRisky(b.title, procrastinationWords) ? 1 : 0;
-          if (bRisky !== aRisky) return bRisky - aRisky;
-          return getTaskScore(b.createdAt) - getTaskScore(a.createdAt);
-        });
-      }
       case 'created-asc':
         return tasks.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       case 'created-desc':
@@ -131,7 +119,7 @@ export function TaskSelectionView() {
       default:
         return tasks;
     }
-  }, [allIncompleteTasks, sortMode, procrastinationWords, flatOrder]);
+  }, [allIncompleteTasks, sortMode, flatOrder]);
 
   // Hook for adding tasks (need a default project for the hook)
   const firstProjectId = projects.length > 0 ? projects[0].id : null;
@@ -318,7 +306,6 @@ export function TaskSelectionView() {
       return [
         { value: 'custom', label: t('taskSelection.sortCustom') },
         { value: 'points', label: t('taskSelection.sortPoints') },
-        { value: 'suspicious', label: t('taskSelection.sortSuspicious') },
         { value: 'created-desc', label: t('taskSelection.sortNewest') },
         { value: 'created-asc', label: t('taskSelection.sortOldest') },
       ];

@@ -41,12 +41,6 @@ export const DEFAULT_CUSTOM_THEME_COLORS = {
   border: '#1a3a5c',
 };
 
-export const DEFAULT_PROCRASTINATION_WORDS = [
-  'подумать', 'вылечить', 'подготовить', 'сдать', 'провести',
-  'разобраться', 'изучить', 'решить', 'обдумать', 'продумать',
-  'рассмотреть', 'организовать', 'наладить', 'улучшить', 'оптимизировать',
-];
-
 export const DEFAULT_SETTINGS = {
   dayStartHour: 6,
   dayEndHour: 2,
@@ -65,8 +59,6 @@ export const DEFAULT_SETTINGS = {
   navTabOrder: [] as string[],
   dropdownFabCorner: 'bottom-right' as const,
   customThemeColors: DEFAULT_CUSTOM_THEME_COLORS,
-  procrastinationWords: DEFAULT_PROCRASTINATION_WORDS,
-  dismissedProcrastinationTaskIds: [] as string[],
   vaultEnabled: false,
   vaultPath: '',
   vaultSetupDone: false,

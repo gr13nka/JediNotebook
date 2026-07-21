@@ -2,8 +2,6 @@ import React, { useMemo, useState, useCallback } from 'react';
 import type { ProjectTask } from '@shared/types';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
-import { isProcrastinationRisky, getMatchedWords } from '../../utils/procrastinationCheck';
-import { ProcrastinationConfirmModal } from '../ui/ProcrastinationConfirmModal';
 import { ContextMenu } from '../ui/ContextMenu';
 import { InlineTextEdit } from '../ui/InlineTextEdit';
 
@@ -63,19 +61,10 @@ export function SelectableTaskRow({
   const isCompleted = task.isCompleted;
   const pointsVisible = useSettingsStore((s) => s.pointsCounterVisible);
   const colorFixed = useSettingsStore((s) => s.pointsColorFixed);
-  const procrastinationWords = useSettingsStore((s) => s.procrastinationWords);
-  const dismissedIds = useSettingsStore((s) => s.dismissedProcrastinationTaskIds);
-  const updateSettings = useSettingsStore((s) => s.update);
   const { t } = useTranslation();
 
   const score = useMemo(() => getTaskScore(task.createdAt), [task.createdAt]);
 
-  const isRisky = !isCompleted
-    && isProcrastinationRisky(task.title, procrastinationWords)
-    && !dismissedIds.includes(task.id);
-  const matchedWords = isRisky ? getMatchedWords(task.title, procrastinationWords) : [];
-
-  const [showProcrastModal, setShowProcrastModal] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
 
@@ -174,19 +163,6 @@ export function SelectableTaskRow({
             )}
           </div>
 
-          {/* Procrastination warning */}
-          {isRisky && (
-            <button
-              onClick={() => setShowProcrastModal(true)}
-              title={t('procrastination.matchedWords').replace('{words}', matchedWords.join(', '))}
-              className="flex-shrink-0 p-0.5 text-amber-500"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-              </svg>
-            </button>
-          )}
-
           {/* Per-task score */}
           {pointsVisible && !isCompleted && score > 0 && (
             <span className={`flex-shrink-0 text-xs font-medium tabular-nums ${getScoreColor(score, colorFixed)}`}>
@@ -223,15 +199,6 @@ export function SelectableTaskRow({
 
         <ContextMenu items={contextMenuItems} position={ctxMenu} onClose={closeCtxMenu} />
       </div>
-
-      <ProcrastinationConfirmModal
-        open={showProcrastModal}
-        onClose={() => setShowProcrastModal(false)}
-        onConfirm={() => {
-          updateSettings({ dismissedProcrastinationTaskIds: [...dismissedIds, task.id] });
-          setShowProcrastModal(false);
-        }}
-      />
     </>
   );
 }

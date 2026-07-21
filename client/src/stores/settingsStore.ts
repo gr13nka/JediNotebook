@@ -90,8 +90,6 @@ interface SettingsState {
   navTabOrder: string[];
   dropdownFabCorner: string;
   customThemeColors: CustomThemeColors;
-  procrastinationWords: string[];
-  dismissedProcrastinationTaskIds: string[];
   vaultEnabled: boolean;
   vaultPath: string;
   vaultSetupDone: boolean;
@@ -151,8 +149,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         navTabOrder: raw.navTabOrder ?? DEFAULT_SETTINGS.navTabOrder,
         dropdownFabCorner: raw.dropdownFabCorner ?? DEFAULT_SETTINGS.dropdownFabCorner,
         customThemeColors,
-        procrastinationWords: raw.procrastinationWords ?? DEFAULT_SETTINGS.procrastinationWords,
-        dismissedProcrastinationTaskIds: raw.dismissedProcrastinationTaskIds ?? DEFAULT_SETTINGS.dismissedProcrastinationTaskIds,
         vaultEnabled: raw.vaultEnabled ?? DEFAULT_SETTINGS.vaultEnabled,
         vaultPath: raw.vaultPath ?? DEFAULT_SETTINGS.vaultPath,
         vaultSetupDone: raw.vaultSetupDone ?? DEFAULT_SETTINGS.vaultSetupDone,

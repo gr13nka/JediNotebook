@@ -2,11 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { RecurrenceEditor } from './RecurrenceEditor';
-import { ProcrastinationConfirmModal } from '../ui/ProcrastinationConfirmModal';
 import { InlineTextEdit } from '../ui/InlineTextEdit';
-import { isProcrastinationRisky, getMatchedWords } from '../../utils/procrastinationCheck';
-import { useSettingsStore } from '../../stores/settingsStore';
-import { useTranslation } from '../../i18n/useTranslation';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 interface TaskItemProps {
@@ -46,16 +42,6 @@ const RecurringIcon = ({ active }: { active: boolean }) => (
 export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrence, draggable, onDragStart, onDragOver, onDrop, isDragOver }: TaskItemProps) {
   const [editing, setEditing] = useState(false);
   const [showRecurrence, setShowRecurrence] = useState(false);
-  const [showProcrastModal, setShowProcrastModal] = useState(false);
-  const { t } = useTranslation();
-  const procrastinationWords = useSettingsStore((s) => s.procrastinationWords);
-  const dismissedIds = useSettingsStore((s) => s.dismissedProcrastinationTaskIds);
-  const updateSettings = useSettingsStore((s) => s.update);
-
-  const isRisky = !task.isCompleted
-    && isProcrastinationRisky(task.title, procrastinationWords)
-    && !dismissedIds.includes(task.id);
-  const matchedWords = isRisky ? getMatchedWords(task.title, procrastinationWords) : [];
 
   return (
     <>
@@ -118,17 +104,6 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
             {task.title}
           </span>
         )}
-        {isRisky && (
-          <button
-            onClick={() => setShowProcrastModal(true)}
-            title={t('procrastination.matchedWords').replace('{words}', matchedWords.join(', '))}
-            className="shrink-0 p-0.5 text-amber-500"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-            </svg>
-          </button>
-        )}
         {onUpdateRecurrence && (
           <button
             onClick={() => setShowRecurrence(!showRecurrence)}
@@ -154,14 +129,6 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
         onChange={onUpdateRecurrence}
       />
     )}
-    <ProcrastinationConfirmModal
-      open={showProcrastModal}
-      onClose={() => setShowProcrastModal(false)}
-      onConfirm={() => {
-        updateSettings({ dismissedProcrastinationTaskIds: [...dismissedIds, task.id] });
-        setShowProcrastModal(false);
-      }}
-    />
   </>
   );
 }

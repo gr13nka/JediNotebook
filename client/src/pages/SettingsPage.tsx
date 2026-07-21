@@ -10,7 +10,6 @@ import { NavPositionPicker } from '../components/settings/NavPositionPicker';
 import { BottomNavSettings } from '../components/settings/BottomNavSettings';
 import { AccentColorPicker } from '../components/settings/AccentColorPicker';
 import { ZoomSettings } from '../components/settings/ZoomSettings';
-import { ProcrastinationWordSettings } from '../components/settings/ProcrastinationWordSettings';
 import { VaultSettings } from '../components/settings/VaultSettings';
 import { MobileProjectSettings } from '../components/settings/MobileProjectSettings';
 import { GamificationSettings } from '../components/settings/GamificationSettings';
@@ -76,8 +75,6 @@ function TasksSection() {
       <TaskSettings />
       <Divider />
       <TaskTimerSettings />
-      <Divider />
-      <ProcrastinationWordSettings />
     </>
   );
 }

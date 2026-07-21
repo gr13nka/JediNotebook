@@ -38,8 +38,6 @@ export interface UserSettings {
   navPosition: 'left' | 'bottom' | 'dropdown';
   pointsCounterVisible: boolean;
   accentColor: string;
-  procrastinationWords: string[];
-  dismissedProcrastinationTaskIds: string[];
   vaultEnabled: boolean;
   vaultPath: string;
   vaultSetupDone: boolean;
