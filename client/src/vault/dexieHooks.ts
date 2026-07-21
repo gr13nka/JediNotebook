@@ -9,7 +9,6 @@ const TABLE_TO_TYPE: Record<string, string> = {
   settings: 'settings',
   habits: 'habits',
   habitEntries: 'habitEntries',
-  pomodoroPresets: 'pomodoroPresets',
   projects: 'projects',
   projectTasks: 'projectTasks',
   todayTasks: 'todayTasks',

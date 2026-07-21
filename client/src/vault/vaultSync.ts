@@ -10,7 +10,6 @@ import {
   serializeMindMap, deserializeMindMap,
   serializeInbox, deserializeInbox,
   serializeSettings, deserializeSettings,
-  serializePomodoroPresets, deserializePomodoroPresets,
   serializeFolders, deserializeFolders,
 } from './serializers';
 import { extractShortIdFromFilename, uuidMatchesShortId } from './sanitize';
@@ -37,13 +36,6 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
   const settings = await db.settings.get('default');
   if (settings) {
     const { path, content } = serializeSettings(settings);
-    await backend.writeFile(path, content);
-  }
-
-  // Pomodoro presets
-  const presets = await db.pomodoroPresets.toArray();
-  if (presets.length > 0) {
-    const { path, content } = serializePomodoroPresets(presets);
     await backend.writeFile(path, content);
   }
 
@@ -166,17 +158,6 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
       }
     }
   } catch (err) { errors.push(`settings: ${err}`); }
-
-  // Pomodoro presets
-  try {
-    if (await safeExists('pomodoro-presets.json')) {
-      const content = await backend.readFile('pomodoro-presets.json');
-      const presets = deserializePomodoroPresets(content);
-      for (const p of presets) {
-        await mergeEntity(db.pomodoroPresets, p);
-      }
-    }
-  } catch (err) { errors.push(`presets: ${err}`); }
 
   // Folders
   try {
@@ -463,12 +444,6 @@ export async function writeEntityToDisk(
       }
       break;
     }
-    case 'pomodoroPresets': {
-      const presets = await db.pomodoroPresets.toArray();
-      const { path, content } = serializePomodoroPresets(presets);
-      await backend.writeFile(path, content);
-      break;
-    }
     case 'projectFolders': {
       const folders = await db.projectFolders.toArray();
       const { path, content } = serializeFolders(folders);
@@ -522,9 +497,6 @@ export async function handleExternalChange(
   if (filePath === 'settings.json') {
     const imported = deserializeSettings(content);
     await db.settings.put({ id: 'default', ...imported } as any);
-  } else if (filePath === 'pomodoro-presets.json') {
-    const presets = deserializePomodoroPresets(content);
-    for (const p of presets) await mergeEntity(db.pomodoroPresets, p);
   } else if (filePath === 'folders.json') {
     const folders = deserializeFolders(content);
     for (const f of folders) await mergeEntity(db.projectFolders, f);

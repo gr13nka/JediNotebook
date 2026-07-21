@@ -1,6 +1,6 @@
 import type {
   Activity, TimeEntry, UserSettings, Habit, HabitEntry,
-  PomodoroPreset, Project, ProjectTask, TodayTask,
+  Project, ProjectTask, TodayTask,
   ProjectFolder, InboxItem, MindMap, MindMapNode,
 } from '@shared/types';
 import { parseFrontmatter, stringifyFrontmatter } from './frontmatter';
@@ -466,26 +466,6 @@ export function serializeSettings(s: UserSettings): { path: string; content: str
 
 export function deserializeSettings(content: string): Partial<UserSettings> {
   return JSON.parse(content);
-}
-
-// ─── Pomodoro Presets (JSON) ──────────────────────────────────────
-
-export function serializePomodoroPresets(
-  presets: PomodoroPreset[],
-): { path: string; content: string } {
-  const active = presets.filter(p => !p.deletedAt);
-  return {
-    path: 'pomodoro-presets.json',
-    content: JSON.stringify(active, null, 2) + '\n',
-  };
-}
-
-export function deserializePomodoroPresets(content: string): Omit<PomodoroPreset, 'deletedAt'>[] {
-  const arr = JSON.parse(content) as any[];
-  return arr.map(p => {
-    const { deletedAt: _, ...rest } = p;
-    return rest;
-  });
 }
 
 // ─── Project Folders (JSON) ───────────────────────────────────────

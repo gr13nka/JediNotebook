@@ -1,7 +1,7 @@
 import { db } from './index';
 import { BREAK_ACTIVITY, DEFAULT_SETTINGS, ACTIVITY_COLORS } from '@shared/constants';
 import { generateId, getDeviceId } from '../utils/uuid';
-import type { Habit, PomodoroPreset, UserSettings } from '@shared/types';
+import type { Habit, UserSettings } from '@shared/types';
 
 export async function seedDatabase() {
   const existingBreak = await db.activities
@@ -48,26 +48,6 @@ export async function seedDatabase() {
     await db.habits.bulkAdd(
       defaults.map((h) => ({
         ...h,
-        id: generateId(),
-        createdAt: now,
-        updatedAt: now,
-        deviceId,
-      })),
-    );
-  }
-
-  const existingPresets = await db.pomodoroPresets.count();
-  if (existingPresets === 0) {
-    const now = new Date().toISOString();
-    const deviceId = getDeviceId();
-    const defaultPresets: Omit<PomodoroPreset, 'id' | 'createdAt' | 'updatedAt' | 'deviceId'>[] = [
-      { name: 'Classic', workMinutes: 25, breakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLongBreak: 4, autoStartBreaks: true, autoStartWork: false, isDefault: true, sortOrder: 0, deletedAt: null },
-      { name: 'Long Focus', workMinutes: 50, breakMinutes: 10, longBreakMinutes: 30, sessionsBeforeLongBreak: 4, autoStartBreaks: true, autoStartWork: false, isDefault: true, sortOrder: 1, deletedAt: null },
-      { name: 'Short Sprint', workMinutes: 15, breakMinutes: 3, longBreakMinutes: 10, sessionsBeforeLongBreak: 4, autoStartBreaks: true, autoStartWork: false, isDefault: true, sortOrder: 2, deletedAt: null },
-    ];
-    await db.pomodoroPresets.bulkAdd(
-      defaultPresets.map((p) => ({
-        ...p,
         id: generateId(),
         createdAt: now,
         updatedAt: now,

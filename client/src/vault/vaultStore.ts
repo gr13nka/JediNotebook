@@ -232,9 +232,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     // Stop any active timers before switching
     try {
       const { useTimerStore } = await import('../stores/timerStore');
-      const { usePomodoroStore } = await import('../stores/pomodoroStore');
       if (useTimerStore.getState().isRunning) useTimerStore.getState().stop();
-      if (usePomodoroStore.getState().isActive) usePomodoroStore.getState().stop();
     } catch {
       // Stores may not be loaded yet — safe to ignore
     }

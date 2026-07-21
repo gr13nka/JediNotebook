@@ -232,8 +232,6 @@ export interface PdfDocument {
   deviceId: string;
 }
 
-export type PomodoroPhase = 'work' | 'break' | 'longBreak';
-
 export interface PomodoroPreset {
   id: string;
   name: string;
