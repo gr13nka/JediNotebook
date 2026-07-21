@@ -95,29 +95,66 @@ export function isCopyModifier(e: React.DragEvent): boolean {
 }
 
 /**
- * Resolves a character offset in `textarea` from a drop point.
- * Falls back to the end of the text when the engine does not support
- * caret-from-point (WebKit coverage is uneven).
+ * Mapping between the rendered description preview and offsets in its source.
+ *
+ * The preview renders exactly one element per source line, tagged with
+ * `data-line-index`. That tag is the only reliable way to locate a drop point
+ * or a selection in the source text: the caret-from-point APIs cannot be used
+ * here, because the textarea is hidden whenever the preview is showing, and
+ * because they resolve into a text control's internal shadow tree, which
+ * `Node.contains` does not reach.
  */
-export function caretOffsetFromPoint(
-  textarea: HTMLTextAreaElement,
-  clientX: number,
-  clientY: number,
-): number {
-  const doc = document as Document & {
-    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-    caretRangeFromPoint?: (x: number, y: number) => Range | null;
-  };
+export const LINE_INDEX_ATTR = 'data-line-index';
 
-  if (typeof doc.caretPositionFromPoint === 'function') {
-    const pos = doc.caretPositionFromPoint(clientX, clientY);
-    if (pos && textarea.contains(pos.offsetNode)) return pos.offset;
+export function lineIndexFromNode(node: Node | null): number | null {
+  let el: HTMLElement | null =
+    node instanceof HTMLElement ? node : (node?.parentElement ?? null);
+  while (el) {
+    const attr = el.getAttribute(LINE_INDEX_ATTR);
+    if (attr !== null) {
+      const parsed = Number(attr);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+    el = el.parentElement;
   }
-  if (typeof doc.caretRangeFromPoint === 'function') {
-    const range = doc.caretRangeFromPoint(clientX, clientY);
-    if (range && textarea.contains(range.startContainer)) return range.startOffset;
+  return null;
+}
+
+/** Which source line sits under a viewport point, or null if none does. */
+export function lineIndexFromPoint(clientX: number, clientY: number): number | null {
+  return lineIndexFromNode(document.elementFromPoint(clientX, clientY));
+}
+
+/**
+ * Character range covering whole source lines `startLine`..`endLine`.
+ *
+ * The trailing newline is excluded, so cutting the range leaves the newline
+ * before it adjacent to the newline after it — which is exactly the case
+ * `cutRange` collapses.
+ */
+export function wholeLineRange(
+  text: string,
+  startLine: number,
+  endLine: number,
+): { start: number; end: number } {
+  const lines = text.split('\n');
+  const first = Math.max(0, Math.min(startLine, lines.length - 1));
+  const last = Math.max(first, Math.min(endLine, lines.length - 1));
+
+  let start = 0;
+  for (let i = 0; i < first; i++) start += lines[i].length + 1;
+
+  let end = start;
+  for (let i = first; i <= last; i++) {
+    if (i > first) end += 1; // the newline joining this line to the previous
+    end += lines[i].length;
   }
-  return textarea.value.length;
+  return { start, end };
+}
+
+/** Offset just past the end of `lineIndex`, before its trailing newline. */
+export function offsetAfterLine(text: string, lineIndex: number): number {
+  return wholeLineRange(text, lineIndex, lineIndex).end;
 }
 
 /** Removes [start, end) from `text`, collapsing the blank line it may leave behind. */
@@ -129,6 +166,11 @@ export function cutRange(text: string, start: number, end: number): string {
   // so the description does not accumulate blank lines.
   if (before.endsWith('\n') && after.startsWith('\n')) {
     return before + after.slice(1);
+  }
+  // Same case at the top of the text, where there is no preceding newline to
+  // pair with — otherwise cutting the first line leaves a blank line behind.
+  if (before === '' && after.startsWith('\n')) {
+    return after.slice(1);
   }
   return joined;
 }

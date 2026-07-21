@@ -7,7 +7,10 @@ import {
   setTextPayload,
   readPayload,
   hasPayload,
-  caretOffsetFromPoint,
+  lineIndexFromNode,
+  lineIndexFromPoint,
+  wholeLineRange,
+  offsetAfterLine,
   cutRange,
   insertLine,
 } from '../../utils/taskDnd';
@@ -106,6 +109,27 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
   };
 
   /**
+   * Drag OUT of the rendered preview — the common case, since reading the
+   * description is what you do before deciding a line should be a task.
+   *
+   * A selection is natively draggable, so no `draggable` attribute is needed
+   * (and adding one would break selecting in the first place). Rendered markup
+   * cannot be mapped back to source columns, so a selection takes the whole
+   * lines it touches, which is also the useful granularity here.
+   */
+  const handlePreviewDragStart = (e: React.DragEvent) => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    const from = lineIndexFromNode(range.startContainer);
+    const to = lineIndexFromNode(range.endContainer);
+    if (from === null || to === null) return;
+
+    const { start, end } = wholeLineRange(localDesc, Math.min(from, to), Math.max(from, to));
+    setTextPayload(e, localDesc.slice(start, end), start, end);
+  };
+
+  /**
    * Cut a range that the task panel has just turned into a task.
    *
    * `localDescRef` rather than `localDesc` so this callback stays stable and
@@ -145,8 +169,11 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
     if (!payload || payload.kind !== 'task') return;
     e.preventDefault();
 
-    const ta = textareaRef.current;
-    const offset = ta ? caretOffsetFromPoint(ta, e.clientX, e.clientY) : localDesc.length;
+    // Insert after the line the cursor is over. Dropping past the last line
+    // (or into an empty description) appends.
+    const lineIndex = lineIndexFromPoint(e.clientX, e.clientY);
+    const offset =
+      lineIndex === null ? localDesc.length : offsetAfterLine(localDesc, lineIndex);
     const next = insertLine(localDesc, offset, payload.title);
     setLocalDesc(next);
     onSave(next);
@@ -162,6 +189,7 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
     localDesc.split('\n').map((line, i) => (
       <div
         key={i}
+        data-line-index={i}
         className="markdown-preview"
         dangerouslySetInnerHTML={{
           __html: line.trim() === '' ? '&nbsp;' : renderLineMd(line),
@@ -249,6 +277,7 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
           style={{ boxShadow: NEU.pressedSm, minHeight: '300px' }}
         >
           <div
+            onDragStart={handlePreviewDragStart}
             style={{ gridArea: '1 / 1' }}
             className={`${EDITOR_TEXT} min-w-0 ${isEditing ? 'invisible' : ''}`}
           >
