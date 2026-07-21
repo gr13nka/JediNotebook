@@ -17,30 +17,21 @@ interface ProjectDraftEditorProps {
   activities?: Activity[];
 }
 
+// Shared typography for the description box. The preview and the textarea must
+// resolve to identical line boxes, otherwise text shifts when they swap.
+const EDITOR_TEXT = 'text-sm leading-relaxed';
+
 export function ProjectDraftEditor({ title, description, color, icon, onSaveProject, onSave, linkedActivityId, onLinkActivity, activities }: ProjectDraftEditorProps) {
   const [localDesc, setLocalDesc] = useState(description);
   const [isEditing, setIsEditing] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     setLocalDesc(description);
   }, [description]);
-
-  // Auto-resize and focus when entering edit mode
-  useEffect(() => {
-    if (isEditing && textareaRef.current) {
-      const ta = textareaRef.current;
-      ta.focus();
-      // Place cursor at end
-      const len = ta.value.length;
-      ta.setSelectionRange(len, len);
-      // Auto-resize
-      ta.style.height = 'auto';
-      ta.style.height = ta.scrollHeight + 'px';
-    }
-  }, [isEditing]);
 
   const autoResize = useCallback(() => {
     if (textareaRef.current) {
@@ -49,6 +40,22 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
       ta.style.height = ta.scrollHeight + 'px';
     }
   }, []);
+
+  // Keep the textarea sized to its content at all times — not just while
+  // editing. It shares a grid cell with the preview, so its height is part of
+  // what holds the container steady across mode switches.
+  useEffect(() => {
+    autoResize();
+  }, [localDesc, autoResize]);
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      const ta = textareaRef.current;
+      ta.focus();
+      const len = ta.value.length;
+      ta.setSelectionRange(len, len);
+    }
+  }, [isEditing]);
 
   const handleDescChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setLocalDesc(e.target.value);
@@ -62,38 +69,32 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
     }
   };
 
-  const handlePreviewClick = () => {
+  // Enter edit mode on mouse-up, and only when nothing is selected. Using
+  // `click` here meant a drag-select immediately entered edit mode and threw
+  // the selection away.
+  const handleContainerMouseUp = () => {
+    if (isEditing) return;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
     setIsEditing(true);
-  };
-
-  // Click on empty area to start editing
-  const handleContainerClick = (e: React.MouseEvent) => {
-    if (e.target === containerRef.current) {
-      setIsEditing(true);
-    }
   };
 
   const hasContent = localDesc.trim().length > 0;
 
-  // Render markdown preview lines
-  const renderPreview = () => {
-    const lines = localDesc.split('\n');
-    return lines.map((line, i) => {
-      if (line.trim() === '') {
-        return <div key={i} className="h-6" />;
-      }
-      const rendered = renderLineMd(line);
-      return (
-        <div
-          key={i}
-          className="py-0.5 markdown-preview"
-          dangerouslySetInnerHTML={{ __html: rendered }}
-        />
-      );
-    });
-  };
+  // One <div> per source line, each exactly one line box tall — matching how the
+  // textarea lays the same text out. Blank lines render as a non-breaking space
+  // rather than a fixed-height spacer.
+  const renderPreview = () =>
+    localDesc.split('\n').map((line, i) => (
+      <div
+        key={i}
+        className="markdown-preview"
+        dangerouslySetInnerHTML={{
+          __html: line.trim() === '' ? '&nbsp;' : renderLineMd(line),
+        }}
+      />
+    ));
 
-  const { t } = useTranslation();
   const nonBreakActivities = activities?.filter((a) => !a.isBreak) ?? [];
 
   return (
@@ -162,29 +163,35 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
       )}
 
       <div className="mx-auto w-full max-w-prose">
+        {/* Preview and textarea occupy the SAME grid cell, so the container is
+            as tall as the taller of the two and switching modes moves nothing. */}
         <div
           ref={containerRef}
-          onClick={handleContainerClick}
-          className="rounded-xl p-4 text-sm text-text-primary leading-relaxed cursor-text overflow-y-auto no-scrollbar"
+          onMouseUp={handleContainerMouseUp}
+          className="grid rounded-xl p-4 text-text-primary cursor-text overflow-y-auto no-scrollbar"
           style={{ boxShadow: NEU.pressedSm, minHeight: '300px' }}
         >
-          {isEditing ? (
-            <textarea
-              ref={textareaRef}
-              value={localDesc}
-              onChange={handleDescChange}
-              onBlur={handleDescBlur}
-              className="w-full bg-transparent text-sm text-text-primary focus:outline-none border-none resize-none overflow-hidden selection:bg-accent/30 selection:text-text-primary"
-              style={{ lineHeight: '1.625', whiteSpace: 'pre-wrap' }}
-            />
-          ) : (
-            <div onClick={handlePreviewClick}>
-              {!hasContent && (
-                <span className="text-text-muted/40">Take a note...</span>
-              )}
-              {hasContent && renderPreview()}
-            </div>
-          )}
+          <div
+            style={{ gridArea: '1 / 1' }}
+            className={`${EDITOR_TEXT} min-w-0 ${isEditing ? 'invisible' : ''}`}
+          >
+            {hasContent ? (
+              renderPreview()
+            ) : (
+              <span className="text-text-muted/40">{t('projects.notePlaceholder')}</span>
+            )}
+          </div>
+
+          <textarea
+            ref={textareaRef}
+            value={localDesc}
+            onChange={handleDescChange}
+            onBlur={handleDescBlur}
+            style={{ gridArea: '1 / 1' }}
+            className={`${EDITOR_TEXT} w-full min-w-0 bg-transparent text-text-primary focus:outline-none border-none resize-none overflow-hidden whitespace-pre-wrap selection:bg-accent/30 selection:text-text-primary ${
+              isEditing ? '' : 'invisible pointer-events-none'
+            }`}
+          />
         </div>
       </div>
     </div>
