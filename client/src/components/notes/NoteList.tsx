@@ -1,40 +1,18 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { NEU } from '../../utils/shadows';
 import { NoteCard } from './NoteCard';
 import { NoteEditor } from './NoteEditor';
-import { PdfCard } from './PdfCard';
-import { PdfViewer } from './PdfViewer';
-import { PdfUploadButton } from './PdfUploadButton';
 import { useNotes } from '../../hooks/useNotes';
-import { usePdfDocuments } from '../../hooks/usePdfDocuments';
 import { useTranslation } from '../../i18n/useTranslation';
 import { IDEAS_FROZEN } from '@shared/constants';
-import type { Note, PdfDocument } from '@shared/types';
-
-type IdeasItem =
-  | { type: 'note'; data: Note }
-  | { type: 'pdf'; data: PdfDocument };
+import type { Note } from '@shared/types';
 
 export function NoteList() {
   const { t } = useTranslation();
-  const { notes, createNote, updateNote, deleteNote, togglePin: toggleNotePin } = useNotes();
-  const { pdfs, createPdf, deletePdf, togglePin: togglePdfPin } = usePdfDocuments();
+  const { notes, createNote, updateNote, deleteNote, togglePin } = useNotes();
 
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [viewingPdf, setViewingPdf] = useState<PdfDocument | null>(null);
-  const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
-
-  const items = useMemo<IdeasItem[]>(() => {
-    const all: IdeasItem[] = [
-      ...notes.map((n) => ({ type: 'note' as const, data: n })),
-      ...pdfs.map((p) => ({ type: 'pdf' as const, data: p })),
-    ];
-    return all.sort((a, b) => {
-      if (a.data.isPinned !== b.data.isPinned) return a.data.isPinned ? -1 : 1;
-      return b.data.updatedAt.localeCompare(a.data.updatedAt);
-    });
-  }, [notes, pdfs]);
 
   const handleNewNote = () => {
     setEditingNote(null);
@@ -52,28 +30,6 @@ export function NoteList() {
     }
   };
 
-  const handleOpenPdf = (pdf: PdfDocument) => {
-    setViewingPdf(pdf);
-    setPdfViewerOpen(true);
-  };
-
-  const handleDeletePdf = () => {
-    if (viewingPdf) {
-      deletePdf(viewingPdf.id);
-    }
-  };
-
-  const handleUploadPdf = async (data: {
-    title: string;
-    fileName: string;
-    fileSize: number;
-    pageCount: number;
-    pdfData: Blob;
-    thumbnail: Blob | null;
-  }) => {
-    await createPdf(data);
-  };
-
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -89,23 +45,14 @@ export function NoteList() {
       )}
 
       <div className="columns-2 gap-3">
-        {items.map((item) =>
-          item.type === 'note' ? (
-            <NoteCard
-              key={item.data.id}
-              note={item.data}
-              onClick={() => handleOpenNote(item.data)}
-              onTogglePin={IDEAS_FROZEN ? undefined : () => toggleNotePin(item.data.id)}
-            />
-          ) : (
-            <PdfCard
-              key={item.data.id}
-              pdf={item.data}
-              onClick={() => handleOpenPdf(item.data)}
-              onTogglePin={() => togglePdfPin(item.data.id)}
-            />
-          ),
-        )}
+        {notes.map((note) => (
+          <NoteCard
+            key={note.id}
+            note={note}
+            onClick={() => handleOpenNote(note)}
+            onTogglePin={IDEAS_FROZEN ? undefined : () => togglePin(note.id)}
+          />
+        ))}
 
         {!IDEAS_FROZEN && (
           <button
@@ -116,8 +63,6 @@ export function NoteList() {
             {t('ideas.new')}
           </button>
         )}
-
-        <PdfUploadButton onUpload={handleUploadPdf} />
       </div>
 
       <NoteEditor
@@ -127,13 +72,6 @@ export function NoteList() {
         updateNote={updateNote}
         onDelete={IDEAS_FROZEN || !editingNote ? undefined : handleDeleteNote}
         note={editingNote}
-      />
-
-      <PdfViewer
-        open={pdfViewerOpen}
-        onClose={() => { setPdfViewerOpen(false); setViewingPdf(null); }}
-        onDelete={viewingPdf ? handleDeletePdf : undefined}
-        pdf={viewingPdf}
       />
     </div>
   );

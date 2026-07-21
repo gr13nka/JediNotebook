@@ -1,7 +1,7 @@
 import type {
   Activity, TimeEntry, UserSettings, Habit, HabitEntry,
   Note, PomodoroPreset, Project, ProjectTask, TodayTask,
-  ProjectFolder, InboxItem, MindMap, MindMapNode, PdfDocument,
+  ProjectFolder, InboxItem, MindMap, MindMapNode,
 } from '@shared/types';
 import { parseFrontmatter, stringifyFrontmatter } from './frontmatter';
 import { entityFilename } from './sanitize';
@@ -543,49 +543,6 @@ export function deserializeFolders(content: string): Omit<ProjectFolder, 'delete
     const { deletedAt: _, ...rest } = f;
     return rest;
   });
-}
-
-// ─── PDF Document (metadata sidecar) ─────────────────────────────
-
-export function serializePdfMeta(
-  pdf: PdfDocument,
-): { path: string; content: string } {
-  const meta: Record<string, unknown> = {
-    id: pdf.id,
-    title: pdf.title,
-    fileName: pdf.fileName,
-    fileSize: pdf.fileSize,
-    pageCount: pdf.pageCount,
-    color: pdf.color,
-    isPinned: pdf.isPinned,
-    createdAt: pdf.createdAt,
-    updatedAt: pdf.updatedAt,
-    deviceId: pdf.deviceId,
-  };
-  return {
-    path: `pdfs/${entityFilename(pdf.title || 'Untitled', pdf.id)}.json`,
-    content: JSON.stringify(meta, null, 2) + '\n',
-  };
-}
-
-export function pdfBinaryPath(pdf: PdfDocument): string {
-  return `pdfs/${entityFilename(pdf.title || 'Untitled', pdf.id)}.pdf`;
-}
-
-export function deserializePdfMeta(content: string): Omit<PdfDocument, 'deletedAt' | 'pdfData' | 'thumbnail'> {
-  const meta = JSON.parse(content);
-  return {
-    id: meta.id as string,
-    title: (meta.title as string) || '',
-    fileName: (meta.fileName as string) || '',
-    fileSize: (meta.fileSize as number) || 0,
-    pageCount: (meta.pageCount as number) || 0,
-    color: (meta.color as string) || '#E04848',
-    isPinned: (meta.isPinned as boolean) ?? false,
-    createdAt: meta.createdAt as string,
-    updatedAt: meta.updatedAt as string,
-    deviceId: meta.deviceId as string,
-  };
 }
 
 // ─── Helper ───────────────────────────────────────────────────────
