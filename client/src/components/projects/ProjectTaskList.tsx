@@ -7,13 +7,16 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { InfoTooltip } from '../ui/InfoTooltip';
 import { TaskItem } from './TaskItem';
 import { RecurrenceEditor } from './RecurrenceEditor';
+import { readPayload, hasPayload, isCopyModifier, setTaskPayload } from '../../utils/taskDnd';
 import type { RecurrenceRule } from '@shared/types';
 
 interface ProjectTaskListProps {
   projectId: string;
+  /** Removes [start, end) from the description after text becomes a task. */
+  onCutDescriptionRange?: (start: number, end: number) => void;
 }
 
-export function ProjectTaskList({ projectId }: ProjectTaskListProps) {
+export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTaskListProps) {
   const { t } = useTranslation();
   const { tasks, createTask, updateTask, toggleTask, deleteTask, reorderTasks, updateRecurrence } = useProjectTasks(projectId);
   const maxTasks = useSettingsStore((s) => s.maxTasksPerProject);
@@ -52,6 +55,9 @@ export function ProjectTaskList({ projectId }: ProjectTaskListProps) {
   const handleDragStart = (index: number) => (e: React.DragEvent) => {
     dragIdx.current = index;
     e.dataTransfer.effectAllowed = 'move';
+    // Also advertise the task payload so the description editor can accept it.
+    const task = incompleteTasks[index];
+    if (task) setTaskPayload(e, task.id, task.title);
   };
 
   const handleDragOver = (index: number) => (e: React.DragEvent) => {
@@ -91,8 +97,48 @@ export function ProjectTaskList({ projectId }: ProjectTaskListProps) {
     dragIdx.current = null;
   };
 
+  const [isTextDropTarget, setIsTextDropTarget] = useState(false);
+
+  const handleTextDragOver = (e: React.DragEvent) => {
+    if (!hasPayload(e, 'text') || !canAdd) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsTextDropTarget(true);
+  };
+
+  const handleTextDragLeave = () => setIsTextDropTarget(false);
+
+  const handleTextDrop = async (e: React.DragEvent) => {
+    setIsTextDropTarget(false);
+    const payload = readPayload(e);
+    if (!payload || payload.kind !== 'text' || !canAdd) return;
+    e.preventDefault();
+
+    // One task per non-empty line, so dragging a multi-line block unloads the
+    // whole block rather than creating one task with embedded newlines.
+    const lines = payload.text
+      .split('\n')
+      .map((l) => l.replace(/^[-*]\s+/, '').trim())
+      .filter(Boolean);
+    if (lines.length === 0) return;
+
+    for (const line of lines) {
+      await createTask(line, null);
+    }
+    if (!isCopyModifier(e)) {
+      onCutDescriptionRange?.(payload.start, payload.end);
+    }
+  };
+
   return (
-    <div className="flex flex-col">
+    <div
+      className={`flex flex-col rounded-xl transition-shadow ${
+        isTextDropTarget ? 'ring-2 ring-accent' : ''
+      }`}
+      onDragOver={handleTextDragOver}
+      onDragLeave={handleTextDragLeave}
+      onDrop={handleTextDrop}
+    >
       <div className="flex items-center gap-2 mb-3">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
           {t('projectTasks.title')}

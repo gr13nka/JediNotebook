@@ -3,6 +3,14 @@ import { NEU } from '../../utils/shadows';
 import { renderLineMd } from '../../utils/markdown';
 import { useTranslation } from '../../i18n/useTranslation';
 import { EditProjectModal } from './EditProjectModal';
+import {
+  setTextPayload,
+  readPayload,
+  hasPayload,
+  caretOffsetFromPoint,
+  cutRange,
+  insertLine,
+} from '../../utils/taskDnd';
 import type { Activity } from '@shared/types';
 
 interface ProjectDraftEditorProps {
@@ -15,13 +23,17 @@ interface ProjectDraftEditorProps {
   linkedActivityId?: string | null;
   onLinkActivity?: (activityId: string | null) => void;
   activities?: Activity[];
+  /** Called when a task row is dropped into the description. */
+  onConsumeTask?: (taskId: string) => void;
+  /** Registers the range-cutter so the task panel can remove dragged-out text. */
+  onRegisterCut?: (cut: (start: number, end: number) => void) => void;
 }
 
 // Shared typography for the description box. The preview and the textarea must
 // resolve to identical line boxes, otherwise text shifts when they swap.
 const EDITOR_TEXT = 'text-sm leading-relaxed';
 
-export function ProjectDraftEditor({ title, description, color, icon, onSaveProject, onSave, linkedActivityId, onLinkActivity, activities }: ProjectDraftEditorProps) {
+export function ProjectDraftEditor({ title, description, color, icon, onSaveProject, onSave, linkedActivityId, onLinkActivity, activities, onConsumeTask, onRegisterCut }: ProjectDraftEditorProps) {
   const [localDesc, setLocalDesc] = useState(description);
   const [isEditing, setIsEditing] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -77,6 +89,68 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed) return;
     setIsEditing(true);
+  };
+
+  const [isTaskDropTarget, setIsTaskDropTarget] = useState(false);
+
+  // Drag OUT: stamp the exact selected range so the drop side can cut it.
+  const handleTextDragStart = (e: React.DragEvent<HTMLTextAreaElement>) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const { selectionStart, selectionEnd } = ta;
+    if (selectionStart === selectionEnd) {
+      e.preventDefault();
+      return;
+    }
+    setTextPayload(e, ta.value.slice(selectionStart, selectionEnd), selectionStart, selectionEnd);
+  };
+
+  /**
+   * Cut a range that the task panel has just turned into a task.
+   *
+   * `localDescRef` rather than `localDesc` so this callback stays stable and
+   * does not re-register on every keystroke, and so the save happens outside a
+   * state updater — React may invoke updaters twice under StrictMode, which
+   * would double-save.
+   */
+  const localDescRef = useRef(localDesc);
+  useEffect(() => {
+    localDescRef.current = localDesc;
+  }, [localDesc]);
+
+  const cutRangeFromDescription = useCallback((start: number, end: number) => {
+    const next = cutRange(localDescRef.current, start, end);
+    localDescRef.current = next;
+    setLocalDesc(next);
+    onSave(next);
+  }, [onSave]);
+
+  useEffect(() => {
+    onRegisterCut?.(cutRangeFromDescription);
+  }, [onRegisterCut, cutRangeFromDescription]);
+
+  // Drag IN: a task row becomes a line of description.
+  const handleEditorDragOver = (e: React.DragEvent) => {
+    if (!hasPayload(e, 'task')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsTaskDropTarget(true);
+  };
+
+  const handleEditorDragLeave = () => setIsTaskDropTarget(false);
+
+  const handleEditorDrop = (e: React.DragEvent) => {
+    setIsTaskDropTarget(false);
+    const payload = readPayload(e);
+    if (!payload || payload.kind !== 'task') return;
+    e.preventDefault();
+
+    const ta = textareaRef.current;
+    const offset = ta ? caretOffsetFromPoint(ta, e.clientX, e.clientY) : localDesc.length;
+    const next = insertLine(localDesc, offset, payload.title);
+    setLocalDesc(next);
+    onSave(next);
+    onConsumeTask?.(payload.taskId);
   };
 
   const hasContent = localDesc.trim().length > 0;
@@ -168,7 +242,10 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
         <div
           ref={containerRef}
           onMouseUp={handleContainerMouseUp}
-          className="grid rounded-xl p-4 text-text-primary cursor-text overflow-y-auto no-scrollbar"
+          onDragOver={handleEditorDragOver}
+          onDragLeave={handleEditorDragLeave}
+          onDrop={handleEditorDrop}
+          className={`grid rounded-xl p-4 text-text-primary cursor-text overflow-y-auto no-scrollbar ${isTaskDropTarget ? 'ring-2 ring-accent' : ''}`}
           style={{ boxShadow: NEU.pressedSm, minHeight: '300px' }}
         >
           <div
@@ -187,6 +264,8 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
             value={localDesc}
             onChange={handleDescChange}
             onBlur={handleDescBlur}
+            draggable
+            onDragStart={handleTextDragStart}
             style={{ gridArea: '1 / 1' }}
             className={`${EDITOR_TEXT} w-full min-w-0 bg-transparent text-text-primary focus:outline-none border-none resize-none overflow-hidden whitespace-pre-wrap selection:bg-accent/30 selection:text-text-primary ${
               isEditing ? '' : 'invisible pointer-events-none'

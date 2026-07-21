@@ -103,6 +103,27 @@ export function ProjectsView() {
   const taskHeightDragging = useRef(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
+  const cutDescriptionRef = useRef<((start: number, end: number) => void) | null>(null);
+  const registerCut = useCallback((cut: (start: number, end: number) => void) => {
+    cutDescriptionRef.current = cut;
+  }, []);
+  const cutDescriptionRange = useCallback((start: number, end: number) => {
+    cutDescriptionRef.current?.(start, end);
+  }, []);
+
+  const consumeTask = useCallback(async (taskId: string) => {
+    const now = new Date().toISOString();
+    await db.projectTasks.update(taskId, { deletedAt: now, updatedAt: now });
+    const todayEntries = await db.todayTasks
+      .where('projectTaskId')
+      .equals(taskId)
+      .filter((tt) => !tt.deletedAt)
+      .toArray();
+    for (const tt of todayEntries) {
+      await db.todayTasks.update(tt.id, { deletedAt: now, updatedAt: now });
+    }
+  }, []);
+
   const hasBottomNav = !isDesktop && navPosition !== 'dropdown';
   const activeProject = projects.find((p) => p.id === activeTabId) ?? null;
   const hasActiveProject = !!activeProject;
@@ -585,6 +606,8 @@ export function ProjectsView() {
                   linkedActivityId={(activeProject as any).linkedActivityId ?? null}
                   onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
                   activities={activities}
+                  onConsumeTask={consumeTask}
+                  onRegisterCut={registerCut}
                 />
               </div>
               {/* Task panel resize handle — desktop only */}
@@ -608,7 +631,7 @@ export function ProjectsView() {
                     : { height: taskPanelHeight, flexShrink: 0 }
                 }
               >
-                <ProjectTaskList projectId={activeProject.id} />
+                <ProjectTaskList projectId={activeProject.id} onCutDescriptionRange={cutDescriptionRange} />
               </div>
             </motion.div>
           ) : (
@@ -633,6 +656,8 @@ export function ProjectsView() {
                   linkedActivityId={(activeProject as any).linkedActivityId ?? null}
                   onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
                   activities={activities}
+                  onConsumeTask={consumeTask}
+                  onRegisterCut={registerCut}
                 />
               </div>
 
@@ -656,7 +681,7 @@ export function ProjectsView() {
                 </div>
                 {/* Task list — scrollable */}
                 <div className="flex-1 overflow-y-auto px-3 pb-3 min-h-0">
-                  <ProjectTaskList projectId={activeProject.id} />
+                  <ProjectTaskList projectId={activeProject.id} onCutDescriptionRange={cutDescriptionRange} />
                 </div>
               </div>
             </motion.div>
