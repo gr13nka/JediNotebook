@@ -290,3 +290,155 @@ merge + test fix/projects-tab-overhaul
 Phases 1, 2 and 4 are low risk. Phase 3 is where the real design change happens, and it is
 deliberately placed after the deletions (which shrink it) and after the tests (which make
 it verifiable).
+
+---
+
+# Addendum (2026-07-22) — Roadmap amendments and Phase 5
+
+Decided with the user before execution started. The prerequisite was resolved by
+**merging `fix/projects-tab-overhaul` to main untested** (fast-forward to `0958ae4`) as a
+checkpoint; testing happens together with the trim. Scope was extended: this effort now
+ends with **Phase 5, the time-box feature** (today/week/later flags on tasks), designed
+below. The roadmap behind it: tasks live in one of three boxes; the week box is flipped
+through daily to promote a few tasks to today; incomplete today-tasks fall back to week
+at the day boundary; a task can optionally be pinned to a date, but that is not the
+default workflow.
+
+## Adjustments to Phases 1–4
+
+- **Phase 1:** additionally delete the dead, never-mounted `client/src/hooks/useDayBoundary.ts`
+  (zero import sites). The current `/review` page is confirmed *not* to be the
+  Singularity-style review the user wants later — 1.2 stands.
+- **Phase 2:** additionally generalize `getLogicalDate(dayStartHour, reference: Date = new Date())`
+  (backward compatible) and cover the new parameter in the `time.ts` tests — Phase 5's
+  migration classifier and Phase 4's `useAnalytics` fix both need it. Do not pre-write
+  rollover/migration tests; that code arrives in Phase 5.
+- **Phase 3.1:** the `todayTasks` registry entry stays as generic infrastructure — no
+  special-casing for its coming retirement.
+- **Phase 3.2:** do not invest in porting `useTodayTasks` onto `useEntity<T>` (Phase 5
+  deletes it whole). Still fix the `TaskSelectionView` cascade duplication (live bug).
+  Leave the `db.todayTasks` cascade branches in `useProjectTasks.deleteTask` /
+  `useProjects.deleteProject` — Phase 5 strips them once the table is retired.
+- **Phase 4:** recurrence unification must land before Phase 5's recurrence-spawn edit
+  (already true in phase order). Phase 5's box views are a drop-in consumer of
+  `useReorderList`.
+
+## Phase 5 — Time-box feature (after Phase 4)
+
+### Data model (Dexie v10)
+
+```ts
+// shared/types.ts
+type TimeBox = 'today' | 'week' | 'later';
+interface ProjectTask {
+  // ...existing...
+  timeBox: TimeBox;
+  scheduledDate: string | null; // optional pin to a logical date — not the default workflow
+  timeBoxOrder: number;         // manual order within the current box
+}
+```
+
+- Schema v10: `projectTasks: 'id, projectId, sortOrder, isCompleted, deletedAt, updatedAt, timeBox, scheduledDate'`
+  (indexed — box views query `where('timeBox')`). `timeBoxOrder` unindexed, sorted in JS
+  like the existing `sortOrder` patterns. A separate `timeBoxOrder` (not reusing
+  `sortOrder`, which owns per-project order) avoids "two decisions, one field" leakage.
+- **Migration rule** (pure function `classifyTimeBoxForMigration`, unit-tested):
+  incomplete + referenced by a non-deleted `TodayTask` row for the current logical date
+  → `'today'`; other incomplete → `'later'` (no data distinguishes "week" intent — don't
+  invent it); completed with `completedAt` on today's logical date → `'today'`; other
+  completed → `'later'`. `scheduledDate: null` everywhere. Assign `timeBoxOrder`
+  iterating tasks pre-sorted by `(projectId, sortOrder)`.
+- **The same upgrade transaction must stamp `settings.lastRolloverDate = today`** —
+  otherwise the rollover hook fires on first launch and immediately demotes everything
+  the migration just classified into `'today'`.
+
+### Rollover (auto-demote at logical day change)
+
+New `useTaskRollover()` mounted at App root beside `useRecurringTaskCheck()` — fires on
+mount + `visibilitychange` (the app's proven pattern; not `useDayBoundary`'s interval,
+which misses OS-suspended timers on mobile). New settings field
+`lastRolloverDate: string | null` via Phase 3.3's schema.
+
+Pure function `computeRollover({today, lastRolloverDate, tasks}) → {toWeek[], toLater[], toToday[]}`:
+
+1. Idempotency guard: `lastRolloverDate === today` → no-op.
+2. Demote everything in `'today'`: **incomplete → `'week'`; completed → `'later'`**
+   (consistent with the migration rule — the daily-flipped week box never accumulates
+   done-task clutter). This is also how the today view stays clean: rollover empties the
+   box; the view never date-filters.
+3. Promote: `scheduledDate !== null && scheduledDate <= today && !isCompleted` →
+   `'today'`, **clearing `scheduledDate`** (without the clear, a still-incomplete task
+   ping-pongs between demotion and re-promotion and can never leave `'today'`). `<=`
+   catches pins missed while the app was closed.
+4. Demote before promote, so a both-eligible task nets into `'today'`.
+5. Stamp `lastRolloverDate = today` unconditionally; apply in one
+   `db.transaction('rw', [projectTasks, settings])`. Rerunning is a fixed point.
+
+**Recurrence interaction:** the next occurrence spawns into the completed task's
+`timeBox`, with `scheduledDate: null` and `timeBoxOrder` appended — a two-field addition
+to Phase 4's unified recurrence function. Rollover and recurrence stay fully decoupled.
+
+### Views (smallest change satisfying the workflow)
+
+- **`/today` (`TodayPage`)**: same shape (incomplete/completed split, focus mode),
+  re-sourced from `useTaskBox('today')`. Keeps chevron reorder for now.
+- **`/tasks` (`TaskSelectionView`)**: a box-tab row `Today | Week | Later | All` layered
+  on the existing grouped/flat + sort controls (grouped view already *is* project
+  filtering). **Default tab: `Week`** — the daily flip-through-and-promote habit.
+  Client-side filter over `useAllProjectTasks`'s existing arrays; no new live query.
+- Replace the `toggleToday`/`isInToday` pill with `moveToBox(taskId, box)` rendered as a
+  single contextual button ("→ Today" / "→ Week"), matching the one-tap promote workflow.
+- New `hooks/useTaskBox.ts`: live query on the `timeBox` index, sorted by `timeBoxOrder`,
+  project-enriched, exposes `moveToBox` / `reorderBox` / `toggleComplete`. Build on
+  Phase 3.2's repository if it fits naturally; don't force-fit.
+- `useTodayTasks.ts` deleted. `App.tsx` mounts `useTaskRollover()`.
+
+### Vault
+
+- Single touch point after Phase 3.1: the project kind's `toFiles`/`fromFiles` task
+  mapping gains `timeBox` + `scheduledDate` (+ `timeBoxOrder`), with forward-compat
+  deserialize defaults (`timeBox: t.timeBox || 'later'`, `scheduledDate || null`).
+  Extend Phase 2's round-trip test: all three box values, set/null `scheduledDate`.
+- `today/<date>.md` machinery: untouched (data-safety rule). All write paths to
+  `db.todayTasks` disappear, so the Dexie-hook subscription stops firing; no new files
+  are written; existing ones stay on disk. Cosmetic leftover (empty `today/` mkdir in
+  new vaults) noted for the eventual table-drop schema bump.
+
+### Phase 5 task breakdown (one commit each)
+
+| # | Task | Tests |
+|---|---|---|
+| 5.1 | `TimeBox` type + 3 fields on `ProjectTask` in `shared/types.ts` | — |
+| 5.2 | Fix all construction sites tsc flags (`useProjectTasks.createTask`, recurrence spawn, `TaskSelectionView` inline create, `db/seed.ts`) with defaults `timeBox:'later'`, `scheduledDate:null`, appended `timeBoxOrder` | — |
+| 5.3 | `classifyTimeBoxForMigration()` pure fn | **unit** |
+| 5.4 | Dexie v10 upgrade: indexes, classifier per task, stamp `lastRolloverDate` | manual |
+| 5.5 | `computeRollover()` pure fn (idempotent no-op, incomplete→week, completed→later, promote+clear `scheduledDate`, demote-before-promote, multi-day gap = one transition) | **unit — highest value** |
+| 5.6 | `useTaskRollover()` hook, mount in `App.tsx` | manual |
+| 5.7 | Recurrence spawn inherits `timeBox`, resets `scheduledDate` (in Phase 4's unified fn) | extend |
+| 5.8 | `useTaskBox(box)` hook; delete `useTodayTasks.ts` | — |
+| 5.9 | `TodayPage` → `useTaskBox('today')` | manual |
+| 5.10a | `TaskSelectionView`: box tabs + client-side filter (default Week) | — |
+| 5.10b | Swap `toggleToday`/`isInToday` → `moveToBox`/current-box across `TaskSelectionView`/`TaskGroupCard`/`SelectableTaskRow` | manual |
+| 5.11 | Strip dead `db.todayTasks` cascades from `useProjectTasks.deleteTask` / `useProjects.deleteProject`; grep-verify only `vault/` + `db/index.ts` still reference `db.todayTasks` | — |
+| 5.12 | Vault serializer fields + round-trip test extension | **unit** |
+| 5.13 (opt) | Surface `scheduledDate` in the human-readable checklist body | — |
+
+### Phase 5 verification
+
+Run dev with a copy of real data → v10 migration puts today's picked tasks in Today,
+nothing lost; flip the logical date (adjust `dayStartHour` or the system clock) →
+incomplete today-tasks appear in Week, completed land in Later, `scheduledDate`
+promotion fires exactly once; the `/tasks` Week tab's promote button moves a task to
+Today instantly; the vault's `tasks.md` shows the new fields after an edit; no new
+`today/<date>.md` files appear.
+
+## Deferred roadmap (recorded, not in this effort)
+
+- **Singularity-style review** of projects/tasks — a new design cycle on the cleaned
+  codebase; the deleted `/review` page is unrelated to it.
+- **Inbox auto-sort suggestions** (project/time keywords in captured text → suggest a
+  target). Groundwork laid here: `moveToBox()` plus Phase 3.2 routing inbox's three
+  inline `ProjectTask`-creation sites through one function make this a pure
+  matching-util + suggestion-UI feature later.
+- **Date-pinning UI** beyond the raw `scheduledDate` field (the field + promotion logic
+  ship in Phase 5; a picker UI can come with the review feature).
