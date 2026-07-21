@@ -80,9 +80,6 @@ interface SettingsState {
   darkMode: boolean;
   theme: ThemeMode;
   language: Language;
-  syncEnabled: boolean;
-  syncServerUrl: string;
-  syncApiKey: string;
   maxTasksPerProject: number;
   navPosition: 'left' | 'bottom' | 'dropdown';
   timerNotificationsEnabled: boolean;
@@ -146,9 +143,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         darkMode: theme !== 'light' && theme !== 'neu-light',
         theme,
         language,
-        syncEnabled: settings.syncEnabled,
-        syncServerUrl: settings.syncServerUrl,
-        syncApiKey: settings.syncApiKey,
         maxTasksPerProject,
         navPosition: raw.navPosition ?? DEFAULT_SETTINGS.navPosition,
         timerNotificationsEnabled: raw.timerNotificationsEnabled ?? DEFAULT_SETTINGS.timerNotificationsEnabled,

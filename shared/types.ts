@@ -34,9 +34,6 @@ export interface UserSettings {
   darkMode: boolean; // legacy — prefer theme
   theme: ThemeMode;
   language: Language;
-  syncEnabled: boolean;
-  syncServerUrl: string;
-  syncApiKey: string;
   maxTasksPerProject: number;
   navPosition: 'left' | 'bottom' | 'dropdown';
   timerNotificationsEnabled: boolean;
@@ -76,20 +73,6 @@ export interface CustomThemeColors {
 }
 
 export type Language = 'en' | 'zh' | 'es' | 'pt' | 'ru';
-
-export interface SyncPayload {
-  activities: Activity[];
-  timeEntries: TimeEntry[];
-  settings: UserSettings | null;
-  lastSyncedAt: string;
-}
-
-export interface SyncResponse {
-  activities: Activity[];
-  timeEntries: TimeEntry[];
-  settings: UserSettings | null;
-  serverTime: string;
-}
 
 export interface TimerState {
   activeEntryId: string | null;
