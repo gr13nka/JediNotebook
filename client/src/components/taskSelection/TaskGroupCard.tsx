@@ -45,7 +45,7 @@ export function TaskGroupCard({
   onProjectDrop,
   isProjectDragOver,
 }: TaskGroupCardProps) {
-  const { reorderTasks, toggleTask, deleteTask } = useProjectTasks(project.id);
+  const { reorderTasks, toggleTask, deleteTask, updateTask } = useProjectTasks(project.id);
   const { t } = useTranslation();
   const dragIdx = useRef<number | null>(null);
   const [dropTarget, setDropTarget] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
@@ -167,6 +167,7 @@ export function TaskGroupCard({
                   onToggleToday={() => onToggleToday(task.id, project.id)}
                   onToggleComplete={() => toggleTask(task.id)}
                   onDelete={() => deleteTask(task.id)}
+                  onRename={(title) => updateTask(task.id, { title })}
                   isInToday={todayTaskIds.has(task.id)}
                   draggable={isDragEnabled}
                   onDragStart={isDragEnabled ? handleDragStart(i) : undefined}
@@ -210,6 +211,7 @@ export function TaskGroupCard({
                             onToggleToday={() => onToggleToday(task.id, project.id)}
                             onToggleComplete={() => toggleTask(task.id)}
                             onDelete={() => deleteTask(task.id)}
+                            onRename={(title) => updateTask(task.id, { title })}
                             isInToday={todayTaskIds.has(task.id)}
                             draggable={false}
                           />

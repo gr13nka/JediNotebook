@@ -474,6 +474,7 @@ const en = {
   'common.cancel': 'Cancel',
   'common.save': 'Save',
   'common.delete': 'Delete',
+  'common.rename': 'Rename',
   'common.pin': 'Pin',
   'common.unpin': 'Unpin',
 } as const;
@@ -889,6 +890,7 @@ const zh: Record<TranslationKey, string> = {
   'common.cancel': '取消',
   'common.save': '保存',
   'common.delete': '删除',
+  'common.rename': '重命名',
   'common.pin': '固定',
   'common.unpin': '取消固定',
 };
@@ -1302,6 +1304,7 @@ const es: Record<TranslationKey, string> = {
   'common.cancel': 'Cancelar',
   'common.save': 'Guardar',
   'common.delete': 'Eliminar',
+  'common.rename': 'Renombrar',
   'common.pin': 'Fijar',
   'common.unpin': 'Desfijar',
 };
@@ -1715,6 +1718,7 @@ const pt: Record<TranslationKey, string> = {
   'common.cancel': 'Cancelar',
   'common.save': 'Salvar',
   'common.delete': 'Excluir',
+  'common.rename': 'Renomear',
   'common.pin': 'Fixar',
   'common.unpin': 'Desfixar',
 };
@@ -2128,6 +2132,7 @@ const ru: Record<TranslationKey, string> = {
   'common.cancel': 'Отмена',
   'common.save': 'Сохранить',
   'common.delete': 'Удалить',
+  'common.rename': 'Переименовать',
   'common.pin': 'Закрепить',
   'common.unpin': 'Открепить',
 };

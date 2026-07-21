@@ -5,12 +5,14 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { isProcrastinationRisky, getMatchedWords } from '../../utils/procrastinationCheck';
 import { ProcrastinationConfirmModal } from '../ui/ProcrastinationConfirmModal';
 import { ContextMenu } from '../ui/ContextMenu';
+import { InlineTextEdit } from '../ui/InlineTextEdit';
 
 interface SelectableTaskRowProps {
   task: ProjectTask;
   onToggleToday: () => void;
   onToggleComplete: () => void;
   onDelete: () => void;
+  onRename?: (title: string) => void;
   isInToday: boolean;
   draggable: boolean;
   onDragStart?: (e: React.DragEvent) => void;
@@ -49,6 +51,7 @@ export function SelectableTaskRow({
   onToggleToday,
   onToggleComplete,
   onDelete,
+  onRename,
   isInToday,
   draggable,
   onDragStart,
@@ -74,6 +77,7 @@ export function SelectableTaskRow({
 
   const [showProcrastModal, setShowProcrastModal] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [renaming, setRenaming] = useState(false);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -82,9 +86,14 @@ export function SelectableTaskRow({
 
   const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
 
-  const contextMenuItems = useMemo(() => [
-    { label: t('common.delete'), onClick: onDelete, danger: true },
-  ], [t, onDelete]);
+  const contextMenuItems = useMemo(() => {
+    const items: { label: string; onClick: () => void; danger?: boolean }[] = [];
+    if (onRename) {
+      items.push({ label: t('common.rename'), onClick: () => setRenaming(true) });
+    }
+    items.push({ label: t('common.delete'), onClick: onDelete, danger: true });
+    return items;
+  }, [t, onDelete, onRename]);
 
   return (
     <>
@@ -141,15 +150,28 @@ export function SelectableTaskRow({
                 <span className="text-[11px] text-text-muted truncate">{projectInfo.name}</span>
               </div>
             )}
-            <span className={`block text-[15px] leading-snug ${
-              isCompleted
-                ? 'line-through text-text-muted'
-                : isInToday
-                  ? 'text-text-primary'
-                  : 'text-text-secondary'
-            }`}>
-              {task.title}
-            </span>
+            {renaming && onRename ? (
+              <InlineTextEdit
+                value={task.title}
+                editing={renaming}
+                onCommit={(title) => { onRename(title); setRenaming(false); }}
+                onCancel={() => setRenaming(false)}
+                className="block text-[15px] leading-snug text-text-primary"
+              />
+            ) : (
+              <span
+                onDoubleClick={() => onRename && setRenaming(true)}
+                className={`block text-[15px] leading-snug ${
+                  isCompleted
+                    ? 'line-through text-text-muted'
+                    : isInToday
+                      ? 'text-text-primary'
+                      : 'text-text-secondary'
+                }`}
+              >
+                {task.title}
+              </span>
+            )}
           </div>
 
           {/* Procrastination warning */}

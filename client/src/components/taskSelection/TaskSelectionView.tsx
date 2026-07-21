@@ -485,6 +485,12 @@ export function TaskSelectionView() {
                     await db.todayTasks.update(tt.id, { deletedAt: now, updatedAt: now });
                   }
                 }}
+                onRename={async (title) => {
+                  await db.projectTasks.update(task.id, {
+                    title,
+                    updatedAt: new Date().toISOString(),
+                  });
+                }}
                 isInToday={todayTaskIds.has(task.id)}
                 draggable={sortMode === 'custom'}
                 onDragStart={sortMode === 'custom' ? handleFlatDragStart(i) : undefined}
@@ -541,6 +547,12 @@ export function TaskSelectionView() {
                         onDelete={async () => {
                           const now = new Date().toISOString();
                           await db.projectTasks.update(task.id, { deletedAt: now, updatedAt: now });
+                        }}
+                        onRename={async (title) => {
+                          await db.projectTasks.update(task.id, {
+                            title,
+                            updatedAt: new Date().toISOString(),
+                          });
                         }}
                         isInToday={todayTaskIds.has(task.id)}
                         draggable={false}

@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { RecurrenceEditor } from './RecurrenceEditor';
 import { ProcrastinationConfirmModal } from '../ui/ProcrastinationConfirmModal';
+import { InlineTextEdit } from '../ui/InlineTextEdit';
 import { isProcrastinationRisky, getMatchedWords } from '../../utils/procrastinationCheck';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -44,10 +45,8 @@ const RecurringIcon = ({ active }: { active: boolean }) => (
 
 export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrence, draggable, onDragStart, onDragOver, onDrop, isDragOver }: TaskItemProps) {
   const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState(task.title);
   const [showRecurrence, setShowRecurrence] = useState(false);
   const [showProcrastModal, setShowProcrastModal] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const { t } = useTranslation();
   const procrastinationWords = useSettingsStore((s) => s.procrastinationWords);
   const dismissedIds = useSettingsStore((s) => s.dismissedProcrastinationTaskIds);
@@ -57,38 +56,6 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
     && isProcrastinationRisky(task.title, procrastinationWords)
     && !dismissedIds.includes(task.id);
   const matchedWords = isRisky ? getMatchedWords(task.title, procrastinationWords) : [];
-
-  useEffect(() => {
-    setEditValue(task.title);
-  }, [task.title]);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      const len = inputRef.current.value.length;
-      inputRef.current.setSelectionRange(len, len);
-    }
-  }, [editing]);
-
-  const handleSave = () => {
-    setEditing(false);
-    const trimmed = editValue.trim();
-    if (trimmed && trimmed !== task.title) {
-      onRename(trimmed);
-    } else {
-      setEditValue(task.title);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleSave();
-    } else if (e.key === 'Escape') {
-      setEditing(false);
-      setEditValue(task.title);
-    }
-  };
 
   return (
     <>
@@ -130,14 +97,15 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
           )}
         </button>
         {editing ? (
-          <input
-            ref={inputRef}
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleSave}
-            onKeyDown={handleKeyDown}
-            className="flex-1 text-sm bg-transparent text-text-primary focus:outline-none border-none py-0"
-          />
+          <div className="flex-1">
+            <InlineTextEdit
+              value={task.title}
+              editing={editing}
+              onCommit={(title) => { onRename(title); setEditing(false); }}
+              onCancel={() => setEditing(false)}
+              className="text-sm text-text-primary py-0"
+            />
+          </div>
         ) : (
           <span
             onClick={() => !task.isCompleted && setEditing(true)}
