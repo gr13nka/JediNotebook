@@ -6,6 +6,7 @@ import { useProjects } from '../../hooks/useProjects';
 import { useProjectTasks } from '../../hooks/useProjectTasks';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useProjectUIStore } from '../../stores/projectUIStore';
 import { isProcrastinationRisky } from '../../utils/procrastinationCheck';
 import { InfoTooltip } from '../ui/InfoTooltip';
 import { PointsCounter } from './PointsCounter';
@@ -49,7 +50,10 @@ export function TaskSelectionView() {
 
   // Quick add task state
   const [addingTask, setAddingTask] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
+  // Draft lives in the store so navigating away from /tasks and back does not
+  // discard it — same reason as the project task list.
+  const newTaskTitle = useProjectUIStore((s) => s.quickAddDraft);
+  const setNewTaskTitle = useProjectUIStore((s) => s.setQuickAddDraft);
   const [newTaskProjectId, setNewTaskProjectId] = useState('');
   const addInputRef = useRef<HTMLInputElement>(null);
 

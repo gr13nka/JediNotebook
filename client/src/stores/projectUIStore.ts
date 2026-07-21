@@ -8,6 +8,13 @@ interface ProjectUIState {
   sidebarCollapsed: boolean;
   splitDirection: SplitDirection;
   mobileSheetHeight: number | null;
+  /** In-progress add-task text, keyed by project id. Survives tab remounts. */
+  taskDrafts: Record<string, string>;
+  /** In-progress text in the /tasks quick-add bar. */
+  quickAddDraft: string;
+  setTaskDraft: (projectId: string, text: string) => void;
+  clearTaskDraft: (projectId: string) => void;
+  setQuickAddDraft: (text: string) => void;
   openTab: (id: string) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
@@ -23,6 +30,17 @@ export const useProjectUIStore = create<ProjectUIState>((set, get) => ({
   sidebarCollapsed: false,
   splitDirection: 'vertical',
   mobileSheetHeight: null,
+  taskDrafts: {},
+  quickAddDraft: '',
+  setTaskDraft: (projectId, text) =>
+    set((s) => ({ taskDrafts: { ...s.taskDrafts, [projectId]: text } })),
+  clearTaskDraft: (projectId) =>
+    set((s) => {
+      const next = { ...s.taskDrafts };
+      delete next[projectId];
+      return { taskDrafts: next };
+    }),
+  setQuickAddDraft: (text) => set({ quickAddDraft: text }),
   openTab: (id) => {
     const { openTabs } = get();
     if (!openTabs.includes(id)) {

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { NEU } from '../../utils/shadows';
 import { useProjectTasks } from '../../hooks/useProjectTasks';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useProjectUIStore } from '../../stores/projectUIStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { InfoTooltip } from '../ui/InfoTooltip';
 import { TaskItem } from './TaskItem';
@@ -16,7 +17,13 @@ export function ProjectTaskList({ projectId }: ProjectTaskListProps) {
   const { t } = useTranslation();
   const { tasks, createTask, updateTask, toggleTask, deleteTask, reorderTasks, updateRecurrence } = useProjectTasks(projectId);
   const maxTasks = useSettingsStore((s) => s.maxTasksPerProject);
-  const [newTitle, setNewTitle] = useState('');
+  // Draft lives in the store, not local state: this subtree is keyed by project
+  // id in ProjectsView, so switching project or route would otherwise discard
+  // whatever the user had typed.
+  const newTitle = useProjectUIStore((s) => s.taskDrafts[projectId] ?? '');
+  const setTaskDraft = useProjectUIStore((s) => s.setTaskDraft);
+  const clearTaskDraft = useProjectUIStore((s) => s.clearTaskDraft);
+  const setNewTitle = (text: string) => setTaskDraft(projectId, text);
   const [newTaskRule, setNewTaskRule] = useState<RecurrenceRule | null>(null);
   const [showNewRecurrence, setShowNewRecurrence] = useState(false);
 
@@ -27,7 +34,7 @@ export function ProjectTaskList({ projectId }: ProjectTaskListProps) {
   const handleAdd = async () => {
     if (!newTitle.trim() || !canAdd) return;
     await createTask(newTitle.trim(), newTaskRule);
-    setNewTitle('');
+    clearTaskDraft(projectId);
     setNewTaskRule(null);
     setShowNewRecurrence(false);
   };
