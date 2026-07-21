@@ -731,8 +731,8 @@ export function ProjectsView() {
                             <span className="text-sm font-medium text-text-primary truncate">{p.name}</span>
                           </div>
                           {counts && (
-                            <span className="text-[11px] text-text-muted">
-                              {counts.done}/{counts.total} tasks
+                            <span className="text-[11px] text-text-muted tabular-nums">
+                              {counts.total}
                             </span>
                           )}
                         </motion.button>

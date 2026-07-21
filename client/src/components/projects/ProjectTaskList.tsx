@@ -90,8 +90,8 @@ export function ProjectTaskList({ projectId }: ProjectTaskListProps) {
         <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
           {t('projectTasks.title')}
         </h3>
-        <span className="text-xs text-text-muted">
-          {incompleteTasks.length}/{maxTasks}
+        <span className="text-xs text-text-muted tabular-nums">
+          {incompleteTasks.length}
         </span>
         <InfoTooltip text={t('projectTasks.tooltip')} />
       </div>
