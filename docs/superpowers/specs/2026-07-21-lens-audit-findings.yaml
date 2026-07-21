@@ -1,0 +1,496 @@
+# Software Design Lenses — project-mode review
+# Target: /Users/username/Documents/GitHub/JediNotebook (client/src, shared, server/src)
+# Lenses: deep-modules, information-hiding, naming, comments, obviousness
+# (lens-change-integrity skipped — changeset-only)
+# Totals: 6 critical, 27 major, 12 minor, 12 info
+
+# ============================================================
+lens_summary:
+  lens: information-hiding
+  overall: "Traced five cross-cutting design decisions: (1) the vault on-disk layout (directory/filename scheme + entity-kind registry), (2) the persisted-record envelope and soft-delete convention, (3) the settings field roster, (4) the theme palette/id registry, (5) the nav route registry. None of the five is owned by a single module — each is re-enumerated in 3-25 places, so the codebase's dominant complexity is change amplification rather than large interfaces. Genuinely well-encapsulated: YAML frontmatter framing (frontmatter.ts), filename encoding (sanitize.ts), and XP/streak/level policy (streak.ts) — each a single owner."
+  findings_count_by_severity: {critical: 3, major: 7, minor: 0, info: 3}
+findings:
+  - lens: information-hiding
+    red_flag: information-leakage
+    location: "client/src/vault/serializers.ts:36,72,220,313,377,419,477,499,515,535,566; client/src/vault/vaultSync.ts:27-70 (exportAllToDisk), :219-380 (importAllFromDisk), :421+ (writeEntityToDisk switch), :645-700 (handleExternalChange chain), :772-783 (tableFromPath), :619-620 (deleteEntityFile); client/src/vault/dexieHooks.ts:6-20 (TABLE_TO_TYPE)"
+    severity: critical
+    confidence: high
+    observation: "The vault's on-disk layout — which directory each entity kind lives in, what its filename looks like, and which Dexie table it maps back to — is encoded independently in at least six places. serializers.ts emits literal paths (activities/*.md, time-log/${date}.md, inbox.md, settings.json, pdfs/*.json) from its serialize functions, but the matching deserialize* functions take only a content string and no path, so vaultSync.ts must reconstruct the same layout three more times: importAllFromDisk hardcodes the directory names to scan, handleExternalChange re-derives entity kind from a long filePath.startsWith('activities/') / 'notes/' / 'habits/' / 'mind-maps/' / 'time-log/' / 'today/' / 'pdfs/' if-chain, and tableFromPath encodes the same prefix->table mapping a second time inside the same file (including the two projects/*/project.md and projects/*/tasks.md regexes that deleteEntityFile also knows). exportAllToDisk:36 carries yet another hardcoded directory list for mkdir, and dexieHooks.ts carries a 14-entry table->entity-type registry. Adding one entity kind, or renaming one directory, requires coordinated edits in all six; a miss produces silent one-way sync (a file written but never re-imported) rather than a compile error."
+    principle: "Information Leakage (§5.2) — a design decision reflected in multiple modules; specifically back-door leakage, where serializers and vaultSync both know the file layout without either exposing it."
+    recommendation: "Introduce one vaultLayout module owning a single registry keyed by entity kind — { table, dir, buildPath(entity), matchPath(path) } — and have serializers, exportAllToDisk, importAllFromDisk, writeEntityToDisk, handleExternalChange, tableFromPath and dexieHooks all derive from that one table instead of restating it."
+  - lens: information-hiding
+    red_flag: temporal-decomposition
+    location: "client/src/vault/vaultSync.ts:27 (exportAllToDisk); client/src/vault/vaultSync.ts:167 (importAllFromDisk)"
+    severity: major
+    confidence: high
+    observation: "exportAllToDisk and importAllFromDisk are structured by execution phase (save-everything, then load-everything) rather than by knowledge. Both walk the identical entity list in the identical order and both must independently know the vault layout, the per-entity grouping rules (time entries batched per date file, tasks folded into the owning project directory, habit entries folded into the habit file, inbox as one file), and the IDEAS_FROZEN exclusion — exportAllToDisk:68 and importAllFromDisk:231 each repeat that flag check. The pair is the classic read/write split that leaks the format into both halves."
+    principle: "Temporal Decomposition (§5.3) — modules split by execution order instead of by the knowledge needed."
+    recommendation: "Restructure around per-entity-kind adapters that each own export/import/pathFor for one kind, and reduce exportAllToDisk/importAllFromDisk to loops over the registry."
+  - lens: information-hiding
+    red_flag: information-leakage
+    location: "client/src/hooks/*.ts (14 hooks, e.g. useProjectTasks.ts:31-42, useHabits.ts:105, useNotes.ts:37); client/src/stores/timerStore.ts:32-44; client/src/db/seed.ts:23,34,41,62; client/src/components/inbox/InboxView.tsx:151,231,273,304; client/src/components/taskSelection/TaskSelectionView.tsx:274; client/src/vault/vaultSync.ts:750; client/src/vault/vaultStore.ts:265"
+    severity: critical
+    confidence: high
+    observation: "The persisted-record envelope — every row carries id: generateId(), createdAt/updatedAt as new Date().toISOString(), deletedAt: null, deviceId: getDeviceId() — is hand-assembled at ~25 sites across hooks, stores, seed, the vault layer, and two UI components. Its dual, the soft-delete convention (.filter(t => !t.deletedAt) on every read, update(id, {deletedAt: now, updatedAt: now}) on every delete), appears in essentially every hook and leaks into components (InboxView.tsx:138,218, TaskSelectionView.tsx:261,482, ProjectsView.tsx:36,40) and into timerStore.ts:94. Nothing enforces it: a query that forgets the filter silently resurrects deleted rows, and a create that forgets updatedAt silently breaks LWW sync."
+    principle: "Information Leakage (§5.2) — the same design decision (record identity/versioning format, and delete semantics) is reflected in dozens of modules, causing change amplification."
+    recommendation: "Add a repository layer over Dexie (e.g. newRecord<T>(fields) plus liveTable(name) / softDelete(table, id)) that stamps the envelope and applies the !deletedAt filter by construction, and route all hooks, stores and components through it."
+  - lens: information-hiding
+    red_flag: information-leakage
+    location: "client/src/hooks/useProjectTasks.ts:104-116 (deleteTask); client/src/components/taskSelection/TaskSelectionView.tsx:478-485 and :549"
+    severity: major
+    confidence: high
+    observation: "The cascade policy 'soft-deleting a projectTask must also soft-delete every todayTask referencing it' lives in useProjectTasks.deleteTask, which wraps it in a db.transaction('rw', [projectTasks, todayTasks], ...). TaskSelectionView.tsx:478-485 reimplements the identical cascade inline against db — same query, same two updates, but with no transaction — and a second delete path at TaskSelectionView.tsx:549 updates projectTasks.deletedAt with no cascade at all, leaving orphaned todayTasks. The referential-integrity rule is a hidden database decision that has escaped into a view component, and the two copies have already diverged."
+    principle: "Information Leakage (§5.2) — a design decision reflected in more than one module, with the copies already inconsistent."
+    recommendation: "Delete both inline cascades in TaskSelectionView and call useProjectTasks().deleteTask so the cascade chain exists in exactly one place."
+  - lens: information-hiding
+    red_flag: information-leakage
+    location: "shared/constants.ts:51+ (DEFAULT_SETTINGS); client/src/stores/settingsStore.ts:76-118 (SettingsState) and :129-186 (load hydration list); shared/types.ts:28-53 (UserSettings); server/src/database.ts:52-60 (CREATE TABLE user_settings); server/src/services/syncService.ts:80-90 (INSERT/ON CONFLICT); client/src/vault/serializers.ts:496-506"
+    severity: critical
+    confidence: high
+    observation: "The roster of settings fields is enumerated five times over. SettingsState declares ~40 fields; load() re-lists all ~40 as explicit raw.X ?? DEFAULT_SETTINGS.X assignments; DEFAULT_SETTINGS lists them again; shared/types.ts UserSettings lists a drifted subset (it lacks uiZoom, hiddenNavTabs, navTabOrder, customThemeColors, taskTimerMinutes, gamificationEnabled, currentStreak, totalXP, bottomNavTabs, mobileProjectGrid, and others); and the server restates a 9-column subset three times (CREATE TABLE, INSERT column list, and a per-column CASE WHEN excluded.updatedAt > ... block). Because db.settings is typed as EntityTable<UserSettings> (db/index.ts:6), the store already casts through raw as any. Adding a setting requires 4-6 coordinated edits, and forgetting the load() line means the value silently reverts to default on every reload — a live bug class."
+    principle: "Information Leakage (§5.2) — one decision (what a user's settings consist of) reflected in five modules, with the copies already out of sync."
+    recommendation: "Make one module the single owner of the settings schema — derive SettingsState, UserSettings, and defaults from one declaration, and replace the hand-written load() list with {...DEFAULT_SETTINGS, ...saved} plus explicit migration steps only for legacy fields (darkMode, 'notion')."
+  - lens: information-hiding
+    red_flag: information-leakage
+    location: "client/src/index.css:164-193 (html.dracula and 10 sibling blocks); client/src/hooks/useThemeColors.ts:14-26 (getThemeSnapshot), :147 and the DRACULA/NORD/... palette objects; client/src/components/settings/ThemeToggle.tsx:21 (THEMES swatches); client/src/stores/settingsStore.ts:52 (classList.remove list); shared/types.ts:58-61 (ThemeMode union)"
+    severity: major
+    confidence: high
+    observation: "Two theme decisions leak. First, the palette: Dracula's #282a36 / #f8f8f2 / #bd93f9 / #44475a are written once as CSS custom properties in index.css:164, a second time as the DRACULA literal object in useThemeColors.ts (for Recharts), and a third time as swatch hexes in ThemeToggle.tsx:21 — x11 themes. Second, the theme registry: the id list appears in the ThemeMode union, the classList.remove(...) argument list in settingsStore.applyTheme, the getThemeSnapshot() cl.contains(...) probe chain, the switch in useThemeColors, the THEMES array, and the translation keys. getThemeSnapshot additionally recovers the active theme by reading the <html> class list even though settingsStore already holds it authoritatively."
+    principle: "Information Leakage (§5.2)"
+    recommendation: "Define each theme once as a data object (id, label key, all 12 color tokens, shadow preset) in a single themes.ts; generate the CSS custom properties, the Recharts palette, and the ThemeToggle swatches from it, and have useThemeMode() read settingsStore.theme directly instead of sniffing the DOM class."
+  - lens: information-hiding
+    red_flag: information-leakage
+    location: "client/src/components/layout/Sidebar.tsx:139-147; BottomNav.tsx:104-112; DesktopBottomNav.tsx:114-122; DropdownNav.tsx:137-145 and :105 (iconMap); AppShell.tsx (WIDE_PAGES/FULL_BLEED_PAGES); client/src/App.tsx (Route list)"
+    severity: major
+    confidence: high
+    observation: "The route registry — which pages exist, their label keys, their icons, and their ordering — is restated in four nav components with near-identical nine-entry arrays, plus a separate iconMap in DropdownNav that must be kept in step with its own array, plus AppShell's layout-class lists and App.tsx's <Route> list. The SVG icon bodies themselves are duplicated in all four components at different sizes. Beyond the six-file edit cost, the copies have already drifted: BottomNav orders /today second while the other three put /tasks there, and BottomNav alone carries shortLabelKey. Nothing surfaces the drift."
+    principle: "Information Leakage (§5.2) — one decision reflected in six modules, with back-door drift between the copies."
+    recommendation: "Extract a single navRegistry.ts exporting { route, labelKey, shortLabelKey?, Icon, layout } per page; have all four nav components, AppShell's layout classes, and the router map over it, and delete the per-component icon copies."
+  - lens: information-hiding
+    red_flag: overexposure
+    location: "client/src/utils/time.ts:28 (getLogicalDate), :37 (getTodayRange); callers: hooks/useTodayTasks.ts:18-19, useTimeEntries.ts:8-9,27, useTimer.ts:28,85, useTaskTimer.ts:34,90, usePomodoro.ts:60,65, useDayBoundary.ts:5,10; stores/timerStore.ts:9,22,39; utils/streak.ts:32; components/analytics/DailyView.tsx:13,17, WeeklyView.tsx:22,27, MonthlyView.tsx:21,26"
+    severity: major
+    confidence: high
+    observation: "getLogicalDate(dayStartHour) requires every caller to supply the day-boundary setting, so ~13 modules independently reach into useSettingsStore for dayStartHour and thread it through. It propagates into signatures that have nothing to do with configuration: timerStore.start(activityId, dayStartHour) takes the parameter purely to forward it. The common case — 'what is today?' — has no default and forces every caller to know where the day-boundary policy is stored; three analytics components duplicate the same useSettingsStore + getLogicalDate + useMemo pairing verbatim."
+    principle: "Overexposure (§5.7) — a commonly-used feature lacks a sensible default."
+    recommendation: "Provide today() (and a reactive useLogicalDate() hook) that read dayStartHour from settingsStore internally, keeping the explicit-parameter form only for the rare caller that needs a hypothetical boundary; then drop dayStartHour from timerStore.start."
+  - lens: information-hiding
+    red_flag: information-leakage
+    location: "client/src/stores/timerStore.ts:15-51; client/src/hooks/usePomodoro.ts:59-70, :117-120; client/src/hooks/useTaskTimer.ts:90, :106-111"
+    severity: major
+    confidence: high
+    observation: "The arbitration rule for the shared activity timer — 'start it only if it isn't already running for my linked activity; stop it only if the running activity is mine' — is not owned by timerStore. It is spelled out as raw inspections of the store's internal fields in three places: usePomodoro.ts:64, usePomodoro.ts:119, and useTaskTimer.ts:107. Because ownership lives in the callers rather than the store, the two features cannot see each other: with a Pomodoro and a task timer bound to the same activity, whichever stops first stops the shared timer out from under the other."
+    principle: "Information Leakage (§5.2) — the timer-ownership decision is reflected in three modules, and the store's internal representation is exposed so callers can restate it."
+    recommendation: "Move the rule into timerStore as an owner-aware API — e.g. acquire(ownerId, activityId) / release(ownerId) with refcounting."
+  - lens: information-hiding
+    red_flag: information-leakage
+    location: "client/src/components/inbox/InboxView.tsx:138,151-152,218,231-232,273-274,304; client/src/components/taskSelection/TaskSelectionView.tsx:261,274-275,478-485,549; client/src/components/projects/ProjectsView.tsx:36,40"
+    severity: major
+    confidence: high
+    observation: "The hooks layer is the intended boundary over Dexie, but three view components import db directly and issue raw add/update/filter calls. In doing so they take on knowledge that belongs behind that boundary: table names and index shapes, the !deletedAt filter, the full record envelope (InboxView.tsx:151-152 and TaskSelectionView.tsx:274-275 both hand-build deletedAt: null, deviceId: getDeviceId()), the cascade chain, and the XP-award convention — which these paths simply omit, so tasks created from TaskSelectionView award no XP while the same action through useProjectTasks.createTask does."
+    principle: "Information Leakage (§5.2)"
+    recommendation: "Route these three components through the existing hooks (useInbox, useProjectTasks, useAllProjectTasks), extending those hooks with any missing operation, so db is imported only by hooks, stores, seed, and the vault layer."
+  - lens: information-hiding
+    red_flag: none
+    location: "client/src/vault/frontmatter.ts"
+    severity: info
+    confidence: high
+    observation: "The YAML-frontmatter framing decision — the --- delimiter, where the block ends, how the body is trimmed, the yaml stringify options, and the choice to degrade to an empty meta object on a parse error — is entirely contained in this one 45-line module behind parseFrontmatter/stringifyFrontmatter. No other module references FM_DELIMITER or imports the yaml package."
+    principle: "Information Hiding (§5.1)"
+    recommendation: "—"
+  - lens: information-hiding
+    red_flag: none
+    location: "client/src/utils/streak.ts"
+    severity: info
+    confidence: high
+    observation: "The gamification policy is cleanly owned: XP amounts (XP_VALUES), the streak-continuation rule, the daily-XP reset, the quadratic level formula, and the promise-chain serialization that prevents read-modify-write races are all in one module. The eight call sites only say awardXP(XP_VALUES.completeTask) — they know a name, not the amount."
+    principle: "Information Hiding (§5.1)"
+    recommendation: "—"
+  - lens: information-hiding
+    red_flag: none
+    location: "client/src/vault/sanitize.ts"
+    severity: info
+    confidence: high
+    observation: "The filename-encoding decision is well contained: the unsafe-character set, the 60-char truncation, the 6-hex-digit short id, the 'Name (019abc).md' shape, and the regex that reads that shape back are all in one 33-line module, with entityFilename and extractShortIdFromFilename as inverse operations side by side. The counterexample that shows the vault directory layout could be contained the same way."
+    principle: "Information Hiding (§5.1)"
+    recommendation: "—"
+
+# ============================================================
+lens_summary:
+  lens: deep-modules
+  overall: "The codebase's depth profile is bimodal. A handful of genuinely deep modules exist — utils/taskDnd.ts, vault/vaultSync.ts, hooks/useBackspaceGuard.ts — where a two-to-five-name interface hides real complexity. But the two layers that every feature passes through are the shallowest: the 12-hook Dexie CRUD family (textbook classitis) and settingsStore, whose 40-plus-field flat SettingsState is its representation and is read field-by-field by roughly 40 components. React props are a second hotspot: the drag protocol and the task-timer state machine are passed prop-by-prop rather than hidden."
+  findings_count_by_severity: {critical: 1, major: 6, minor: 6, info: 3}
+findings:
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "client/src/stores/settingsStore.ts:75 (SettingsState) and :118 (update)"
+    severity: critical
+    confidence: high
+    observation: "SettingsState declares 41 flat public fields and the only mutator is update: (patch: Partial<Omit<SettingsState, 'loaded'|'load'|'update'|'addRecentVault'>>). The interface is the representation: consumers select raw fields all over the component tree, and any field can be written by anyone. load() is ~45 lines of hand-written raw.x ?? DEFAULT_SETTINGS.x, one line per field — a second copy of the field list. The project's own CLAUDE.md documents adding one setting as a five-file pipeline; that checklist is the change-amplification symptom of this shape. update() also carries three hidden side effects (applyTheme, applyAccentColor, applyZoom)."
+    principle: "Shallow Module (§4.5) — the interface exposes the internal representation; Interface = formal + informal (§4.2)"
+    recommendation: "Split the god-store into cohesive sub-modules with intention-revealing operations instead of field access — a theme module behind setTheme()/isDark(), a navLayout module behind hideTab()/reorderTabs(), a gamification module. Replace the per-field ?? ladder in load() with a single {...DEFAULT_SETTINGS, ...raw} merge plus explicit migrations."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "design-level: client/src/hooks/{useActivities,useNotes,useInbox,useFolders,useProjects,useMindMaps,usePdfDocuments,usePomodoroPresets,useTimeEntries,useProjectTasks,useTodayTasks,useHabits}.ts"
+    severity: major
+    confidence: high
+    observation: "Twelve hooks each publish their own createX/updateX/deleteX interface over a nearly identical body. useActivities.ts:35 is representative; useNotes.updateNote, useInbox.updateItem, useProjects.updateProject, useFolders.updateFolder are the same five lines with the table and the Pick<> list swapped. Documentation for any one would be as long as its body, and the Partial<Pick<Entity,...>> parameter type means the caller must know the entity's field names anyway. The shared conventions — soft delete, ISO timestamps, deviceId, sortOrder = all.length, awardXP — are re-typed in each one rather than owned anywhere, which is why useFolders.createFolder picks a random colour while useActivities.createActivity uses getNextColor."
+    principle: "Shallow Module — classitis (§4.5-4.6)"
+    recommendation: "Introduce one deep useEntity<T>(table) (or a non-React repository(table) module) owning id generation, timestamps, deviceId, soft delete and XP awarding; let each hook keep only what is genuinely entity-specific."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "client/src/vault/serializers.ts (24 exported functions)"
+    severity: major
+    confidence: high
+    observation: "The module's interface is 24 exported functions in five mutually incompatible return shapes: most return {path, content}; serializeProject(p, tasks) returns Map<string,string>; deserializeHabit returns {habit, entries}; deserializeTimeLog returns {entries}; deserializeTodayTasks returns {tasks}; pdfBinaryPath returns a bare string. Arities differ too. The single consumer, vaultSync.ts, therefore cannot loop over entities — it hand-writes a distinct branch per type in exportAllToDisk, writeEntityToDisk and handleExternalChange, i.e. the same 14-way fan-out three times."
+    principle: "Shallow Module (§4.5); a simple interface matters more than a simple implementation (§4.8)"
+    recommendation: "Give every entity one uniform serializer shape — interface EntitySerializer<T> { toFiles(entity, children): VaultFile[]; fromFiles(files): {entity: T; children: unknown[]} } — and register them in one table keyed by entity type."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "client/src/vault/serializers.ts:156 (deserializeProject)"
+    severity: major
+    confidence: high
+    observation: "deserializeProject(projectContent): Omit<Project,'deletedAt'> returns a Project whose name is deliberately empty — name: '', // Filled by caller from directory name. The declared return type promises a complete Project; the real contract is 'a Project minus its name'. Every caller must then know the filename encoding, and vaultSync.ts open-codes it twice even though sanitize.ts already owns the encoding via entityFilename()."
+    principle: "Interface = formal + informal (§4.2); Shallow Module (§4.5)"
+    recommendation: "Change the signature to deserializeProject(dirName: string, projectContent: string) and decode the name inside, next to entityFilename()'s inverse in sanitize.ts."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "client/src/vault/platform.ts:27,65,73"
+    severity: major
+    confidence: high
+    observation: "Five exported ways to ask one question — isTauri(), isMobileTauri(), isAndroidTauri(), detectAndroidOnce(), useIsAndroid() — over a module whose whole implementation is a UA regex and one plugin probe. The cost is the call-ordering rule behind them: detectAndroidOnce's doc says 'Call once at startup ... so subsequent isAndroidTauri() calls are reliable and synchronous', and isAndroidTauri() at :65 silently degrades to /Android/i.test(navigator.userAgent) when the cache is cold — the very sniff the module documents as unreliable. A caller cannot tell from the signature whether it is getting a real answer or the known-wrong fallback."
+    principle: "Interface = formal + informal; usage rules are part of the interface (§4.2)"
+    recommendation: "Collapse to one honest interface: an async getPlatform(): Promise<Platform> memoised internally, plus usePlatform() for components; delete the synchronous-but-maybe-wrong isAndroidTauri(), or have it throw/return 'unknown' when the probe has not resolved."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "client/src/components/today/TodayTaskCard.tsx:10 (TodayTaskCardProps)"
+    severity: major
+    confidence: high
+    observation: "14 props, 8 of which are the task-timer state machine relayed field by field: isTaskActive, countdownDisplay, countdownComplete, isPaused, onStartTask, onStopTask, onPauseTask, onResumeTask — a near-verbatim copy of what useTaskTimer() already returns. The card's own job is small next to the interface a caller must satisfy, and TodayPage exists partly to shuttle those eight values across. Adding one timer concept widens the card's interface, its parent's wiring, and the hook."
+    principle: "Shallow Module (§4.5); the common case should be simple (§4.7)"
+    recommendation: "Have TodayTaskCard call useTaskTimer() itself and derive its own state from activeTaskId === task.id, dropping all eight props; or accept one timer: TaskTimerView object."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "design-level: components/projects/TaskItem.tsx:12, taskSelection/SelectableTaskRow.tsx:10, taskSelection/TaskGroupCard.tsx:10"
+    severity: major
+    confidence: high
+    observation: "The same five-prop drag protocol is re-declared verbatim in three row components — draggable?, onDragStart?, onDragOver?, onDrop?, isDragOver?: 'above'|'below'|null (TaskGroupCard spells it onProjectDragStart/isProjectDragOver for the same thing). None of the three hides any reordering logic: the above/below hit-test, the index computation and the persistence all live in each parent. The rows carry the full cost of the protocol in their interfaces while providing none of its functionality."
+    principle: "Shallow Module (§4.5); classitis (§4.6)"
+    recommendation: "Extract one reorder module — a useReorderList({items, onReorder}) hook returning per-item handler bundles, or a <Reorderable> wrapper — that owns the hit-test and index math."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "client/src/stores/taskTimerStore.ts:3 + client/src/hooks/useTaskTimer.ts:120-138"
+    severity: minor
+    confidence: high
+    observation: "taskTimerStore publishes eight raw state fields whose implementation is almost entirely set({...}); the only real logic is the six-line tick(). useTaskTimer then re-exports all eight verbatim alongside its five methods, so the layer adds an interface without narrowing one: consumers must still reason about the raw countdownComplete/overtimeSeconds/isPaused combination to know what to render. The genuinely useful derivation, formatCountdown(), already shows the shape the rest should follow."
+    principle: "Shallow Module (§4.5)"
+    recommendation: "Have useTaskTimer return a derived view (phase: 'idle'|'running'|'paused'|'overtime', display: string, progress: number) plus the actions, and keep the eight raw fields internal to the store."
+  - lens: deep-modules
+    red_flag: pass-through-method
+    location: "client/src/hooks/useTaskTimer.ts:94,98"
+    severity: minor
+    confidence: high
+    observation: "const pauseTask = () => { useTaskTimerStore.getState().pause(); } and const resumeTask = () => { useTaskTimerStore.getState().resume(); } — same nullary signature, same name modulo a suffix, no added behaviour. (startTask/stopTask are not pass-throughs: they coordinate timerStore and notification permission.) useTimer.ts:97 has the degenerate form: stopTimer: stop re-exports the store action under a new name."
+    principle: "Pass-Through Method (§7.1)"
+    recommendation: "Drop pauseTask/resumeTask/stopTimer from the hook's return and let consumers use the store actions."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "client/src/vault/writeQueue.ts:62 (WriteQueue.getCoalesceKey)"
+    severity: minor
+    confidence: high
+    observation: "A seven-line comment over a one-line body returning `${entityType}:${entityId}`, documented as coalescing by parent key to avoid N writes for N child changes — followed by an admission that it does not do that. The method name and its documentation both promise an abstraction the body does not provide, and the class-level doc inherits the same false promise: reordering N tasks still enqueues N distinct keys and N writes."
+    principle: "Shallow Module (§4.5)"
+    recommendation: "Either implement the promised coalescing (resolve the parent id when enqueuing and key on parentType:parentId), or inline the template literal and correct both comments to say the queue debounces per entity, not per file."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "client/src/stores/mindMapUIStore.ts:3"
+    severity: minor
+    confidence: high
+    observation: "Five fields, five mirror setters, zero logic — each the field name with set prefixed. Only setActiveMindMap earns its place by also clearing selectedNodeId. projectUIStore has the same pattern in setQuickAddDraft/setSplitDirection/setMobileSheetHeight/setActiveTab, though its openTab/closeTab are real behaviour."
+    principle: "Shallow Module (§4.5)"
+    recommendation: "Leave these as plain state and drop the ceremony, or promote them to intention-revealing operations (e.g. enterMindUnload() setting mindUnloadActive and timerVisible together)."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "client/src/hooks/useAllProjectTasks.ts:31"
+    severity: minor
+    confidence: high
+    observation: "The hook returns two representations of the same data — {groups: TaskGroup[], folderGroups: FolderGroup[]} — via two independent useLiveQuery calls that both fetch every project and rebuild every TaskGroup. The caller must know which of the two shapes fits its layout, and every task query runs twice on every mutation."
+    principle: "Shallow Module (§4.5)"
+    recommendation: "Build TaskGroup[] once and derive the foldered view from it; return one shape."
+  - lens: deep-modules
+    red_flag: shallow-module
+    location: "client/src/hooks/useThemeColors.ts:14 (getThemeSnapshot), :29 (useIsDark)"
+    severity: minor
+    confidence: med
+    observation: "getThemeSnapshot() recovers the active theme by testing ten class names on <html> in priority order, and useIsDark() is theme !== 'light' && theme !== 'neu-light' — a predicate encoding, in one expression, which of the eleven themes count as dark. The module also carries one hardcoded colour object per theme. All three lists are parallel copies of state the store already holds and index.css already declares; the repo's own 'add a theme' checklist names four separate edits inside this one file."
+    principle: "Shallow Module (§4.5); classitis at file scale (§4.6)"
+    recommendation: "Read the theme from useSettingsStore((s) => s.theme) instead of sniffing the DOM class list, and replace the per-theme constants and the useIsDark expression with one THEMES: Record<ThemeMode, {isDark: boolean; chart: ChartColors}> table."
+  - lens: deep-modules
+    red_flag: none
+    location: "client/src/utils/taskDnd.ts"
+    severity: info
+    confidence: high
+    observation: "A genuinely deep module and the best-shaped code reviewed. Eight small functions hide browser-specific complexity callers would otherwise rediscover: that a dropEffect incompatible with effectAllowed resolves the drag to 'none' so the drop event never fires; that only dataTransfer.types is readable during dragover; that caret-from-point APIs cannot resolve into a hidden textarea's shadow tree; and the whole-line offset arithmetic including blank-line collapsing."
+    principle: "Deep module (§4.4)"
+    recommendation: "—"
+  - lens: deep-modules
+    red_flag: none
+    location: "client/src/vault/vaultSync.ts"
+    severity: info
+    confidence: high
+    observation: "783 lines behind four exported functions plus one exported fileIndex. It hides LWW merge, rename detection via the file index, project-directory rewriting, PDF sidecar reconciliation and thumbnail generation — none of which reaches vaultStore. writeEntityToDisk and handleExternalChange share a shape with pass-throughs but are dispatchers, which §7.1 explicitly grants as useful functionality."
+    principle: "Deep module (§4.4); a dispatcher is not a pass-through method (§7.1)"
+    recommendation: "—"
+  - lens: deep-modules
+    red_flag: none
+    location: "client/src/hooks/useBackspaceGuard.ts"
+    severity: info
+    confidence: high
+    observation: "useBackspaceGuard(): void — no parameters, no return, mounted once at the app root. Behind that zero-width interface sit the capture-phase listener, the editable-target test including the input[type=button|submit|reset|checkbox|radio] carve-out, and cleanup. Modal and syncEngine.syncNow() are smaller examples of the same good shape."
+    principle: "Deep module — the best-known example has no interface at all (§4.4)"
+    recommendation: "—"
+
+# ============================================================
+lens_summary:
+  lens: comments
+  overall: "Swept interface surfaces across hooks/ (21), stores/ (6), utils/ (time.ts, streak.ts, recurrence.ts, taskDnd.ts), workers/ (both files), vault/ (vaultSync.ts, serializers.ts, vaultBackend.ts), db/index.ts, sync/syncEngine.ts, and shared/types.ts. Where implementation comments exist they are frequently excellent — precise, non-obvious 'why' (taskDnd.ts, timer.worker.ts, timerStore.ts). But interface-level documentation is thin: almost none of the ~21 hook return-functions, 6 store action interfaces, or exported vault/db utilities carry a doc comment, and several real cross-file behavioral invariants live only in CLAUDE.md/.planning docs — nowhere a caller reading the code would see them."
+  findings_count_by_severity: {critical: 1, major: 6, minor: 3, info: 4}
+findings:
+  - lens: comments
+    red_flag: missing-interface-documentation
+    location: "shared/types.ts:27-53 (UserSettings)"
+    severity: critical
+    confidence: high
+    observation: "UserSettings (~25 fields) has zero comment explaining it is the narrow, sync/Dexie-persisted subset of settings — not the canonical settings type. The actual canonical runtime type, SettingsState in stores/settingsStore.ts, has ~14 more fields and is never referenced from here. CLAUDE.md has to carry a dedicated 'Type drift warning' callout for exactly this gap; nothing in shared/types.ts itself signals that adding a field here does NOT mean it's covered."
+    principle: "Missing Interface Documentation (§12) — shared/types.ts reads as the authoritative shared contract, so its silence here actively misleads."
+    recommendation: "Add a comment on UserSettings stating it is only the sync/persistence-relevant subset, and point to SettingsState as the canonical runtime type — mirroring the CLAUDE.md warning in the code itself."
+  - lens: comments
+    red_flag: missing-interface-documentation
+    location: "client/src/workers/timer.worker.ts + pomodoro.worker.ts; stores/pomodoroStore.ts:38, stores/timerStore.ts:83"
+    severity: major
+    confidence: high
+    observation: "The two workers are deliberately different: timer.worker computes elapsed from an absolute startedAt each tick (self-correcting, immune to tab-throttling drift) and posts that value; pomodoro.worker just posts a bare {type:'tick'} and expects the caller to decrement its own countdown. Neither file, nor timerStore.tick(elapsed) / pomodoroStore.tick(), states this asymmetry. useTaskTimer.ts additionally reuses pomodoro.worker.ts (not a dedicated task-timer worker) for a third, unrelated feature, with no comment noting the reuse."
+    principle: "Missing Interface Documentation (§12)"
+    recommendation: "Add a short header comment to each worker file stating its contract, and note in useTaskTimer.ts that it intentionally reuses pomodoro.worker.ts as a generic ticker."
+  - lens: comments
+    red_flag: hard-to-describe
+    location: "client/src/stores/settingsStore.ts:118 (SettingsState.update) and :193-227 (impl)"
+    severity: major
+    confidence: high
+    observation: "The public update: (patch) => Promise<void> has no comment. A complete description would have to say: it mutates the caller's own patch object in place (adding darkMode when theme is set, or vice versa), applies theme/accent/zoom as DOM side effects via document.documentElement, and persists to Dexie — all from one call."
+    principle: "Hard to Describe (§15) — difficulty writing a simple yet complete comment signals a design problem."
+    recommendation: "Document the aliasing/mutation behavior explicitly (update mutates patch) or stop mutating the argument and return the normalized patch instead."
+  - lens: comments
+    red_flag: missing-interface-documentation
+    location: "client/src/hooks/useProjects.ts:57 (deleteProject) vs client/src/hooks/useHabits.ts:184 (deleteHabit)"
+    severity: major
+    confidence: high
+    observation: "deleteProject(id) cascades: project, then all its projectTasks, then all referencing todayTasks, inside a transaction — but the exported function has no comment stating this. deleteHabit(id) is a same-shaped deleteX(id) on a sibling hook but does NOT cascade to habitEntries, which are left orphaned. Two functions with identical names/signatures across similar hooks behave oppositely, and neither says so."
+    principle: "Missing Interface Documentation (§12) — if users must read the code of a method to use it, there is no abstraction."
+    recommendation: "Add a one-line doc comment on each deleteX to state its cascade behavior, especially on deleteHabit to flag that habitEntries are intentionally left orphaned."
+  - lens: comments
+    red_flag: missing-interface-documentation
+    location: "client/src/db/index.ts:137 (clearAllTables) and :153 (restoreFromSnapshot)"
+    severity: major
+    confidence: high
+    observation: "clearAllTables() calls table.clear() on every one of the 14 Dexie tables with zero soft-delete, zero confirmation, and zero comment — a direct, silent exception to the project's own 'no hard deletes' convention (stated in CLAUDE.md, absent from the code). Its only current caller (vaultStore.switchVault) uses it as step one of a snapshot/wipe/restore-on-failure sequence, but nothing states that these exports are meant only for that narrow use."
+    principle: "Missing Interface Documentation (§12)"
+    recommendation: "Add a comment on clearAllTables/restoreFromSnapshot stating they are hard, irreversible operations reserved for the vault-switch snapshot/rollback path."
+  - lens: comments
+    red_flag: hard-to-describe
+    location: "client/src/vault/vaultSync.ts:402-416 (mergeEntity)"
+    severity: major
+    confidence: med
+    observation: "mergeEntity's LWW branch does table.put({ ...incoming, deletedAt: existing.deletedAt }) — deliberately discarding whatever deletedAt came from the deserialized file and keeping the local value, on every update. This is coherent (vault deletion is modeled as file-absence, and serializers.ts:11 confirms 'deletedAt is never written to disk'), but that reasoning lives in a different file and mergeEntity itself has zero comment."
+    principle: "Hard to Describe (§15) — the honest contract signals that the merge and the delete-detection are two different mechanisms sharing one function."
+    recommendation: "Add a comment at mergeEntity pointing to why deletedAt is excluded and cross-reference serializers.ts's omitDeleted."
+  - lens: comments
+    red_flag: missing-interface-documentation
+    location: "client/src/vault/vaultBackend.ts:8-19 (VaultBackend interface)"
+    severity: major
+    confidence: high
+    observation: "The VaultBackend interface — implemented by tauriBackend, memoryBackend, and others — has no comment on any method. Confirmed behavior in tauriBackend.ts: writeFile silently creates missing parent directories before writing, a guarantee the interface doesn't state. The three optional methods (readBinaryFile, writeBinaryFile, watch) are feature-detected by callers with no doc on which platforms omit which."
+    principle: "Missing Interface Documentation (§12) — this is the single abstraction point a new platform backend must implement correctly."
+    recommendation: "Add per-method doc comments: path semantics (relative to vault root), whether writeFile must create parent directories, and what each optional method's absence signals."
+  - lens: comments
+    red_flag: missing-interface-documentation
+    location: "client/src/utils/time.ts:28 (getLogicalDate)"
+    severity: minor
+    confidence: high
+    observation: "getLogicalDate(dayStartHour): string has no comment. Its actual contract: it always reads new Date() internally (wall-clock now) — there is no way to ask for the logical date of an arbitrary past instant. All 7+ call sites happen to only ever want 'now', so no misuse currently exists, but the 'now-only' limitation is invisible from the signature."
+    principle: "Missing Interface Documentation (§12) — the core 'logical day' concept is extensively explained in CLAUDE.md but the function callers actually read carries none of it."
+    recommendation: "Add a short comment noting it operates on the current instant, not an arbitrary timestamp, and state the day-boundary rule."
+  - lens: comments
+    red_flag: missing-interface-documentation
+    location: "client/src/sync/syncEngine.ts:7 (syncNow)"
+    severity: minor
+    confidence: med
+    observation: "The sole export syncNow(): Promise<void> has no interface comment. Its real contract — pull-before-push LWW merge, silent no-op when sync is disabled/unconfigured, and no internal guard against concurrent invocation (two overlapping calls could race on the module-level lastSyncedAt) — is undocumented."
+    principle: "Missing Interface Documentation (§12)"
+    recommendation: "Add a short comment stating the pull-before-push contract and that it is not safe to call concurrently with itself."
+  - lens: comments
+    red_flag: missing-interface-documentation
+    location: "client/src/hooks/useRecurringTaskCheck.ts:9"
+    severity: minor
+    confidence: med
+    observation: "const today = new Date().toISOString().slice(0, 10); computes 'today' as the plain calendar date, not via getLogicalDate(dayStartHour) — the day-boundary helper used everywhere else. No comment states this is intentional."
+    principle: "Missing Interface Documentation (§12)"
+    recommendation: "Add a one-line comment stating why recurrence intentionally uses the calendar day rather than the user's logical day (or switch it to getLogicalDate if the divergence is accidental)."
+  - lens: comments
+    red_flag: none
+    location: "client/src/workers/timer.worker.ts:11-12"
+    severity: info
+    confidence: high
+    observation: "'Clamped at zero: a startedAt written by a device whose clock runs ahead would otherwise broadcast a negative elapsed to the whole app.' — captures a non-obvious cross-device clock-skew rationale a reader could not infer from Math.max(0, ...) alone."
+    principle: "Comments capture what was in the designer's mind (§12)"
+    recommendation: "—"
+  - lens: comments
+    red_flag: none
+    location: "client/src/stores/timerStore.ts:88-91 (restore)"
+    severity: info
+    confidence: high
+    observation: "'Only resume a timer this device started. A running entry synced from another device is deliberately ignored: adopting it made two devices share one entry, and any clock skew between them rendered as a negative elapsed time.' — explains a design decision and the bug it prevents."
+    principle: "Comments capture what was in the designer's mind (§12)"
+    recommendation: "—"
+  - lens: comments
+    red_flag: none
+    location: "client/src/utils/time.ts:1-3 (formatDuration)"
+    severity: info
+    confidence: high
+    observation: "'Durations are clamped at zero. Clock skew between synced devices can make a naive now - startedAt go negative, and padStart() leaves the minus sign in place — which surfaced as -36:-32 on screen.' — a concrete regression story that justifies the clamp."
+    principle: "Comments capture what was in the designer's mind (§12)"
+    recommendation: "—"
+  - lens: comments
+    red_flag: none
+    location: "client/src/utils/taskDnd.ts (whole file, e.g. :41-50 setTaskPayload)"
+    severity: info
+    confidence: high
+    observation: "Every exported function states the non-obvious 'why' behind a browser-API quirk rather than restating the code. Strong example of interface documentation done right — worth using as the template for the missing docs flagged elsewhere."
+    principle: "Comments should describe things that aren't obvious from the code (§13)"
+    recommendation: "—"
+
+# ============================================================
+lens_summary:
+  lens: obviousness
+  overall: "Sampled the highest-traffic hidden-behavior surfaces: data hooks and stores that award XP or cascade-delete, the two sync systems' entry points, workers and their hook wrappers, theming, date/streak utilities, drag-and-drop, and one large component. Most of this code is well-commented at the point of difficulty (taskDnd.ts, pollingWatcher.ts). The real obscurity is cross-file: a documented app-wide invariant (route all 'today' math through getLogicalDate) is silently broken in the Habits feature, and two unrelated mechanisms independently spawn recurring-task instances with no cross-reference between them."
+  findings_count_by_severity: {critical: 1, major: 4, minor: 0, info: 1}
+findings:
+  - lens: obviousness
+    red_flag: nonobvious-code
+    location: "client/src/hooks/useHabits.ts:8-24 (getWeekDates, getToday), :45-68 (computeStreak)"
+    severity: critical
+    confidence: high
+    observation: "Every other date-sensitive feature (timerStore.ts:39, streak.ts:32, useTodayTasks.ts:19, useTimeEntries.ts:9/27, analytics Daily/Weekly/MonthlyView) computes 'today' via getLogicalDate(dayStartHour), which respects the app's configurable day boundary (a day can run 6am-2am). useHabits.ts's getToday() and getWeekDates() instead use raw new Date().toISOString().slice(0,10), and computeStreak() walks backward from a fresh new Date(). For any user with a non-midnight day boundary, habit 'today' checkboxes, the weekly tracker grid, and streak counts silently disagree with every other date-driven feature (e.g. at 1am with dayStartHour=6, Habits already shows the next calendar day while Timer/Analytics still show the previous logical day)."
+    principle: "Nonobvious Code — behavior that violates a convention the reader will assume (§18.2)"
+    recommendation: "Route useHabits.ts's today/week/streak calculations through getLogicalDate(dayStartHour) like the rest of the app, or if habits are deliberately calendar-day-based, say so in a comment at getToday()."
+  - lens: obviousness
+    red_flag: nonobvious-code
+    location: "client/src/hooks/useAnalytics.ts:115"
+    severity: major
+    confidence: high
+    observation: "Same root cause: the per-activity streak calculation computes const today = new Date().toISOString().split('T')[0] (plain calendar date) and walks it backward day-by-day, but compares against e.date values in timeEntries, which are stored as logical dates via getLogicalDate() (timerStore.ts:39). Near a day-boundary crossing, a streak that is actually intact can read as broken (or vice versa)."
+    principle: "Nonobvious Code — violates the codebase's logical-date convention (§18.2)"
+    recommendation: "Use getLogicalDate(dayStartHour) here too, matching every other consumer of the date field on timeEntries."
+  - lens: obviousness
+    red_flag: nonobvious-code
+    location: "client/src/stores/timerStore.ts:72"
+    severity: major
+    confidence: high
+    observation: "stop: async () => { ...db.timeEntries.update(...); if (durationSeconds >= 60) awardXP(XP_VALUES.stopTimer); set({...}) } — a timer-lifecycle store action (whose interface is start/stop/tick/restore) reaches out and mutates unrelated gamification/streak state in settingsStore as an uncommented side effect. A reader calling timerStore.getState().stop() from usePomodoro.ts or useTaskTimer.ts to silence a linked activity timer would not expect that call to also silently add XP and touch the daily streak."
+    principle: "Nonobvious Code — hidden side effect / violates reader expectations of a lifecycle method (§18.2)"
+    recommendation: "Either move the XP award out to the call sites that represent a deliberate 'stop', or add a one-line comment at the awardXP call explaining the coupling."
+  - lens: obviousness
+    red_flag: nonobvious-code
+    location: "client/src/hooks/useHabits.ts:184-190 (deleteHabit)"
+    severity: major
+    confidence: high
+    observation: "deleteHabit() is a bare db.habits.update(id, { deletedAt, updatedAt }) with no cascade. Contrast with sibling hooks: useProjects.deleteProject() (useProjects.ts:57-76) cascades into projectTasks and todayTasks inside a transaction, and useProjectTasks.deleteTask() (useProjectTasks.ts:106-120) cascades into todayTasks. A reader who has just read either expects the same cascade for habitEntries — it silently isn't there, and habitEntries for a deleted habit are orphaned."
+    principle: "Nonobvious Code — violates the cascade-soft-delete convention established by sibling hooks (§18.2)"
+    recommendation: "Cascade-delete habitEntries for consistency, or add a comment at deleteHabit stating the omission is deliberate."
+  - lens: obviousness
+    red_flag: nonobvious-code
+    location: "client/src/hooks/useProjectTasks.ts:66-96 (toggleTask) and client/src/hooks/useRecurringTaskCheck.ts (mounted at client/src/App.tsx:49)"
+    severity: major
+    confidence: high
+    observation: "Reading toggleTask() alone, the obvious conclusion is that recurrence is entirely driven by completing a task: on completion, if task.recurrenceRule is set, it unconditionally creates the next occurrence right away (gated only by a title-dedup check, not by the recurrence interval). Nothing hints that a second, independent mechanism exists: useRecurringTaskCheck is mounted once at the app root and, on mount plus every visibilitychange to visible, re-scans all completed recurring tasks app-wide and creates further occurrences gated by shouldCreateRecurrence()'s interval math (recurrence.ts:22-26) — real 'wait N days' semantics that toggleTask's inline copy does not apply."
+    principle: "Nonobvious Code — control flow that cannot be followed locally from the obvious call site (§18.2)"
+    recommendation: "Have toggleTask's inline recurrence-creation call the same shouldCreateRecurrence()-gated path useRecurringTaskCheck uses (single source of truth), or at minimum cross-comment both functions."
+  - lens: obviousness
+    red_flag: none
+    location: "client/src/utils/taskDnd.ts:41-56 (setTaskPayload)"
+    severity: info
+    confidence: high
+    observation: "Exactly the kind of interaction where a first guess would likely be wrong (effectAllowed differs between setTextPayload 'copy' and setTaskPayload 'copyMove', and a dropEffect incompatible with effectAllowed silently kills the drop with no error) — but a doc comment on the function explains why 'copyMove' is required here specifically and why it's safe. The obvious-but-wrong reading is preempted by the comment."
+    principle: "Obvious/well-documented despite an inherently tricky browser API (§18.2)"
+    recommendation: "—"
+
+# ============================================================
+lens_summary:
+  lens: naming
+  overall: "The core data-layer vocabulary (Activity, ProjectTask, TodayTask, TimeEntry, Habit, etc.) is comprehensive and used consistently everywhere it originates. Naming weakens at boundaries: where a second similarly-shaped mechanic was added near an existing one without reusing its vocabulary (a 'points' staleness penalty next to the real XP reward system; a bare tasks field meaning different things in two sibling hooks; an unqualified taskId that actually holds a TodayTask id), and where a feature crosses a serialization/UI boundary and picks up a new name for an existing domain type (vault's 'TimeLog' for TimeEntry; the nav's 'Ideas' for Note/notes)."
+  findings_count_by_severity: {critical: 0, major: 4, minor: 3, info: 1}
+findings:
+  - lens: naming
+    red_flag: vague-name
+    location: "client/src/hooks/usePointsCounter.ts:5 (also shared/constants.ts DEFAULT_SETTINGS.pointsCounterVisible/pointsColorFixed, client/src/components/taskSelection/PointsCounter.tsx)"
+    severity: major
+    confidence: high
+    observation: "usePointsCounter() computes totalScore as the sum of ageDays^2 over incomplete projectTasks — a staleness/procrastination penalty that grows the longer a task is neglected. The 'points' vocabulary reads as a reward/achievement score, especially since the app already has a correctly-named, separate reward system: awardXP/XP_VALUES/totalXP in utils/streak.ts. CLAUDE.md itself has to gloss this as 'Points/Staleness Counter' to disambiguate."
+    principle: "Vague Name (§14.3) — misleading name, image contradicts body"
+    recommendation: "Rename to something that signals a staleness penalty, e.g. useStalenessScore / stalenessVisible, and reserve 'points'/'score' for the XP system."
+  - lens: naming
+    red_flag: vague-name
+    location: "client/src/hooks/useAllProjectTasks.ts:4-8,15-28 (TaskGroup.tasks) vs client/src/hooks/useProjectTasks.ts:7-16 (tasks)"
+    severity: major
+    confidence: high
+    observation: "buildTaskGroup() builds TaskGroup.tasks by explicitly filtering OUT completed tasks (they go in the sibling completedTasks array), but useProjectTasks(projectId).tasks returns every non-deleted ProjectTask regardless of completion. Same field name, same ProjectTask[] type, two different scopes within the same tasks feature."
+    principle: "Consistency (§14.4)"
+    recommendation: "Rename TaskGroup.tasks to incompleteTasks (matching completedTasks), or make useProjectTasks.tasks filter to match."
+  - lens: naming
+    red_flag: vague-name
+    location: "client/src/stores/taskTimerStore.ts:4,15-19,27,38 and client/src/hooks/useTaskTimer.ts:67,83"
+    severity: major
+    confidence: high
+    observation: "useTaskTimer.startTask(todayTaskId, ...) passes taskId: todayTaskId into the store, which stores it as activeTaskId. The domain model deliberately distinguishes ProjectTask from TodayTask everywhere else. The bare taskId/activeTaskId here doesn't say which one it is. CLAUDE.md's own architecture table independently documents this field as activeTodayTaskId — evidence the actual name fails to project the right image."
+    principle: "Vague Name (§14.3) / Consistency (§14.4)"
+    recommendation: "Rename activeTaskId -> activeTodayTaskId and the start() config param taskId -> todayTaskId."
+  - lens: naming
+    red_flag: vague-name
+    location: "shared/constants.ts:126 (IDEAS_FROZEN) and client/src/i18n/translations.ts nav.ideas key"
+    severity: major
+    confidence: high
+    observation: "The domain entity is named Note everywhere in the data layer (type Note, Dexie table notes, hook useNotes), but the flag that freezes this exact feature (IDEAS_FROZEN) and the nav label that surfaces it (nav.ideas) use a different name, 'Ideas.' A reader grepping Note/notes to find everything touching the feature will miss the flag that turns it off."
+    principle: "Consistency (§14.4)"
+    recommendation: "Rename IDEAS_FROZEN -> NOTES_FROZEN (or rename the nav label key to nav.notes) so one name covers the feature end-to-end."
+  - lens: naming
+    red_flag: vague-name
+    location: "client/src/vault/serializers.ts:266 (serializeTimeLog), :318 (deserializeTimeLog)"
+    severity: minor
+    confidence: med
+    observation: "Both functions take/return TimeEntry[] (the domain type used everywhere else) but are named around a different noun, 'TimeLog.' No TimeLog type exists anywhere in the codebase."
+    principle: "Consistency (§14.4)"
+    recommendation: "Rename to serializeTimeEntries/deserializeTimeEntries; if 'log' names the markdown artifact rather than the data, say so in a doc comment."
+  - lens: naming
+    red_flag: vague-name
+    location: "client/src/vault/serializers.ts:175-190 (deserializeTasks), paired with serializeProject:105-153"
+    severity: minor
+    confidence: med
+    observation: "deserializeTasks returns ProjectTask[], but there is no matching serializeTasks — that half is folded into serializeProject's tasks.md block. The bare name 'Tasks' (unqualified, vs. the sibling deserializeTodayTasks) reintroduces exactly the projectTasks-vs-todayTasks-vs-'tasks' ambiguity the codebase otherwise works to avoid."
+    principle: "Vague Name (§14.3)"
+    recommendation: "Rename to deserializeProjectTasks for symmetry with deserializeTodayTasks, and/or extract a matching serializeProjectTasks out of serializeProject."
+  - lens: naming
+    red_flag: vague-name
+    location: "shared/constants.ts:12-27 (THEME)"
+    severity: minor
+    confidence: high
+    observation: "export const THEME = { bgPrimary, bgCard, ... } is a bare, unqualified name in a codebase whose real theme system names every variant precisely (ThemeMode, and in useThemeColors.ts: DRACULA, GRUVBOX, NORD, NEU_LIGHT, etc.). A repo-wide search found zero importers, so it is currently dead, but the name would collide with the real theming vocabulary if ever wired up."
+    principle: "Vague Name (§14.3) — generic name, 'of what?'"
+    recommendation: "Delete if truly dead, or rename to match the established per-theme pattern."
+  - lens: naming
+    red_flag: none
+    location: "client/src/utils/taskDnd.ts"
+    severity: info
+    confidence: high
+    observation: "TaskPayload/TextPayload/DragPayload, setTaskPayload/setTextPayload/readPayload/hasPayload, isCopyModifier, lineIndexFromNode/lineIndexFromPoint, wholeLineRange/offsetAfterLine/cutRange/insertLine — every name is precise, each pair is used consistently, and short doc comments explain the 'why' the names can't."
+    principle: "Precision & Consistency (§14.2-14.4)"
+    recommendation: "—"
