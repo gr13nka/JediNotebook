@@ -1,6 +1,6 @@
 import type {
   Activity, TimeEntry, UserSettings, Habit, HabitEntry,
-  Note, PomodoroPreset, Project, ProjectTask, TodayTask,
+  PomodoroPreset, Project, ProjectTask, TodayTask,
   ProjectFolder, InboxItem, MindMap, MindMapNode,
 } from '@shared/types';
 import { parseFrontmatter, stringifyFrontmatter } from './frontmatter';
@@ -53,43 +53,6 @@ export function deserializeActivity(content: string): Omit<Activity, 'deletedAt'
     dailyBudgetMinutes: (meta.dailyBudgetMinutes as number) ?? 60,
     isBreak: (meta.isBreak as boolean) ?? false,
     sortOrder: (meta.sortOrder as number) ?? 0,
-    createdAt: meta.createdAt as string,
-    updatedAt: meta.updatedAt as string,
-    deviceId: meta.deviceId as string,
-  };
-}
-
-// ─── Note ─────────────────────────────────────────────────────────
-
-const NOTE_META_KEYS = [
-  'id', 'color', 'isPinned', 'createdAt', 'updatedAt', 'deviceId',
-];
-
-export function serializeNote(n: Note): { path: string; content: string } {
-  const meta = pickMeta(omitDeleted(n) as any, NOTE_META_KEYS);
-  const body = n.content || '';
-  return {
-    path: `notes/${entityFilename(n.title || 'Untitled', n.id)}.md`,
-    content: stringifyFrontmatter(meta, body),
-  };
-}
-
-export function deserializeNote(content: string): Omit<Note, 'deletedAt'> {
-  const { meta, body } = parseFrontmatter(content);
-  // Extract title from first heading in body, or use 'Untitled'
-  let title = '';
-  const headingMatch = body.match(/^#\s+(.+)$/m);
-  if (headingMatch) {
-    title = headingMatch[1].trim();
-  }
-  if (!title) title = 'Untitled';
-
-  return {
-    id: meta.id as string,
-    title,
-    content: body,
-    color: (meta.color as string) || '#E04848',
-    isPinned: (meta.isPinned as boolean) ?? false,
     createdAt: meta.createdAt as string,
     updatedAt: meta.updatedAt as string,
     deviceId: meta.deviceId as string,

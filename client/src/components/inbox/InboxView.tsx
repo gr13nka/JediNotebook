@@ -7,7 +7,7 @@ import { useProjects } from '../../hooks/useProjects';
 import { useTranslation } from '../../i18n/useTranslation';
 import { db } from '../../db';
 import { generateId, getDeviceId } from '../../utils/uuid';
-import { ACTIVITY_COLORS, NOTE_COLORS } from '@shared/constants';
+import { ACTIVITY_COLORS } from '@shared/constants';
 import { awardXP, XP_VALUES } from '../../utils/streak';
 import { Card } from '../ui/Card';
 
@@ -256,26 +256,6 @@ export function InboxView({ embedded = false }: InboxViewProps) {
     moveToNext();
   };
 
-  const handleIdea = async () => {
-    if (!currentItem) return;
-    const now = new Date().toISOString();
-    const color = NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)];
-    await db.notes.add({
-      id: generateId(),
-      title: currentItem.text,
-      content: '',
-      color,
-      isPinned: false,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-      deviceId: getDeviceId(),
-    });
-    awardXP(XP_VALUES.createNote);
-    await deleteItem(currentItem.id);
-    moveToNext();
-  };
-
   const startUndoTimer = (id: string) => {
     // Clear any existing undo timer
     if (undoTimerRef.current) clearInterval(undoTimerRef.current);
@@ -495,13 +475,6 @@ export function InboxView({ embedded = false }: InboxViewProps) {
             style={{ boxShadow: NEU.raisedSm }}
           >
             {t('inbox.newProject')}
-          </button>
-          <button
-            onClick={handleIdea}
-            className="px-4 py-3 rounded-xl text-sm font-medium text-text-primary bg-bg-card transition-colors"
-            style={{ boxShadow: NEU.raisedSm }}
-          >
-            {t('inbox.idea')}
           </button>
           <button
             onClick={moveToNext}

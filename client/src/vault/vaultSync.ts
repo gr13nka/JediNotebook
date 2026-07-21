@@ -3,7 +3,6 @@ import type { VaultBackend } from './vaultBackend';
 import { FileIndex } from './fileIndex';
 import {
   serializeActivity, deserializeActivity,
-  serializeNote, deserializeNote,
   serializeProject, deserializeProject, deserializeTasks,
   serializeHabit, deserializeHabit,
   serializeTimeLog, deserializeTimeLog,
@@ -15,7 +14,6 @@ import {
   serializeFolders, deserializeFolders,
 } from './serializers';
 import { extractShortIdFromFilename, uuidMatchesShortId } from './sanitize';
-import { IDEAS_FROZEN } from '@shared/constants';
 
 const VAULT_VERSION = 1;
 
@@ -31,7 +29,7 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
   }, null, 2) + '\n');
 
   // Ensure directories exist
-  for (const dir of ['activities', 'notes', 'projects', 'habits', 'mind-maps', 'time-log', 'today']) {
+  for (const dir of ['activities', 'projects', 'habits', 'mind-maps', 'time-log', 'today']) {
     await backend.mkdir(dir);
   }
 
@@ -62,14 +60,6 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
     const { path, content } = serializeActivity(a);
     await backend.writeFile(path, content);
     fileIndex.set(a.id, path);
-  }
-
-  // Notes — skipped while Ideas is frozen (see IDEAS_FROZEN).
-  const notes = IDEAS_FROZEN ? [] : await db.notes.filter(n => !n.deletedAt).toArray();
-  for (const n of notes) {
-    const { path, content } = serializeNote(n);
-    await backend.writeFile(path, content);
-    fileIndex.set(n.id, path);
   }
 
   // Projects + Tasks
@@ -210,18 +200,6 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
     }
     counts.activities = activityFiles.length;
   } catch (err) { errors.push(`activities: ${err}`); }
-
-  // Notes
-  try {
-    const noteFiles = IDEAS_FROZEN ? [] : await backend.listFiles('notes', '.md');
-    for (const filePath of noteFiles) {
-      const content = await backend.readFile(filePath);
-      const note = deserializeNote(content);
-      await mergeEntity(db.notes, note);
-      fileIndex.set(note.id, filePath);
-    }
-    counts.notes = noteFiles.length;
-  } catch (err) { errors.push(`notes: ${err}`); }
 
   // Projects + Tasks
   try {
@@ -372,20 +350,6 @@ export async function writeEntityToDisk(
       if (oldPath && oldPath !== path) await backend.deleteFile(oldPath);
       await backend.writeFile(path, content);
       fileIndex.set(a.id, path);
-      break;
-    }
-    case 'notes': {
-      if (IDEAS_FROZEN) return;
-      const n = await db.notes.get(entityId);
-      if (!n || n.deletedAt) {
-        await deleteEntityFile(backend, entityId);
-        return;
-      }
-      const { path, content } = serializeNote(n);
-      const oldPath = fileIndex.getPath(n.id);
-      if (oldPath && oldPath !== path) await backend.deleteFile(oldPath);
-      await backend.writeFile(path, content);
-      fileIndex.set(n.id, path);
       break;
     }
     case 'projects': {
@@ -571,11 +535,6 @@ export async function handleExternalChange(
     const activity = deserializeActivity(content);
     await mergeEntity(db.activities, activity);
     fileIndex.set(activity.id, filePath);
-  } else if (filePath.startsWith('notes/')) {
-    if (IDEAS_FROZEN) return;
-    const note = deserializeNote(content);
-    await mergeEntity(db.notes, note);
-    fileIndex.set(note.id, filePath);
   } else if (filePath.startsWith('habits/')) {
     const { habit, entries } = deserializeHabit(content);
     await mergeEntity(db.habits, habit);
@@ -606,7 +565,6 @@ export async function handleExternalChange(
 
 function tableFromPath(filePath: string): string | null {
   if (filePath.startsWith('activities/')) return 'activities';
-  if (filePath.startsWith('notes/')) return 'notes';
   if (filePath.startsWith('habits/')) return 'habits';
   if (filePath.startsWith('mind-maps/')) return 'mindMaps';
   if (filePath.startsWith('time-log/')) return 'timeEntries';

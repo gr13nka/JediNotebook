@@ -75,7 +75,7 @@ export const DEFAULT_SETTINGS = {
   bottomNavScrollable: false,
   bottomNavPages: [
     ['/', '/today', '/projects', '/habits', '/inbox'],
-    ['/mindmap', '/notes', '/tasks', '/settings'],
+    ['/mindmap', '/tasks', '/settings'],
   ] as string[][],
   mobileProjectGrid: false,
 };
@@ -93,21 +93,4 @@ export const OVERFILL = {
   dangerColor: '#C0392B',
 } as const;
 
-export const NOTE_COLORS = [
-  '#E04848', '#2BA89E', '#2E96B0', '#4CB85A',
-  '#B06AB3', '#D4A017', '#9B59B6', '#D4873A',
-] as const;
-
 export const API_PREFIX = '/api';
-
-/**
- * Ideas (notes) is frozen: read-only in the UI and excluded from vault sync in
- * both directions.
- *
- * Reason: serializeNote() encodes the note title into the filename, so renaming
- * a note orphans its previous file, and the stale copy can later re-import over
- * the live row — notes were losing their titles and then disappearing. Freezing
- * stops the damage without deleting anything. Set to false to restore the
- * section once the filename scheme is fixed.
- */
-export const IDEAS_FROZEN = true;

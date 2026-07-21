@@ -5,7 +5,6 @@ import { AppShell } from './components/layout/AppShell';
 import { HomePage } from './pages/HomePage';
 import { HabitsPage } from './pages/HabitsPage';
 
-import { NotesPage } from './pages/NotesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { TaskSelectionPage } from './pages/TaskSelectionPage';
@@ -69,7 +68,6 @@ export default function App() {
             <Route path="/tasks" element={<TaskSelectionPage />} />
             <Route path="/today" element={<TodayPage />} />
             <Route path="/habits" element={<HabitsPage />} />
-            <Route path="/notes" element={<NotesPage />} />
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/mindmap" element={<MindMapPage />} />
             <Route path="/settings" element={<SettingsPage />} />
