@@ -109,7 +109,7 @@ function formatDuration(seconds) {
   if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
   return `${m}:${pad(s)}`;
 }
-console.log("negative:", formatDuration(-2192));
+console.log("negative:", formatDuration(-2132));
 console.log("zero:    ", formatDuration(0));
 console.log("normal:  ", formatDuration(1200));
 '
@@ -169,7 +169,7 @@ function formatDuration(seconds) {
   if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
   return `${m}:${pad(s)}`;
 }
-console.log("negative:", formatDuration(-2192));
+console.log("negative:", formatDuration(-2132));
 console.log("zero:    ", formatDuration(0));
 console.log("normal:  ", formatDuration(1200));
 console.log("hours:   ", formatDuration(3725));
