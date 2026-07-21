@@ -57,8 +57,6 @@ export const DEFAULT_SETTINGS = {
   language: 'en' as const,
   maxTasksPerProject: 5,
   navPosition: 'left' as const,
-  timerNotificationsEnabled: false,
-  timerNotificationIntervalMinutes: 30,
   pointsCounterVisible: true,
   accentColor: '',
   uiZoom: 110,

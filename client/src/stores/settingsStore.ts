@@ -82,8 +82,6 @@ interface SettingsState {
   language: Language;
   maxTasksPerProject: number;
   navPosition: 'left' | 'bottom' | 'dropdown';
-  timerNotificationsEnabled: boolean;
-  timerNotificationIntervalMinutes: number;
   pointsCounterVisible: boolean;
   accentColor: string;
   uiZoom: number;
@@ -145,8 +143,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         language,
         maxTasksPerProject,
         navPosition: raw.navPosition ?? DEFAULT_SETTINGS.navPosition,
-        timerNotificationsEnabled: raw.timerNotificationsEnabled ?? DEFAULT_SETTINGS.timerNotificationsEnabled,
-        timerNotificationIntervalMinutes: raw.timerNotificationIntervalMinutes ?? DEFAULT_SETTINGS.timerNotificationIntervalMinutes,
         pointsCounterVisible: raw.pointsCounterVisible ?? DEFAULT_SETTINGS.pointsCounterVisible,
         accentColor: raw.accentColor ?? DEFAULT_SETTINGS.accentColor,
         uiZoom: raw.uiZoom ?? DEFAULT_SETTINGS.uiZoom,

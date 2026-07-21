@@ -36,8 +36,6 @@ export interface UserSettings {
   language: Language;
   maxTasksPerProject: number;
   navPosition: 'left' | 'bottom' | 'dropdown';
-  timerNotificationsEnabled: boolean;
-  timerNotificationIntervalMinutes: number;
   pointsCounterVisible: boolean;
   accentColor: string;
   procrastinationWords: string[];

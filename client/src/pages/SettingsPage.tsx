@@ -5,7 +5,6 @@ import { BarStylePicker } from '../components/settings/BarStylePicker';
 import { DayBoundarySettings } from '../components/settings/DayBoundarySettings';
 import { TimezoneSettings } from '../components/settings/TimezoneSettings';
 import { TaskSettings } from '../components/settings/TaskSettings';
-import { TimerNotificationSettings } from '../components/settings/TimerNotificationSettings';
 import { LanguagePicker } from '../components/settings/LanguagePicker';
 import { NavPositionPicker } from '../components/settings/NavPositionPicker';
 import { BottomNavSettings } from '../components/settings/BottomNavSettings';
@@ -90,7 +89,6 @@ const sectionComponents = [
   { key: 'settings.navPosition', component: NavigationSection },
   { key: 'settings.time', component: TimeSection },
   { key: 'settings.tasks', component: TasksSection },
-  { key: 'settings.notifications', component: TimerNotificationSettings },
   { key: 'settings.gamification', component: GamificationSettings },
   { key: 'settings.vault', component: VaultSettings },
 ] as const;
