@@ -1045,12 +1045,18 @@ console.log("insert at end:  ", JSON.stringify(insertLine(doc, doc.length, "omeg
 Expected:
 
 ```
-cut middle word: "alpha\n\ncharlie"
+cut middle word: "alpha\ncharlie"
 cut whole line:  "alpha\ncharlie"
 insert at 0:     "zero\nalpha\nbravo\ncharlie"
-insert mid-line: "alpha\nb\nmid\nravo\ncharlie"
+insert mid-line: "alpha\nbr\nmid\navo\ncharlie"
 insert at end:   "alpha\nbravo\ncharlie\nomega"
 ```
+
+The first two lines are identical on purpose: cutting `bravo` from
+`"alpha\nbravo\ncharlie"` leaves `before = "alpha\n"` and `after = "\ncharlie"`,
+so the collapse branch fires in both cases. A genuinely mid-line cut does not
+collapse — cutting `bravo` out of `"alpha\nfoo bravo\ncharlie"` leaves
+`before = "alpha\nfoo "`, which does not end in a newline.
 
 If any line differs, fix `taskDnd.ts` before continuing — every drag in this
 feature routes through these two functions.
