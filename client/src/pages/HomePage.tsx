@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { TimerDisplay } from '../components/timer/TimerDisplay';
 import { PomodoroTimer } from '../components/pomodoro/PomodoroTimer';
 import { ActivityList } from '../components/activities/ActivityList';
-import { FatigueCheck } from '../components/fatigue/FatigueCheck';
 import { Modal } from '../components/ui/Modal';
 import { usePomodoroStore } from '../stores/pomodoroStore';
 import { useTranslation } from '../i18n/useTranslation';
@@ -17,16 +16,9 @@ const TomatoIcon = ({ size = 20 }: { size?: number }) => (
   </svg>
 );
 
-const ZapIcon = ({ size = 20 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-  </svg>
-);
-
 export function HomePage() {
   const { t } = useTranslation();
   const [showPomodoro, setShowPomodoro] = useState(false);
-  const [showFatigue, setShowFatigue] = useState(false);
   const isActive = usePomodoroStore((s) => s.isActive);
 
   return (
@@ -34,14 +26,6 @@ export function HomePage() {
       <div className="flex items-center justify-between mb-4 md:hidden">
         <h1 className="text-xl font-bold text-accent">{t('nav.brand')}</h1>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowFatigue(true)}
-            className="p-2 rounded-xl transition-colors text-text-secondary"
-            style={{ boxShadow: NEU.raisedSm }}
-            title="Fatigue Check"
-          >
-            <ZapIcon />
-          </button>
           <button
             onClick={() => setShowPomodoro(true)}
             className="relative p-2 rounded-xl transition-colors"
@@ -61,14 +45,6 @@ export function HomePage() {
 
       {/* Desktop: show buttons in-line */}
       <div className="hidden md:flex items-center justify-end gap-2 mb-4">
-        <button
-          onClick={() => setShowFatigue(true)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-          style={{ boxShadow: NEU.raisedSm }}
-        >
-          <ZapIcon size={18} />
-          <span>Fatigue Check</span>
-        </button>
         <button
           onClick={() => setShowPomodoro(true)}
           className="relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
@@ -92,8 +68,6 @@ export function HomePage() {
       <Modal open={showPomodoro} onClose={() => setShowPomodoro(false)} title={t('pomodoro.timerTitle')}>
         <PomodoroTimer embedded />
       </Modal>
-
-      <FatigueCheck open={showFatigue} onClose={() => setShowFatigue(false)} />
     </div>
   );
 }
