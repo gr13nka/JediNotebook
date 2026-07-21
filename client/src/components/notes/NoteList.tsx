@@ -8,6 +8,7 @@ import { PdfUploadButton } from './PdfUploadButton';
 import { useNotes } from '../../hooks/useNotes';
 import { usePdfDocuments } from '../../hooks/usePdfDocuments';
 import { useTranslation } from '../../i18n/useTranslation';
+import { IDEAS_FROZEN } from '@shared/constants';
 import type { Note, PdfDocument } from '@shared/types';
 
 type IdeasItem =
@@ -81,6 +82,12 @@ export function NoteList() {
         </h1>
       </div>
 
+      {IDEAS_FROZEN && (
+        <div className="mb-4 px-3 py-2 rounded-xl bg-amber-500/10 text-amber-600 text-xs">
+          {t('ideas.frozen')}
+        </div>
+      )}
+
       <div className="columns-2 gap-3">
         {items.map((item) =>
           item.type === 'note' ? (
@@ -88,7 +95,7 @@ export function NoteList() {
               key={item.data.id}
               note={item.data}
               onClick={() => handleOpenNote(item.data)}
-              onTogglePin={() => toggleNotePin(item.data.id)}
+              onTogglePin={IDEAS_FROZEN ? undefined : () => toggleNotePin(item.data.id)}
             />
           ) : (
             <PdfCard
@@ -100,13 +107,15 @@ export function NoteList() {
           ),
         )}
 
-        <button
-          onClick={handleNewNote}
-          className="rounded-2xl p-3 w-full flex items-center justify-center text-sm font-medium text-text-muted hover:text-text-secondary transition-colors mb-3"
-          style={{ boxShadow: NEU.pressed, minHeight: '80px' }}
-        >
-          {t('ideas.new')}
-        </button>
+        {!IDEAS_FROZEN && (
+          <button
+            onClick={handleNewNote}
+            className="rounded-2xl p-3 w-full flex items-center justify-center text-sm font-medium text-text-muted hover:text-text-secondary transition-colors mb-3"
+            style={{ boxShadow: NEU.pressed, minHeight: '80px' }}
+          >
+            {t('ideas.new')}
+          </button>
+        )}
 
         <PdfUploadButton onUpload={handleUploadPdf} />
       </div>
@@ -116,7 +125,7 @@ export function NoteList() {
         onClose={() => { setEditorOpen(false); setEditingNote(null); }}
         createNote={createNote}
         updateNote={updateNote}
-        onDelete={editingNote ? handleDeleteNote : undefined}
+        onDelete={IDEAS_FROZEN || !editingNote ? undefined : handleDeleteNote}
         note={editingNote}
       />
 

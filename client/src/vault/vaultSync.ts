@@ -16,6 +16,7 @@ import {
   serializePdfMeta, pdfBinaryPath, deserializePdfMeta,
 } from './serializers';
 import { extractShortIdFromFilename, uuidMatchesShortId } from './sanitize';
+import { IDEAS_FROZEN } from '@shared/constants';
 
 const VAULT_VERSION = 1;
 
@@ -64,8 +65,8 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
     fileIndex.set(a.id, path);
   }
 
-  // Notes
-  const notes = await db.notes.filter(n => !n.deletedAt).toArray();
+  // Notes — skipped while Ideas is frozen (see IDEAS_FROZEN).
+  const notes = IDEAS_FROZEN ? [] : await db.notes.filter(n => !n.deletedAt).toArray();
   for (const n of notes) {
     const { path, content } = serializeNote(n);
     await backend.writeFile(path, content);
@@ -227,7 +228,7 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
 
   // Notes
   try {
-    const noteFiles = await backend.listFiles('notes', '.md');
+    const noteFiles = IDEAS_FROZEN ? [] : await backend.listFiles('notes', '.md');
     for (const filePath of noteFiles) {
       const content = await backend.readFile(filePath);
       const note = deserializeNote(content);
@@ -437,6 +438,7 @@ export async function writeEntityToDisk(
       break;
     }
     case 'notes': {
+      if (IDEAS_FROZEN) return;
       const n = await db.notes.get(entityId);
       if (!n || n.deletedAt) {
         await deleteEntityFile(backend, entityId);
@@ -668,6 +670,7 @@ export async function handleExternalChange(
     await mergeEntity(db.activities, activity);
     fileIndex.set(activity.id, filePath);
   } else if (filePath.startsWith('notes/')) {
+    if (IDEAS_FROZEN) return;
     const note = deserializeNote(content);
     await mergeEntity(db.notes, note);
     fileIndex.set(note.id, filePath);

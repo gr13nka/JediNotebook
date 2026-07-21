@@ -112,3 +112,15 @@ export const NOTE_COLORS = [
 ] as const;
 
 export const API_PREFIX = '/api';
+
+/**
+ * Ideas (notes) is frozen: read-only in the UI and excluded from vault sync in
+ * both directions.
+ *
+ * Reason: serializeNote() encodes the note title into the filename, so renaming
+ * a note orphans its previous file, and the stale copy can later re-import over
+ * the live row — notes were losing their titles and then disappearing. Freezing
+ * stops the damage without deleting anything. Set to false to restore the
+ * section once the filename scheme is fixed.
+ */
+export const IDEAS_FROZEN = true;

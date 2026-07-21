@@ -23,7 +23,7 @@ const PinIcon = ({ filled }: { filled: boolean }) => (
 interface NoteCardProps {
   note: Note;
   onClick: () => void;
-  onTogglePin: () => void;
+  onTogglePin?: () => void;
 }
 
 export function NoteCard({ note, onClick, onTogglePin }: NoteCardProps) {
@@ -40,16 +40,18 @@ export function NoteCard({ note, onClick, onTogglePin }: NoteCardProps) {
       layout
     >
       {/* Pin button */}
-      <button
-        className="absolute top-3 right-3 p-1 rounded-full text-text-muted hover:text-text-primary transition-colors z-10"
-        onClick={(e) => {
-          e.stopPropagation();
-          onTogglePin();
-        }}
-        title={note.isPinned ? 'Unpin' : 'Pin'}
-      >
-        <PinIcon filled={note.isPinned} />
-      </button>
+      {onTogglePin && (
+        <button
+          className="absolute top-3 right-3 p-1 rounded-full text-text-muted hover:text-text-primary transition-colors z-10"
+          onClick={(e) => {
+            e.stopPropagation();
+            onTogglePin();
+          }}
+          title={note.isPinned ? 'Unpin' : 'Pin'}
+        >
+          <PinIcon filled={note.isPinned} />
+        </button>
+      )}
 
       {/* Title */}
       {note.title && (

@@ -4,7 +4,7 @@ import { Button } from '../ui/Button';
 import { NEU } from '../../utils/shadows';
 import { renderLineMd } from '../../utils/markdown';
 import { useTranslation } from '../../i18n/useTranslation';
-import { NOTE_COLORS } from '@shared/constants';
+import { NOTE_COLORS, IDEAS_FROZEN } from '@shared/constants';
 import type { Note } from '@shared/types';
 
 const BackIcon = () => (
@@ -138,6 +138,7 @@ export function NoteEditor({ open, onClose, createNote, updateNote, onDelete, no
   };
 
   const handleLineClick = (index: number) => {
+    if (IDEAS_FROZEN) return;
     setEditingLine(index);
   };
 
@@ -184,6 +185,7 @@ export function NoteEditor({ open, onClose, createNote, updateNote, onDelete, no
 
   // Click on empty area to add a new line
   const handleContainerClick = (e: React.MouseEvent) => {
+    if (IDEAS_FROZEN) return;
     if (e.target === containerRef.current) {
       const newLines = [...lines, ''];
       setLines(newLines);
@@ -223,8 +225,9 @@ export function NoteEditor({ open, onClose, createNote, updateNote, onDelete, no
                 <button
                   key={c}
                   type="button"
+                  disabled={IDEAS_FROZEN}
                   onClick={() => { setColor(c); latestRef.current.color = c; scheduleSave(); }}
-                  className="w-5 h-5 rounded-full transition-transform"
+                  className="w-5 h-5 rounded-full transition-transform disabled:cursor-default"
                   style={{
                     backgroundColor: c,
                     boxShadow: color === c ? NEU.pressedSm : NEU.raisedSm,
@@ -260,7 +263,8 @@ export function NoteEditor({ open, onClose, createNote, updateNote, onDelete, no
               value={title}
               onChange={(e) => { setTitle(e.target.value); latestRef.current.title = e.target.value; scheduleSave(); }}
               placeholder={t('ideas.titlePlaceholder')}
-              autoFocus
+              autoFocus={!IDEAS_FROZEN}
+              readOnly={IDEAS_FROZEN}
               className="w-full bg-transparent text-2xl font-bold text-text-primary placeholder:text-text-muted/50 focus:outline-none mb-4 border-none"
             />
 
