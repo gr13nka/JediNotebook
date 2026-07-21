@@ -11,6 +11,9 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { getDeviceId } from '../utils/uuid';
 import { useSettingsStore } from '../stores/settingsStore';
 
+/** Full reconcile interval — a safety net for anything the watcher misses. */
+const RECONCILE_INTERVAL_MS = 60000;
+
 /**
  * On Android, TauriVaultBackend's exists/readDir/readTextFile can fail
  * due to FS scope issues. Work around this by scanning the vault directory
@@ -76,6 +79,7 @@ interface VaultState {
   _unsubMiddleware: (() => void) | null;
   _unwatchFs: (() => void) | null;
   _visibilityHandler: (() => void) | null;
+  _reconcileTimer: ReturnType<typeof setInterval> | null;
 
   enable: (vaultPath: string) => Promise<number>;
   disable: () => Promise<void>;
@@ -93,6 +97,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   _unsubMiddleware: null,
   _unwatchFs: null,
   _visibilityHandler: null,
+  _reconcileTimer: null,
 
   enable: async (vaultPath: string) => {
     const state = get();
@@ -165,6 +170,16 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     document.addEventListener('visibilitychange', handler);
     set({ _visibilityHandler: handler });
 
+    // Periodic full reconcile. The watcher is the fast path; this catches
+    // anything it misses — a dropped event, a platform where watching silently
+    // does nothing, or a file written while the app was suspended.
+    const reconcileTimer = setInterval(() => {
+      const { isSyncing } = get();
+      if (isSyncing) return;
+      get().syncNow();
+    }, RECONCILE_INTERVAL_MS);
+    set({ _reconcileTimer: reconcileTimer });
+
     return importCount;
   },
 
@@ -174,6 +189,9 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     state._unwatchFs?.();
     if (state._visibilityHandler) {
       document.removeEventListener('visibilitychange', state._visibilityHandler);
+    }
+    if (state._reconcileTimer) {
+      clearInterval(state._reconcileTimer);
     }
     // Flush any pending vault writes before dropping the backend
     await writeQueue.flush();
@@ -186,6 +204,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       _unsubMiddleware: null,
       _unwatchFs: null,
       _visibilityHandler: null,
+      _reconcileTimer: null,
     });
   },
 
