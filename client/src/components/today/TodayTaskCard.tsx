@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
-import { useTranslation } from '../../i18n/useTranslation';
 import type { EnrichedTodayTask } from '../../hooks/useTodayTasks';
 
 interface TodayTaskCardProps {
@@ -11,14 +10,6 @@ interface TodayTaskCardProps {
   onMoveDown?: () => void;
   onEditTitle: (title: string) => void;
   isFirst: boolean;
-  isTaskActive?: boolean;
-  countdownDisplay?: string;
-  countdownComplete?: boolean;
-  isPaused?: boolean;
-  onStartTask?: () => void;
-  onStopTask?: () => void;
-  onPauseTask?: () => void;
-  onResumeTask?: () => void;
 }
 
 const ChevronUp = () => (
@@ -33,34 +24,12 @@ const ChevronDown = () => (
   </svg>
 );
 
-const PlayIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <polygon points="5 3 19 12 5 21 5 3" />
-  </svg>
-);
-
-const PauseIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <rect x="6" y="4" width="4" height="16" />
-    <rect x="14" y="4" width="4" height="16" />
-  </svg>
-);
-
-const StopIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <rect x="4" y="4" width="16" height="16" rx="2" />
-  </svg>
-);
-
 export function TodayTaskCard({
   task, onComplete, onMoveUp, onMoveDown, onEditTitle, isFirst,
-  isTaskActive, countdownDisplay, countdownComplete, isPaused: taskPaused,
-  onStartTask, onStopTask, onPauseTask, onResumeTask,
 }: TodayTaskCardProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(task.taskTitle);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { t } = useTranslation();
 
   useEffect(() => {
     setEditValue(task.taskTitle);
@@ -104,13 +73,11 @@ export function TodayTaskCard({
       className="rounded-xl bg-bg-card p-3 sm:p-4"
       style={{
         boxShadow: NEU.raised,
-        border: isTaskActive
-          ? `2px solid ${task.projectColor}80`
-          : isFirst && !task.isCompleted
-            ? `2px solid ${task.projectColor}4D`
-            : task.isCompleted
-              ? '2px solid #27AE6040'
-              : '2px solid transparent',
+        border: isFirst && !task.isCompleted
+          ? `2px solid ${task.projectColor}4D`
+          : task.isCompleted
+            ? '2px solid #27AE6040'
+            : '2px solid transparent',
       }}
     >
       {/* Top row: project info + reorder + complete */}
@@ -127,20 +94,9 @@ export function TodayTaskCard({
           {task.projectName}
         </span>
 
-        {/* Countdown display for active task */}
-        {isTaskActive && countdownDisplay && (
-          <span
-            className={`text-xs font-mono font-semibold ml-auto ${
-              countdownComplete ? 'text-amber-500' : 'text-accent'
-            }`}
-          >
-            {countdownDisplay}
-          </span>
-        )}
-
         <div className="flex items-center gap-1 ml-auto shrink-0">
           {/* Move up/down buttons */}
-          {!task.isCompleted && !isTaskActive && (onMoveUp || onMoveDown) && (
+          {!task.isCompleted && (onMoveUp || onMoveDown) && (
             <div className="flex items-center gap-0.5">
               <button
                 onClick={onMoveUp}
@@ -188,50 +144,8 @@ export function TodayTaskCard({
         )}
       </div>
 
-      {/* Bottom row: timer controls + complete button */}
+      {/* Bottom row: complete button */}
       <div className="flex items-center gap-2">
-        {/* Timer controls */}
-        {isTaskActive ? (
-          <div className="flex items-center gap-1.5">
-            {taskPaused ? (
-              <button
-                onClick={onResumeTask}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-accent transition-colors"
-                style={{ boxShadow: NEU.raisedSm }}
-                title={t('today.resumeTask')}
-              >
-                <PlayIcon />
-              </button>
-            ) : (
-              <button
-                onClick={onPauseTask}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted active:text-text-primary transition-colors"
-                style={{ boxShadow: NEU.raisedSm }}
-                title={t('today.pauseTask')}
-              >
-                <PauseIcon />
-              </button>
-            )}
-            <button
-              onClick={onStopTask}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-red transition-colors"
-              style={{ boxShadow: NEU.raisedSm }}
-              title={t('today.stopTask')}
-            >
-              <StopIcon />
-            </button>
-          </div>
-        ) : !task.isCompleted && onStartTask ? (
-          <button
-            onClick={onStartTask}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted active:text-accent transition-colors"
-            style={{ boxShadow: NEU.raisedSm }}
-            title={t('today.startTask')}
-          >
-            <PlayIcon />
-          </button>
-        ) : null}
-
         <button
           onClick={onComplete}
           className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 ml-auto"

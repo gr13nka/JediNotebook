@@ -70,7 +70,6 @@ export const DEFAULT_SETTINGS = {
   todayXP: 0,
   todayXPDate: '',
   gamificationEnabled: true,
-  taskTimerMinutes: 20,
   bottomNavTabs: ['/inbox', '/projects', '/tasks', '/today', '/settings'] as string[],
   bottomNavScrollable: false,
   bottomNavPages: [

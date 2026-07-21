@@ -13,7 +13,6 @@ import { ZoomSettings } from '../components/settings/ZoomSettings';
 import { VaultSettings } from '../components/settings/VaultSettings';
 import { MobileProjectSettings } from '../components/settings/MobileProjectSettings';
 import { GamificationSettings } from '../components/settings/GamificationSettings';
-import { TaskTimerSettings } from '../components/settings/TaskTimerSettings';
 import { Card } from '../components/ui/Card';
 import { NEU } from '../utils/shadows';
 import { useTranslation } from '../i18n/useTranslation';
@@ -69,23 +68,13 @@ function TimeSection() {
   );
 }
 
-function TasksSection() {
-  return (
-    <>
-      <TaskSettings />
-      <Divider />
-      <TaskTimerSettings />
-    </>
-  );
-}
-
 const sectionComponents = [
   { key: 'settings.language', component: LanguagePicker },
   { key: 'settings.theme', component: ThemeSection },
   { key: 'settings.appearance', component: AppearanceSection },
   { key: 'settings.navPosition', component: NavigationSection },
   { key: 'settings.time', component: TimeSection },
-  { key: 'settings.tasks', component: TasksSection },
+  { key: 'settings.tasks', component: TaskSettings },
   { key: 'settings.gamification', component: GamificationSettings },
   { key: 'settings.vault', component: VaultSettings },
 ] as const;

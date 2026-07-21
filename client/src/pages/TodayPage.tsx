@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { TimerDisplay } from '../components/timer/TimerDisplay';
 import { TodayTaskCard } from '../components/today/TodayTaskCard';
 import { useTodayTasks } from '../hooks/useTodayTasks';
-import { useTaskTimer } from '../hooks/useTaskTimer';
 import { useTranslation } from '../i18n/useTranslation';
 import { NEU } from '../utils/shadows';
 
@@ -44,7 +43,6 @@ const ExpandIcon = () => (
 export function TodayPage() {
   const { t } = useTranslation();
   const { todayTasks, completeTask, reorderTodayTasks, updateTaskTitle } = useTodayTasks();
-  const taskTimer = useTaskTimer();
   const [hideCompleted, setHideCompleted] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
 
@@ -84,35 +82,20 @@ export function TodayPage() {
   }, [incompleteTasks, completedTasks, reorderTodayTasks]);
 
   const handleComplete = useCallback((taskId: string) => {
-    // Stop task timer if this task is active
-    if (taskTimer.activeTaskId === taskId) {
-      taskTimer.stopTask();
-    }
     completeTask(taskId);
-  }, [taskTimer, completeTask]);
+  }, [completeTask]);
 
-  const renderTaskCard = (task: typeof todayTasks[0], i: number, list: typeof todayTasks) => {
-    const isActive = taskTimer.activeTaskId === task.id;
-    return (
-      <TodayTaskCard
-        key={task.id}
-        task={task}
-        onComplete={() => handleComplete(task.id)}
-        onMoveUp={!task.isCompleted && i > 0 ? () => handleMoveUp(task.id) : undefined}
-        onMoveDown={!task.isCompleted && i < list.length - 1 ? () => handleMoveDown(task.id) : undefined}
-        onEditTitle={(title) => updateTaskTitle(task.id, title)}
-        isFirst={i === 0}
-        isTaskActive={isActive}
-        countdownDisplay={isActive ? taskTimer.formatCountdown() : undefined}
-        countdownComplete={isActive ? taskTimer.countdownComplete : undefined}
-        isPaused={isActive ? taskTimer.isPaused : undefined}
-        onStartTask={() => taskTimer.startTask(task.id, task.projectId, task.linkedActivityId)}
-        onStopTask={isActive ? () => taskTimer.stopTask() : undefined}
-        onPauseTask={isActive ? () => taskTimer.pauseTask() : undefined}
-        onResumeTask={isActive ? () => taskTimer.resumeTask() : undefined}
-      />
-    );
-  };
+  const renderTaskCard = (task: typeof todayTasks[0], i: number, list: typeof todayTasks) => (
+    <TodayTaskCard
+      key={task.id}
+      task={task}
+      onComplete={() => handleComplete(task.id)}
+      onMoveUp={!task.isCompleted && i > 0 ? () => handleMoveUp(task.id) : undefined}
+      onMoveDown={!task.isCompleted && i < list.length - 1 ? () => handleMoveDown(task.id) : undefined}
+      onEditTitle={(title) => updateTaskTitle(task.id, title)}
+      isFirst={i === 0}
+    />
+  );
 
   // Normal mode: renders in-flow inside AppShell (sidebar visible)
   // Focus mode: fixed full-screen overlay on top of everything

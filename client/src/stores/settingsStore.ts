@@ -94,7 +94,6 @@ interface SettingsState {
   vaultPath: string;
   vaultSetupDone: boolean;
   recentVaults: Array<{ path: string; name: string; lastOpened: string }>;
-  taskTimerMinutes: number;
   currentStreak: number;
   longestStreak: number;
   lastActiveDate: string;
@@ -153,7 +152,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         vaultPath: raw.vaultPath ?? DEFAULT_SETTINGS.vaultPath,
         vaultSetupDone: raw.vaultSetupDone ?? DEFAULT_SETTINGS.vaultSetupDone,
         recentVaults: raw.recentVaults ?? DEFAULT_SETTINGS.recentVaults,
-        taskTimerMinutes: raw.taskTimerMinutes ?? DEFAULT_SETTINGS.taskTimerMinutes,
         currentStreak: raw.currentStreak ?? DEFAULT_SETTINGS.currentStreak,
         longestStreak: raw.longestStreak ?? DEFAULT_SETTINGS.longestStreak,
         lastActiveDate: raw.lastActiveDate ?? DEFAULT_SETTINGS.lastActiveDate,
