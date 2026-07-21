@@ -38,10 +38,21 @@ export function setTextPayload(
   e.dataTransfer.effectAllowed = 'copy';
 }
 
+/**
+ * `effectAllowed` is 'copyMove' here, not 'copy'.
+ *
+ * A task row is the source of two different drags: reordering within the task
+ * list, whose dragover sets dropEffect 'move', and dropping into the
+ * description, which sets 'copy'. A dropEffect incompatible with effectAllowed
+ * resolves the drag operation to "none" and the drop event never fires — so
+ * pinning this to 'copy' would silently break reordering. Unlike a text
+ * selection, a task row has no native source mutation to guard against, so
+ * permitting 'move' costs nothing.
+ */
 export function setTaskPayload(e: React.DragEvent, taskId: string, title: string): void {
   e.dataTransfer.setData(TASK_MIME, JSON.stringify({ taskId, title }));
   e.dataTransfer.setData('text/plain', title);
-  e.dataTransfer.effectAllowed = 'copy';
+  e.dataTransfer.effectAllowed = 'copyMove';
 }
 
 /**

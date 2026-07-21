@@ -54,8 +54,9 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
 
   const handleDragStart = (index: number) => (e: React.DragEvent) => {
     dragIdx.current = index;
-    e.dataTransfer.effectAllowed = 'move';
     // Also advertise the task payload so the description editor can accept it.
+    // setTaskPayload owns effectAllowed ('copyMove') — it has to permit both
+    // this list's 'move' reorder and the editor's 'copy' drop.
     const task = incompleteTasks[index];
     if (task) setTaskPayload(e, task.id, task.title);
   };
