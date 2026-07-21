@@ -14,7 +14,6 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { to: '/', labelKey: 'nav.tracking' },
   { to: '/today', labelKey: 'nav.today' },
   { to: '/projects', labelKey: 'nav.projects' },
-  { to: '/habits', labelKey: 'nav.habits' },
   { to: '/inbox', labelKey: 'nav.inbox' },
   { to: '/mindmap', labelKey: 'nav.mindmap' },
   { to: '/tasks', labelKey: 'nav.taskSelection' },

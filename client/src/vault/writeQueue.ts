@@ -60,7 +60,7 @@ class WriteQueue {
    * coalesce by parent key to avoid N writes for N child changes.
    */
   private getCoalesceKey(entityType: string, entityId: string): string {
-    // projectTasks and habitEntries re-serialize the parent —
+    // projectTasks re-serializes the parent —
     // but we don't know the parentId here without a DB lookup.
     // So we just use entityType:entityId and let vaultSync handle the parent lookup.
     return `${entityType}:${entityId}`;

@@ -1,7 +1,7 @@
 import { db } from './index';
 import { BREAK_ACTIVITY, DEFAULT_SETTINGS, ACTIVITY_COLORS } from '@shared/constants';
 import { generateId, getDeviceId } from '../utils/uuid';
-import type { Habit, UserSettings } from '@shared/types';
+import type { UserSettings } from '@shared/types';
 
 export async function seedDatabase() {
   const existingBreak = await db.activities
@@ -33,26 +33,5 @@ export async function seedDatabase() {
       updatedAt: now,
       deviceId: getDeviceId(),
     });
-  }
-
-  const existingHabits = await db.habits.count();
-  if (existingHabits === 0) {
-    const now = new Date().toISOString();
-    const deviceId = getDeviceId();
-    const defaults: Omit<Habit, 'id' | 'createdAt' | 'updatedAt' | 'deviceId'>[] = [
-      { name: 'Meditate', type: 'boolean', targetValue: 1, unit: '', color: '#D4A017', icon: 'brain', sortOrder: 0, deletedAt: null },
-      { name: 'Read', type: 'boolean', targetValue: 1, unit: '', color: '#9B59B6', icon: 'book', sortOrder: 1, deletedAt: null },
-      { name: 'Steps', type: 'numeric', targetValue: 10000, unit: 'steps', color: '#4CB85A', icon: 'footprints', sortOrder: 2, deletedAt: null },
-      { name: 'Water', type: 'numeric', targetValue: 8, unit: 'glasses', color: '#2E96B0', icon: 'droplet', sortOrder: 3, deletedAt: null },
-    ];
-    await db.habits.bulkAdd(
-      defaults.map((h) => ({
-        ...h,
-        id: generateId(),
-        createdAt: now,
-        updatedAt: now,
-        deviceId,
-      })),
-    );
   }
 }

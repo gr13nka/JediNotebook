@@ -34,13 +34,6 @@ const FolderIcon = () => (
   </svg>
 );
 
-const HabitIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-    <polyline points="22 4 12 14.01 9 11.01" />
-  </svg>
-);
-
 const InboxIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
@@ -95,7 +88,6 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { to: '/', labelKey: 'nav.tracking', icon: ClockIcon },
   { to: '/today', labelKey: 'nav.today', icon: SunIcon },
   { to: '/projects', labelKey: 'nav.projects', icon: FolderIcon },
-  { to: '/habits', labelKey: 'nav.habits', icon: HabitIcon },
   { to: '/inbox', labelKey: 'nav.inbox', icon: InboxIcon },
   { to: '/mindmap', labelKey: 'nav.mindmap', shortLabelKey: 'nav.mindmapShort', icon: MindMapIcon },
   { to: '/tasks', labelKey: 'nav.taskSelection', shortLabelKey: 'nav.tasksShort', icon: ListIcon },

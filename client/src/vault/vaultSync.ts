@@ -4,7 +4,6 @@ import { FileIndex } from './fileIndex';
 import {
   serializeActivity, deserializeActivity,
   serializeProject, deserializeProject, deserializeTasks,
-  serializeHabit, deserializeHabit,
   serializeTimeLog, deserializeTimeLog,
   serializeTodayTasks, deserializeTodayTasks,
   serializeMindMap, deserializeMindMap,
@@ -28,7 +27,7 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
   }, null, 2) + '\n');
 
   // Ensure directories exist
-  for (const dir of ['activities', 'projects', 'habits', 'mind-maps', 'time-log', 'today']) {
+  for (const dir of ['activities', 'projects', 'mind-maps', 'time-log', 'today']) {
     await backend.mkdir(dir);
   }
 
@@ -65,15 +64,6 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
     // Index the project directory
     const projectPath = [...files.keys()][0]; // project.md path
     if (projectPath) fileIndex.set(p.id, projectPath);
-  }
-
-  // Habits + Entries
-  const habits = await db.habits.filter(h => !h.deletedAt).toArray();
-  for (const h of habits) {
-    const entries = await db.habitEntries.where('habitId').equals(h.id).toArray();
-    const { path, content } = serializeHabit(h, entries);
-    await backend.writeFile(path, content);
-    fileIndex.set(h.id, path);
   }
 
   // Mind maps
@@ -215,21 +205,6 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
     counts.projects = projectCount;
   } catch (err) { errors.push(`projects: ${err}`); }
 
-  // Habits
-  try {
-    const habitFiles = await backend.listFiles('habits', '.md');
-    for (const filePath of habitFiles) {
-      const content = await backend.readFile(filePath);
-      const { habit, entries } = deserializeHabit(content);
-      await mergeEntity(db.habits, habit);
-      fileIndex.set(habit.id, filePath);
-      for (const e of entries) {
-        await mergeEntity(db.habitEntries, e);
-      }
-    }
-    counts.habits = habitFiles.length;
-  } catch (err) { errors.push(`habits: ${err}`); }
-
   // Mind maps
   try {
     const mindMapFiles = await backend.listFiles('mind-maps', '.md');
@@ -367,28 +342,6 @@ export async function writeEntityToDisk(
       }
       break;
     }
-    case 'habits': {
-      const h = await db.habits.get(entityId);
-      if (!h || h.deletedAt) {
-        await deleteEntityFile(backend, entityId);
-        return;
-      }
-      const entries = await db.habitEntries.where('habitId').equals(h.id).toArray();
-      const { path, content } = serializeHabit(h, entries);
-      const oldPath = fileIndex.getPath(h.id);
-      if (oldPath && oldPath !== path) await backend.deleteFile(oldPath);
-      await backend.writeFile(path, content);
-      fileIndex.set(h.id, path);
-      break;
-    }
-    case 'habitEntries': {
-      // Re-serialize the parent habit
-      const entry = await db.habitEntries.get(entityId);
-      if (entry) {
-        await writeEntityToDisk(backend, 'habits', entry.habitId);
-      }
-      break;
-    }
     case 'mindMaps': {
       const m = await db.mindMaps.get(entityId);
       if (!m || m.deletedAt) {
@@ -507,11 +460,6 @@ export async function handleExternalChange(
     const activity = deserializeActivity(content);
     await mergeEntity(db.activities, activity);
     fileIndex.set(activity.id, filePath);
-  } else if (filePath.startsWith('habits/')) {
-    const { habit, entries } = deserializeHabit(content);
-    await mergeEntity(db.habits, habit);
-    fileIndex.set(habit.id, filePath);
-    for (const e of entries) await mergeEntity(db.habitEntries, e);
   } else if (filePath.startsWith('mind-maps/')) {
     const mindMap = deserializeMindMap(content);
     await mergeEntity(db.mindMaps, mindMap);
@@ -537,7 +485,6 @@ export async function handleExternalChange(
 
 function tableFromPath(filePath: string): string | null {
   if (filePath.startsWith('activities/')) return 'activities';
-  if (filePath.startsWith('habits/')) return 'habits';
   if (filePath.startsWith('mind-maps/')) return 'mindMaps';
   if (filePath.startsWith('time-log/')) return 'timeEntries';
   if (filePath.startsWith('today/')) return 'todayTasks';

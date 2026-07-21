@@ -3,7 +3,6 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { AppShell } from './components/layout/AppShell';
 import { HomePage } from './pages/HomePage';
-import { HabitsPage } from './pages/HabitsPage';
 
 import { SettingsPage } from './pages/SettingsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -67,7 +66,6 @@ export default function App() {
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/tasks" element={<TaskSelectionPage />} />
             <Route path="/today" element={<TodayPage />} />
-            <Route path="/habits" element={<HabitsPage />} />
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/mindmap" element={<MindMapPage />} />
             <Route path="/settings" element={<SettingsPage />} />

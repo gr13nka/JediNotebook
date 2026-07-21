@@ -7,8 +7,6 @@ const TABLE_TO_TYPE: Record<string, string> = {
   activities: 'activities',
   timeEntries: 'timeEntries',
   settings: 'settings',
-  habits: 'habits',
-  habitEntries: 'habitEntries',
   projects: 'projects',
   projectTasks: 'projectTasks',
   todayTasks: 'todayTasks',

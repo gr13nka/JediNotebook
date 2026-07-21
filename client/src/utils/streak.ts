@@ -3,7 +3,6 @@ import { getLogicalDate } from './time';
 
 export const XP_VALUES = {
   completeTask: 15,
-  checkHabit: 10,
   stopTimer: 10,
   createTask: 5,
   addInboxItem: 5,

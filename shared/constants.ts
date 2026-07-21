@@ -73,7 +73,7 @@ export const DEFAULT_SETTINGS = {
   bottomNavTabs: ['/inbox', '/projects', '/tasks', '/today', '/settings'] as string[],
   bottomNavScrollable: false,
   bottomNavPages: [
-    ['/', '/today', '/projects', '/habits', '/inbox'],
+    ['/', '/today', '/projects', '/inbox'],
     ['/mindmap', '/tasks', '/settings'],
   ] as string[][],
   mobileProjectGrid: false,

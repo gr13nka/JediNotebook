@@ -69,7 +69,7 @@ export function AddProjectModal({ open, onClose, onAdd }: AddProjectModalProps) 
         </div>
         {/* Icon picker */}
         <div>
-          <span className="text-xs text-text-muted mb-2 block">{t('addHabit.icon')}</span>
+          <span className="text-xs text-text-muted mb-2 block">{t('projects.addIcon')}</span>
           <div className="flex items-center gap-2">
             <button
               ref={iconBtnRef}

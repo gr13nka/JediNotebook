@@ -1,5 +1,5 @@
 import type {
-  Activity, TimeEntry, UserSettings, Habit, HabitEntry,
+  Activity, TimeEntry, UserSettings,
   Project, ProjectTask, TodayTask,
   ProjectFolder, InboxItem, MindMap, MindMapNode,
 } from '@shared/types';
@@ -151,77 +151,6 @@ export function deserializeTasks(tasksContent: string): Omit<ProjectTask, 'delet
     updatedAt: t.updatedAt,
     deviceId: t.deviceId,
   }));
-}
-
-// ─── Habit (with entries) ─────────────────────────────────────────
-
-const HABIT_META_KEYS = [
-  'id', 'type', 'color', 'icon', 'targetValue', 'unit', 'sortOrder',
-  'createdAt', 'updatedAt', 'deviceId',
-];
-
-export function serializeHabit(
-  h: Habit,
-  entries: HabitEntry[],
-): { path: string; content: string } {
-  const meta: Record<string, unknown> = pickMeta(omitDeleted(h) as any, HABIT_META_KEYS);
-  const activeEntries = entries.filter(e => !e.deletedAt);
-  if (activeEntries.length > 0) {
-    meta.entries = activeEntries.map(e => ({
-      id: e.id,
-      date: e.date,
-      value: e.value,
-      completed: e.completed,
-      createdAt: e.createdAt,
-      updatedAt: e.updatedAt,
-      deviceId: e.deviceId,
-    }));
-  }
-
-  const body = `# ${h.name}\n`;
-  return {
-    path: `habits/${entityFilename(h.name, h.id)}.md`,
-    content: stringifyFrontmatter(meta, body),
-  };
-}
-
-export function deserializeHabit(content: string): {
-  habit: Omit<Habit, 'deletedAt'>;
-  entries: Omit<HabitEntry, 'deletedAt'>[];
-} {
-  const { meta, body } = parseFrontmatter(content);
-  let name = '';
-  const headingMatch = body.match(/^#\s+(.+)$/m);
-  if (headingMatch) name = headingMatch[1].trim();
-  if (!name) name = 'Untitled';
-
-  const habit: Omit<Habit, 'deletedAt'> = {
-    id: meta.id as string,
-    name,
-    type: (meta.type as any) || 'boolean',
-    color: (meta.color as string) || '#E04848',
-    icon: (meta.icon as string) || '',
-    targetValue: (meta.targetValue as number) ?? 1,
-    unit: (meta.unit as string) || '',
-    sortOrder: (meta.sortOrder as number) ?? 0,
-    createdAt: meta.createdAt as string,
-    updatedAt: meta.updatedAt as string,
-    deviceId: meta.deviceId as string,
-  };
-
-  const rawEntries = (meta.entries as any[]) || [];
-  const entries = rawEntries.map(e => ({
-    id: e.id as string,
-    habitId: meta.id as string,
-    date: e.date as string,
-    value: (e.value as number) ?? 0,
-    completed: (e.completed as boolean) ?? false,
-    createdAt: e.createdAt as string,
-    updatedAt: e.updatedAt as string,
-    deviceId: e.deviceId as string,
-  }));
-
-  return { habit, entries };
 }
 
 // ─── Time Log (per-date) ──────────────────────────────────────────
