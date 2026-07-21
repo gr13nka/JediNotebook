@@ -10,7 +10,6 @@ import { generateId, getDeviceId } from '../../utils/uuid';
 import { ACTIVITY_COLORS, NOTE_COLORS } from '@shared/constants';
 import { awardXP, XP_VALUES } from '../../utils/streak';
 import { Card } from '../ui/Card';
-import { ReviewView } from '../review/ReviewView';
 
 interface InboxViewProps {
   embedded?: boolean;
@@ -78,7 +77,6 @@ export function InboxView({ embedded = false }: InboxViewProps) {
   const [undoPending, setUndoPending] = useState<{ id: string; secondsLeft: number } | null>(null);
   const [taskMode, setTaskMode] = useState(false);
   const [taskModePickerId, setTaskModePickerId] = useState<string | null>(null);
-  const [showReview, setShowReview] = useState(false);
   const autoSortTriggered = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const sortEditRef = useRef<HTMLInputElement>(null);
@@ -551,15 +549,6 @@ export function InboxView({ embedded = false }: InboxViewProps) {
       <div className="flex items-center justify-between">
         {!embedded && <h1 className="text-xl font-bold text-text-primary">{t('inbox.title')}</h1>}
         <div className="flex items-center gap-2 ml-auto">
-          <button
-            onClick={() => setShowReview((v) => !v)}
-            className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${
-              showReview ? 'text-accent' : 'text-text-muted'
-            }`}
-            style={{ boxShadow: showReview ? NEU.pressedSm : NEU.raisedSm }}
-          >
-            {t('inbox.review')}
-          </button>
           {items.length > 0 && (
             <button
               onClick={() => setTaskMode((v) => !v)}
@@ -582,8 +571,6 @@ export function InboxView({ embedded = false }: InboxViewProps) {
           )}
         </div>
       </div>
-
-      {showReview && <ReviewView />}
 
       <div
         className="flex gap-2 items-end rounded-xl bg-bg-card p-2"
