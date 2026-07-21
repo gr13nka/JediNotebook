@@ -8,14 +8,17 @@ self.onmessage = (e: MessageEvent) => {
     startTime = new Date(startedAt).getTime();
     if (intervalId) clearInterval(intervalId);
 
+    // Clamped at zero: a startedAt written by a device whose clock runs ahead
+    // would otherwise broadcast a negative elapsed to the whole app.
+    const currentElapsed = () =>
+      Math.max(0, Math.floor((Date.now() - startTime) / 1000));
+
     intervalId = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      self.postMessage({ type: 'tick', elapsed });
+      self.postMessage({ type: 'tick', elapsed: currentElapsed() });
     }, 1000);
 
     // Immediately send current elapsed
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    self.postMessage({ type: 'tick', elapsed });
+    self.postMessage({ type: 'tick', elapsed: currentElapsed() });
   }
 
   if (type === 'stop') {

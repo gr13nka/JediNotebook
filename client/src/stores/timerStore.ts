@@ -58,7 +58,10 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
 
     const now = new Date();
     const startedAt = new Date(state.startedAt);
-    const durationSeconds = Math.floor((now.getTime() - startedAt.getTime()) / 1000);
+    const durationSeconds = Math.max(
+      0,
+      Math.floor((now.getTime() - startedAt.getTime()) / 1000),
+    );
 
     await db.timeEntries.update(state.activeEntryId, {
       endedAt: now.toISOString(),
@@ -82,14 +85,19 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   },
 
   restore: async () => {
-    // Find any running entry (endedAt is null)
+    // Only resume a timer this device started. A running entry synced from
+    // another device is deliberately ignored: adopting it made two devices
+    // share one entry, and any clock skew between them rendered as a negative
+    // elapsed time.
+    const deviceId = getDeviceId();
     const running = await db.timeEntries
-      .filter((e) => e.endedAt === null && !e.deletedAt)
+      .filter((e) => e.endedAt === null && !e.deletedAt && e.deviceId === deviceId)
       .first();
 
     if (running) {
-      const elapsed = Math.floor(
-        (Date.now() - new Date(running.startedAt).getTime()) / 1000,
+      const elapsed = Math.max(
+        0,
+        Math.floor((Date.now() - new Date(running.startedAt).getTime()) / 1000),
       );
       set({
         activeEntryId: running.id,
