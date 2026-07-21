@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useProjects } from '../../hooks/useProjects';
 import { useActivities } from '../../hooks/useActivities';
 import { useFolders } from '../../hooks/useFolders';
+import { useProjectTasks } from '../../hooks/useProjectTasks';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -48,6 +49,10 @@ export function ProjectsView() {
     [],
   );
   const activeTabId = useProjectUIStore((s) => s.activeTabId);
+  // Tasks dragged out of the task panel into the description are soft-deleted
+  // through the same cascade every other deletion uses — useProjectTasks owns
+  // that logic, including its transaction.
+  const { deleteTask: deleteProjectTask } = useProjectTasks(activeTabId);
   const openTabs = useProjectUIStore((s) => s.openTabs);
   const openTab = useProjectUIStore((s) => s.openTab);
   const setActiveTab = useProjectUIStore((s) => s.setActiveTab);
@@ -111,18 +116,6 @@ export function ProjectsView() {
     cutDescriptionRef.current?.(start, end);
   }, []);
 
-  const consumeTask = useCallback(async (taskId: string) => {
-    const now = new Date().toISOString();
-    await db.projectTasks.update(taskId, { deletedAt: now, updatedAt: now });
-    const todayEntries = await db.todayTasks
-      .where('projectTaskId')
-      .equals(taskId)
-      .filter((tt) => !tt.deletedAt)
-      .toArray();
-    for (const tt of todayEntries) {
-      await db.todayTasks.update(tt.id, { deletedAt: now, updatedAt: now });
-    }
-  }, []);
 
   const hasBottomNav = !isDesktop && navPosition !== 'dropdown';
   const activeProject = projects.find((p) => p.id === activeTabId) ?? null;
@@ -606,7 +599,7 @@ export function ProjectsView() {
                   linkedActivityId={(activeProject as any).linkedActivityId ?? null}
                   onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
                   activities={activities}
-                  onConsumeTask={consumeTask}
+                  onConsumeTask={deleteProjectTask}
                   onRegisterCut={registerCut}
                 />
               </div>
@@ -656,7 +649,7 @@ export function ProjectsView() {
                   linkedActivityId={(activeProject as any).linkedActivityId ?? null}
                   onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
                   activities={activities}
-                  onConsumeTask={consumeTask}
+                  onConsumeTask={deleteProjectTask}
                   onRegisterCut={registerCut}
                 />
               </div>

@@ -264,7 +264,10 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
             value={localDesc}
             onChange={handleDescChange}
             onBlur={handleDescBlur}
-            draggable
+            // No `draggable` attribute: a selection inside a text control is
+            // natively draggable and still fires dragstart, whereas
+            // draggable="true" makes mousedown-drag start a drag instead of a
+            // selection — which would make the description unselectable.
             onDragStart={handleTextDragStart}
             style={{ gridArea: '1 / 1' }}
             className={`${EDITOR_TEXT} w-full min-w-0 bg-transparent text-text-primary focus:outline-none border-none resize-none overflow-hidden whitespace-pre-wrap selection:bg-accent/30 selection:text-text-primary ${
