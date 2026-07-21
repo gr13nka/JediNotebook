@@ -15,6 +15,7 @@ import { MindMapPage } from './pages/MindMapPage';
 
 import { useSettingsStore } from './stores/settingsStore';
 import { useRecurringTaskCheck } from './hooks/useRecurringTaskCheck';
+import { useBackspaceGuard } from './hooks/useBackspaceGuard';
 import { VaultSetupModal } from './components/ui/VaultSetupModal';
 import { isTauri, detectAndroidOnce } from './vault/platform';
 
@@ -46,6 +47,7 @@ export default function App() {
   }, [loaded, vaultEnabled, vaultPath]);
 
   useRecurringTaskCheck();
+  useBackspaceGuard();
 
   if (loaded && isTauri() && !vaultSetupDone) {
     return <VaultSetupModal />;
