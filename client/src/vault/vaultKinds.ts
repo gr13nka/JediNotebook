@@ -10,8 +10,8 @@ import {
 import type { VaultLayoutEntry } from './vaultLayout';
 import {
   serializeActivity, deserializeActivity,
-  serializeProjectFile, serializeProjectTasksFile, deserializeProject, deserializeTasks,
-  serializeTimeLog, deserializeTimeLog,
+  serializeProjectFile, serializeProjectTasksFile, deserializeProject, deserializeProjectTasks,
+  serializeTimeEntries, deserializeTimeLog,
   serializeTodayTasks, deserializeTodayTasks,
   serializeInbox, deserializeInbox,
   serializeSettings, deserializeSettings,
@@ -127,7 +127,19 @@ export interface VaultExportContext {
 
 // ─── Shared helpers ─────────────────────────────────────────────────
 
-/** Last-write-wins merge of one parsed row into a Dexie table, preserving `deletedAt`. */
+/**
+ * Last-write-wins merge of one parsed row into a Dexie table.
+ *
+ * `incoming.deletedAt` is always ignored, not merged: the vault file format
+ * has no `deletedAt` field at all (`omitDeleted` strips it before every
+ * serialize, so nothing ever writes it to disk, and no deserializer reads
+ * it back). A file's *absence* is what represents deletion in the vault —
+ * handled separately, via `gatherWriteSet`'s `deletes` list and the
+ * discover/reconcile diff — not a field on the row. So the local row's own
+ * `deletedAt` (Dexie's soft-delete state) is always the authority: kept
+ * as-is on an update, and `null` for a brand-new row (a file that exists on
+ * disk can't already be soft-deleted locally).
+ */
 async function mergeEntity(table: any, incoming: any): Promise<void> {
   const existing = await table.get(incoming.id);
   if (!existing) {
@@ -261,7 +273,7 @@ const PROJECT_TASKS_KIND: VaultKind = {
   },
 
   parseFile(_path, content) {
-    return { rows: deserializeTasks(content) };
+    return { rows: deserializeProjectTasks(content) };
   },
 
   async mergeRow(row) {
@@ -300,7 +312,7 @@ const TIME_LOG_KIND: VaultKind = {
     );
     const files: VaultFile[] = [];
     for (const [date, entries] of byDate) {
-      const { path, content } = serializeTimeLog(date, entries, activityNames);
+      const { path, content } = serializeTimeEntries(date, entries, activityNames);
       files.push({ path, content });
     }
     return files;
@@ -326,7 +338,7 @@ const TIME_LOG_KIND: VaultKind = {
     const allForDate = await db.timeEntries.where('date').equals(e.date).toArray();
     const activities = await db.activities.filter(a => !a.deletedAt).toArray();
     const activityNames = new Map(activities.map(a => [a.id, a.name] as const));
-    const { path, content } = serializeTimeLog(e.date, allForDate, activityNames);
+    const { path, content } = serializeTimeEntries(e.date, allForDate, activityNames);
     return { writes: [{ path, content }], deletes: [] };
   },
 };

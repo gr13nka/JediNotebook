@@ -20,7 +20,7 @@ interface SelectableTaskRowProps {
   projectInfo?: { name: string; color: string; icon?: string };
 }
 
-function getTaskScore(createdAt: string): number {
+function getStalenessScore(createdAt: string): number {
   const ageMs = Date.now() - new Date(createdAt).getTime();
   const ageDays = ageMs / 86400000;
   return Math.round(ageDays * ageDays);
@@ -37,7 +37,7 @@ const DragDotsIcon = () => (
   </svg>
 );
 
-function getScoreColor(score: number, fixed: boolean): string {
+function getStalenessColor(score: number, fixed: boolean): string {
   if (fixed) return 'text-text-muted';
   if (score < 9) return 'text-green-500';
   if (score < 49) return 'text-amber-500';
@@ -59,11 +59,11 @@ export function SelectableTaskRow({
   projectInfo,
 }: SelectableTaskRowProps) {
   const isCompleted = task.isCompleted;
-  const pointsVisible = useSettingsStore((s) => s.pointsCounterVisible);
+  const stalenessVisible = useSettingsStore((s) => s.pointsCounterVisible);
   const colorFixed = useSettingsStore((s) => s.pointsColorFixed);
   const { t } = useTranslation();
 
-  const score = useMemo(() => getTaskScore(task.createdAt), [task.createdAt]);
+  const score = useMemo(() => getStalenessScore(task.createdAt), [task.createdAt]);
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -164,8 +164,8 @@ export function SelectableTaskRow({
           </div>
 
           {/* Per-task score */}
-          {pointsVisible && !isCompleted && score > 0 && (
-            <span className={`flex-shrink-0 text-xs font-medium tabular-nums ${getScoreColor(score, colorFixed)}`}>
+          {stalenessVisible && !isCompleted && score > 0 && (
+            <span className={`flex-shrink-0 text-xs font-medium tabular-nums ${getStalenessColor(score, colorFixed)}`}>
               {score}
             </span>
           )}

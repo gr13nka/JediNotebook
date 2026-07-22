@@ -1,9 +1,9 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { usePointsCounter } from '../../hooks/usePointsCounter';
+import { useStalenessScore } from '../../hooks/useStalenessScore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
 
-function getScoreColor(score: number, fixed: boolean): string {
+function getStalenessColor(score: number, fixed: boolean): string {
   if (fixed) return 'text-text-muted';
   if (score < 100) return 'text-green-500';
   if (score <= 500) return 'text-amber-500';
@@ -30,8 +30,8 @@ const PaletteIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-export function PointsCounter() {
-  const { totalScore, isVisible, toggleVisibility } = usePointsCounter();
+export function StalenessCounter() {
+  const { stalenessScore, isVisible, toggleVisibility } = useStalenessScore();
   const colorFixed = useSettingsStore((s) => s.pointsColorFixed);
   const update = useSettingsStore((s) => s.update);
   const { t } = useTranslation();
@@ -45,15 +45,15 @@ export function PointsCounter() {
       <AnimatePresence mode="wait">
         {isVisible && (
           <motion.span
-            key={totalScore}
+            key={stalenessScore}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
             transition={{ duration: 0.2 }}
-            className={`text-xs font-bold tabular-nums ${getScoreColor(totalScore, colorFixed)}`}
+            className={`text-xs font-bold tabular-nums ${getStalenessColor(stalenessScore, colorFixed)}`}
             title={t('points.title')}
           >
-            {totalScore}
+            {stalenessScore}
           </motion.span>
         )}
       </AnimatePresence>

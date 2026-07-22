@@ -139,7 +139,7 @@ export function deserializeProject(dirName: string, content: string): Omit<Proje
   };
 }
 
-export function deserializeTasks(tasksContent: string): Omit<ProjectTask, 'deletedAt'>[] {
+export function deserializeProjectTasks(tasksContent: string): Omit<ProjectTask, 'deletedAt'>[] {
   const { meta } = parseFrontmatter(tasksContent);
   const tasks = (meta.tasks as any[]) || [];
   return tasks.map(t => ({
@@ -159,7 +159,7 @@ export function deserializeTasks(tasksContent: string): Omit<ProjectTask, 'delet
 
 // ─── Time Log (per-date) ──────────────────────────────────────────
 
-export function serializeTimeLog(
+export function serializeTimeEntries(
   date: string,
   entries: TimeEntry[],
   activityNames: Map<string, string>,

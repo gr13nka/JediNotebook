@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   serializeActivity, deserializeActivity,
-  serializeProjectFile, serializeProjectTasksFile, deserializeProject, deserializeTasks,
-  serializeTimeLog, deserializeTimeLog,
+  serializeProjectFile, serializeProjectTasksFile, deserializeProject, deserializeProjectTasks,
+  serializeTimeEntries, deserializeTimeLog,
   serializeTodayTasks, deserializeTodayTasks,
   serializeInbox, deserializeInbox,
   serializeSettings, deserializeSettings,
@@ -278,7 +278,7 @@ describe('Project + tasks serialization', () => {
     const deletedTask = makeTask({ id: 'task-3', title: 'Deleted', sortOrder: -1, deletedAt: '2026-07-01T00:00:00.000Z' });
     const { content: tasksContent } = serializeProjectTasksFile(p, [t1, t2, deletedTask]);
 
-    const back = deserializeTasks(tasksContent);
+    const back = deserializeProjectTasks(tasksContent);
     expect(back.map(t => t.id)).toEqual(['task-2', 'task-1']); // sorted, deleted one dropped
   });
 
@@ -287,7 +287,7 @@ describe('Project + tasks serialization', () => {
     const task = makeTask({ title: SPECIAL_CHARS });
     const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
 
-    const [back] = deserializeTasks(tasksContent);
+    const [back] = deserializeProjectTasks(tasksContent);
     expect('deletedAt' in back).toBe(false);
     const { deletedAt, ...expected } = task;
     expect(back).toEqual(expected);
@@ -299,7 +299,7 @@ describe('Project + tasks serialization', () => {
     const task = makeTask({ recurrenceRule: null, lastRecurredDate: null, isCompleted: true, completedAt: '2026-07-20T12:00:00.000Z' });
     const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
 
-    const [back] = deserializeTasks(tasksContent);
+    const [back] = deserializeProjectTasks(tasksContent);
     expect(back.recurrenceRule).toBeNull();
     expect(back.lastRecurredDate).toBeNull();
     expect(back.completedAt).toBe('2026-07-20T12:00:00.000Z');
@@ -310,7 +310,7 @@ describe('Project + tasks serialization', () => {
     const task = makeTask({ title: NON_ASCII });
     const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
 
-    const [back] = deserializeTasks(tasksContent);
+    const [back] = deserializeProjectTasks(tasksContent);
     expect(back.title).toBe(NON_ASCII);
   });
 });
@@ -325,7 +325,7 @@ describe('Time log serialization', () => {
     const deleted = makeTimeEntry({ id: 'e-deleted', date, deletedAt: '2026-07-21T00:00:00.000Z' });
     const activityNames = new Map([[early.activityId, 'Deep Work']]);
 
-    const { path, content } = serializeTimeLog(date, [late, early, deleted], activityNames);
+    const { path, content } = serializeTimeEntries(date, [late, early, deleted], activityNames);
     expect(path).toBe(`time-log/${date}.md`);
 
     const back = deserializeTimeLog(content);
@@ -341,14 +341,14 @@ describe('Time log serialization', () => {
   it('round-trips a running entry (endedAt: null)', () => {
     const date = '2026-07-21';
     const running = makeTimeEntry({ endedAt: null, date });
-    const back = deserializeTimeLog(serializeTimeLog(date, [running], new Map()).content);
+    const back = deserializeTimeLog(serializeTimeEntries(date, [running], new Map()).content);
     expect(back.entries[0].endedAt).toBeNull();
   });
 
   it('round-trips a manual entry flag', () => {
     const date = '2026-07-21';
     const manual = makeTimeEntry({ isManual: true, date });
-    const back = deserializeTimeLog(serializeTimeLog(date, [manual], new Map()).content);
+    const back = deserializeTimeLog(serializeTimeEntries(date, [manual], new Map()).content);
     expect(back.entries[0].isManual).toBe(true);
   });
 });

@@ -134,6 +134,14 @@ db.version(9).stores({
   pdfDocuments: 'id, isPinned, deletedAt, updatedAt',
 });
 
+/**
+ * Hard-deletes every row in every table — the app's only sanctioned
+ * exception to the no-hard-deletes/`deletedAt` rule. Irreversible on its
+ * own; only ever called from `vaultStore.switchVault`, immediately after
+ * `snapshotAllTables()`, so the caller can `restoreFromSnapshot` if the
+ * switch fails partway through. Never call this without a snapshot to
+ * fall back to.
+ */
 export async function clearAllTables() {
   await db.transaction('rw', db.tables, async () => {
     for (const table of db.tables) {
@@ -150,6 +158,13 @@ export async function snapshotAllTables(): Promise<Map<string, any[]>> {
   return snapshot;
 }
 
+/**
+ * Wipes every table and bulk-restores rows from a prior
+ * `snapshotAllTables()` — the rollback half of the `clearAllTables` /
+ * vault-switch exception to no-hard-deletes. Only called from
+ * `vaultStore.switchVault`'s catch block, to undo a `clearAllTables` whose
+ * subsequent import failed. Not a general-purpose backup/restore API.
+ */
 export async function restoreFromSnapshot(snapshot: Map<string, any[]>): Promise<void> {
   await db.transaction('rw', db.tables, async () => {
     for (const table of db.tables) {

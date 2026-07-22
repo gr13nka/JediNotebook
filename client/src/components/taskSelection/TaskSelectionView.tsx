@@ -7,7 +7,7 @@ import { useReorderList } from '../../hooks/useReorderList';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { InfoTooltip } from '../ui/InfoTooltip';
-import { PointsCounter } from './PointsCounter';
+import { StalenessCounter } from './StalenessCounter';
 import { TaskGroupCard, type TaskSortMode } from './TaskGroupCard';
 import { FolderGroupSection } from './FolderGroupSection';
 import { SelectableTaskRow } from './SelectableTaskRow';
@@ -30,7 +30,7 @@ const item = {
 
 type ViewMode = 'grouped' | 'flat';
 
-function getTaskScore(createdAt: string): number {
+function getStalenessScore(createdAt: string): number {
   const ageMs = Date.now() - new Date(createdAt).getTime();
   const ageDays = ageMs / 86400000;
   return Math.round(ageDays * ageDays);
@@ -79,7 +79,7 @@ export function TaskSelectionView() {
   const allIncompleteTasks = useMemo(() => {
     const tasks: ProjectTask[] = [];
     for (const g of groups) {
-      tasks.push(...g.tasks);
+      tasks.push(...g.incompleteTasks);
     }
     return tasks;
   }, [groups]);
@@ -98,7 +98,7 @@ export function TaskSelectionView() {
     const tasks = [...allIncompleteTasks];
     switch (sortMode) {
       case 'points':
-        return tasks.sort((a, b) => getTaskScore(b.createdAt) - getTaskScore(a.createdAt));
+        return tasks.sort((a, b) => getStalenessScore(b.createdAt) - getStalenessScore(a.createdAt));
       case 'created-asc':
         return tasks.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       case 'created-desc':
@@ -225,7 +225,7 @@ export function TaskSelectionView() {
         <InfoTooltip
           text={t('taskSelection.tooltip')}
         />
-        <PointsCounter />
+        <StalenessCounter />
       </div>
 
       {/* Controls row: view toggle + sort dropdown */}
@@ -446,7 +446,7 @@ export function TaskSelectionView() {
                       <TaskGroupCard
                         key={group.project.id}
                         project={group.project}
-                        tasks={group.tasks}
+                        tasks={group.incompleteTasks}
                         completedTasks={group.completedTasks}
                         onToggleToday={toggleToday}
                         todayTaskIds={todayTaskIds}
@@ -471,7 +471,7 @@ export function TaskSelectionView() {
                 >
                   <TaskGroupCard
                     project={group.project}
-                    tasks={group.tasks}
+                    tasks={group.incompleteTasks}
                     completedTasks={group.completedTasks}
                     onToggleToday={toggleToday}
                     todayTaskIds={todayTaskIds}

@@ -11,23 +11,6 @@ export const ACTIVITY_COLORS = [
   '#D4873A', // burnt orange
 ] as const;
 
-export const THEME = {
-  bgPrimary: '#E0E5EC',
-  bgCard: '#E0E5EC',
-  bgElevated: '#D1D9E6',
-  textPrimary: '#2D3436',
-  textSecondary: '#636E72',
-  textMuted: '#99A4AA',
-  accent: '#2D3436',
-  green: '#27AE60',
-  red: '#E74C3C',
-  barTrack: '#D1D9E6',
-  border: 'transparent',
-  neuLight: '#FFFFFF',
-  neuDark: '#A3B1C6',
-  neuBg: '#E0E5EC',
-} as const;
-
 export const DEFAULT_CUSTOM_THEME_COLORS = {
   bgPrimary: '#1a1a2e',
   bgCard: '#16213e',

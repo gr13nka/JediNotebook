@@ -5,7 +5,7 @@ import type { Project, ProjectTask, ProjectFolder } from '@shared/types';
 
 export interface TaskGroup {
   project: Project;
-  tasks: ProjectTask[];
+  incompleteTasks: ProjectTask[];
   completedTasks: ProjectTask[];
 }
 
@@ -20,13 +20,13 @@ async function buildTaskGroup(project: Project): Promise<TaskGroup> {
     .equals(project.id)
     .filter(isActive)
     .toArray();
-  const tasks = allTasks.filter((t) => !t.isCompleted).sort((a, b) => a.sortOrder - b.sortOrder);
+  const incompleteTasks = allTasks.filter((t) => !t.isCompleted).sort((a, b) => a.sortOrder - b.sortOrder);
   const completedTasks = allTasks.filter((t) => t.isCompleted).sort((a, b) => {
     const aTime = a.completedAt ?? a.updatedAt;
     const bTime = b.completedAt ?? b.updatedAt;
     return bTime.localeCompare(aTime);
   });
-  return { project, tasks, completedTasks };
+  return { project, incompleteTasks, completedTasks };
 }
 
 /**
@@ -78,7 +78,7 @@ export function useAllProjectTasks() {
     const groups: TaskGroup[] = [];
     for (const project of projects) {
       const group = await buildTaskGroup(project);
-      if (group.tasks.length > 0 || group.completedTasks.length > 0) {
+      if (group.incompleteTasks.length > 0 || group.completedTasks.length > 0) {
         groups.push(group);
       }
     }

@@ -3,8 +3,14 @@ import { useState, useEffect } from 'react';
 import { db } from '../db';
 import { useSettingsStore } from '../stores/settingsStore';
 
-export function usePointsCounter() {
-  const [totalScore, setTotalScore] = useState(0);
+/**
+ * Sum of every incomplete task's age² (in days), recomputed every minute.
+ * Rises the longer a task sits undone — a staleness penalty, not a reward:
+ * despite the persisted setting names (`pointsCounterVisible`/
+ * `pointsColorFixed`, kept as-is), a higher number is worse.
+ */
+export function useStalenessScore() {
+  const [stalenessScore, setStalenessScore] = useState(0);
   const isVisible = useSettingsStore(s => s.pointsCounterVisible);
   const update = useSettingsStore(s => s.update);
 
@@ -23,7 +29,7 @@ export function usePointsCounter() {
         const ageDays = ageMs / 86400000;
         score += ageDays * ageDays;
       }
-      setTotalScore(Math.round(score));
+      setStalenessScore(Math.round(score));
     };
     compute();
     const interval = setInterval(compute, 60000);
@@ -34,5 +40,5 @@ export function usePointsCounter() {
     update({ pointsCounterVisible: !isVisible });
   };
 
-  return { totalScore, isVisible, toggleVisibility };
+  return { stalenessScore, isVisible, toggleVisibility };
 }

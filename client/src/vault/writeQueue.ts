@@ -10,8 +10,11 @@ interface PendingWrite {
 }
 
 /**
- * Debounced write queue. Coalesces rapid writes (e.g., reordering N tasks)
- * by keying on the compound file key (entityType:parentId).
+ * Debounced write queue. Coalesces rapid repeated writes to the *same*
+ * entity (e.g. dragging one task, which fires several sortOrder updates in
+ * quick succession) by keying pending writes on `entityType:entityId` — see
+ * `getCoalesceKey`'s doc comment for why this does not coalesce across
+ * *different* entities that happen to serialize to the same file.
  */
 class WriteQueue {
   private pending = new Map<string, PendingWrite>();
@@ -56,13 +59,25 @@ class WriteQueue {
   }
 
   /**
-   * For compound entities (child writes re-serialize the parent file),
-   * coalesce by parent key to avoid N writes for N child changes.
+   * Keys pending writes by `entityType:entityId`, not by the file the write
+   * will actually touch. For most kinds those are the same thing. For
+   * projectTasks they aren't: `gatherWriteSet` re-serializes the *parent*
+   * project's files (see `PROJECT_TASKS_KIND.gatherWriteSet` in
+   * vaultKinds.ts), so reordering N sibling tasks enqueues N different
+   * entityIds and produces N separate debounced writes of the same
+   * project.md/tasks.md, instead of coalescing into one.
+   *
+   * That's wasted I/O, not a correctness bug — each write re-serializes the
+   * full current state, so the redundant writes are idempotent and the
+   * last one always leaves the right content on disk. True coalescing
+   * would need this method to resolve entityId -> parentId, which requires
+   * an async Dexie lookup; `enqueue` below is synchronous by design (called
+   * straight from Dexie hooks on every write), and racing that lookup
+   * against another sibling's concurrent `enqueue` call is easy to get
+   * subtly wrong. Not worth it for an I/O-only cost — left as future work
+   * if the redundant writes ever become a real problem.
    */
   private getCoalesceKey(entityType: string, entityId: string): string {
-    // projectTasks re-serializes the parent —
-    // but we don't know the parentId here without a DB lookup.
-    // So we just use entityType:entityId and let vaultSync handle the parent lookup.
     return `${entityType}:${entityId}`;
   }
 }
