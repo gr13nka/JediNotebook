@@ -99,6 +99,9 @@ export function serializeProjectTasksFile(
       completedAt: t.completedAt,
       recurrenceRule: t.recurrenceRule,
       lastRecurredDate: t.lastRecurredDate,
+      timeBox: t.timeBox,
+      scheduledDate: t.scheduledDate,
+      timeBoxOrder: t.timeBoxOrder,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
       deviceId: t.deviceId,
@@ -139,6 +142,12 @@ export function deserializeProject(dirName: string, content: string): Omit<Proje
   };
 }
 
+/**
+ * `timeBox`/`scheduledDate`/`timeBoxOrder` default when absent so files
+ * written by pre-Phase-5 app versions still load: `timeBox` falls back to
+ * `'later'` (the same default a freshly created task gets), `scheduledDate`
+ * to unpinned, `timeBoxOrder` to `0`.
+ */
 export function deserializeProjectTasks(tasksContent: string): Omit<ProjectTask, 'deletedAt'>[] {
   const { meta } = parseFrontmatter(tasksContent);
   const tasks = (meta.tasks as any[]) || [];
@@ -151,6 +160,9 @@ export function deserializeProjectTasks(tasksContent: string): Omit<ProjectTask,
     completedAt: t.completedAt || null,
     recurrenceRule: t.recurrenceRule || null,
     lastRecurredDate: t.lastRecurredDate || null,
+    timeBox: t.timeBox || 'later',
+    scheduledDate: t.scheduledDate || null,
+    timeBoxOrder: typeof t.timeBoxOrder === 'number' ? t.timeBoxOrder : 0,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
     deviceId: t.deviceId,

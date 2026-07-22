@@ -183,6 +183,9 @@ export interface Project {
   deviceId: string;
 }
 
+/** Which of the three task boxes (today/week/later) a task currently lives in. */
+export type TimeBox = 'today' | 'week' | 'later';
+
 export interface ProjectTask {
   id: string;
   projectId: string;
@@ -192,6 +195,12 @@ export interface ProjectTask {
   completedAt: string | null;
   recurrenceRule: RecurrenceRule | null;
   lastRecurredDate: string | null;
+  /** Which box (today/week/later) the task currently lives in. */
+  timeBox: TimeBox;
+  /** Optional pin to a logical date (YYYY-MM-DD); not the default workflow — most tasks flow through the boxes unpinned. */
+  scheduledDate: string | null;
+  /** Manual order within the current box (cross-project — distinct from `sortOrder`, which is per-project). */
+  timeBoxOrder: number;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;

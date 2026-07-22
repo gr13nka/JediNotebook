@@ -2,7 +2,7 @@ import { db } from './index';
 import { newRecord, notDeleted, softDelete, updateRecord } from './repository';
 import { getLogicalDate } from '../utils/time';
 import { shouldCreateRecurrence } from '../utils/recurrence';
-import type { ProjectTask, RecurrenceRule } from '@shared/types';
+import type { ProjectTask, RecurrenceRule, TimeBox } from '@shared/types';
 
 /**
  * ProjectTask writes that need to live outside a single project's context.
@@ -18,13 +18,27 @@ import type { ProjectTask, RecurrenceRule } from '@shared/types';
  * delete-cascade, spawn gating, completion flip) lives in exactly one place.
  */
 
-/** Appends a new task to `projectId`'s active task list (sortOrder = current active count). */
+/**
+ * Count of active (non-deleted) tasks currently in `timeBox`, across all
+ * projects — `timeBox` isn't indexed yet (Dexie schema bump lands later), so
+ * this is a full-table filter, same pattern as `seed.ts`'s `isBreak` lookup.
+ */
+async function countActiveInBox(timeBox: TimeBox): Promise<number> {
+  return db.projectTasks.filter((t) => !t.deletedAt && t.timeBox === timeBox).count();
+}
+
+/**
+ * Appends a new task to `projectId`'s active task list (sortOrder = current
+ * active count) and to the end of the `'later'` box (every new task starts
+ * unboxed in `'later'`; `timeBoxOrder` = current active count in that box).
+ */
 export async function createProjectTask(
   projectId: string,
   title: string,
   recurrenceRule?: RecurrenceRule | null,
 ): Promise<ProjectTask> {
   const all = notDeleted(await db.projectTasks.where('projectId').equals(projectId).toArray());
+  const timeBoxOrder = await countActiveInBox('later');
   const task = newRecord({
     projectId,
     title,
@@ -33,6 +47,9 @@ export async function createProjectTask(
     completedAt: null,
     recurrenceRule: recurrenceRule ?? null,
     lastRecurredDate: null,
+    timeBox: 'later' as TimeBox,
+    scheduledDate: null,
+    timeBoxOrder,
   });
   await db.projectTasks.add(task);
   return task;
@@ -81,6 +98,11 @@ export async function deleteProjectTaskCascade(taskId: string): Promise<void> {
  * On success, stamps `lastRecurredDate` on BOTH the new task and the
  * original — the original's stamp is what the next call's
  * `shouldCreateRecurrence` check reads.
+ *
+ * The spawned occurrence inherits the completed task's `timeBox` (a
+ * recurring task keeps recurring into whichever box its owner is using it
+ * from) with a fresh, unpinned `scheduledDate` and a `timeBoxOrder`
+ * appended to that box.
  */
 export async function spawnNextOccurrence(task: ProjectTask): Promise<void> {
   if (!task.recurrenceRule) return;
@@ -97,6 +119,7 @@ export async function spawnNextOccurrence(task: ProjectTask): Promise<void> {
   const all = notDeleted(
     await db.projectTasks.where('projectId').equals(task.projectId).toArray(),
   );
+  const timeBoxOrder = await countActiveInBox(task.timeBox);
   await db.projectTasks.add(newRecord({
     projectId: task.projectId,
     title: task.title,
@@ -105,6 +128,9 @@ export async function spawnNextOccurrence(task: ProjectTask): Promise<void> {
     completedAt: null,
     recurrenceRule: task.recurrenceRule,
     lastRecurredDate: today,
+    timeBox: task.timeBox,
+    scheduledDate: null,
+    timeBoxOrder,
   }));
 
   await updateRecord(db.projectTasks, task.id, { lastRecurredDate: today });

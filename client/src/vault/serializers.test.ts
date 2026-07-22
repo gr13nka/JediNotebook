@@ -9,6 +9,7 @@ import {
   serializeFolders, deserializeFolders,
 } from './serializers';
 import { sanitizeFilename, shortId, entityFilename } from './sanitize';
+import { stringifyFrontmatter } from './frontmatter';
 import type {
   Activity, Project, ProjectTask, TimeEntry, TodayTask,
   InboxItem, UserSettings, ProjectFolder, RecurrenceRule,
@@ -70,6 +71,9 @@ function makeTask(overrides: Partial<ProjectTask> = {}): ProjectTask {
     completedAt: null,
     recurrenceRule,
     lastRecurredDate: '2026-06-15',
+    timeBox: 'later',
+    scheduledDate: null,
+    timeBoxOrder: 0,
     createdAt: '2026-01-01T08:00:00.000Z',
     updatedAt: '2026-01-02T09:30:00.000Z',
     deletedAt: null,
@@ -313,6 +317,67 @@ describe('Project + tasks serialization', () => {
     const [back] = deserializeProjectTasks(tasksContent);
     expect(back.title).toBe(NON_ASCII);
   });
+
+  it.each(['today', 'week', 'later'] as const)('round-trips a task with timeBox %s', (timeBox) => {
+    const p = makeProject();
+    const task = makeTask({ timeBox, timeBoxOrder: 4 });
+    const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
+
+    const [back] = deserializeProjectTasks(tasksContent);
+    expect(back.timeBox).toBe(timeBox);
+    expect(back.timeBoxOrder).toBe(4);
+  });
+
+  it('round-trips a set scheduledDate', () => {
+    const p = makeProject();
+    const task = makeTask({ scheduledDate: '2026-07-25' });
+    const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
+
+    const [back] = deserializeProjectTasks(tasksContent);
+    expect(back.scheduledDate).toBe('2026-07-25');
+  });
+
+  it('round-trips a null scheduledDate (the unpinned default)', () => {
+    const p = makeProject();
+    const task = makeTask({ scheduledDate: null });
+    const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
+
+    const [back] = deserializeProjectTasks(tasksContent);
+    expect(back.scheduledDate).toBeNull();
+  });
+
+  it(
+    'defaults timeBox/scheduledDate/timeBoxOrder when reading a legacy file written before ' +
+      'Phase 5 (frontmatter has no time-box fields at all)',
+    () => {
+      const legacyContent = stringifyFrontmatter(
+        {
+          projectId: '0199f2ab-1111-7abc-8000-abcdef123456',
+          updatedAt: '2026-01-02T09:30:00.000Z',
+          tasks: [
+            {
+              id: 'task-legacy',
+              title: 'Old task from before time-boxes',
+              sortOrder: 0,
+              isCompleted: false,
+              completedAt: null,
+              recurrenceRule: null,
+              lastRecurredDate: null,
+              createdAt: '2026-01-01T08:00:00.000Z',
+              updatedAt: '2026-01-02T09:30:00.000Z',
+              deviceId: 'device-abc',
+            },
+          ],
+        },
+        '## Tasks\n\n- [ ] Old task from before time-boxes\n',
+      );
+
+      const [back] = deserializeProjectTasks(legacyContent);
+      expect(back.timeBox).toBe('later');
+      expect(back.scheduledDate).toBeNull();
+      expect(back.timeBoxOrder).toBe(0);
+    },
+  );
 });
 
 // ─── Time log ─────────────────────────────────────────────────────
