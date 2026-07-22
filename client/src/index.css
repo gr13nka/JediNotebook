@@ -76,22 +76,14 @@
   --shadow-topbar: 0 0 0 0 transparent;
 }
 
+/*
+ * Color tokens are no longer defined here — theme/applyTheme.ts sets all 12
+ * `--color-*` custom properties inline on <html> from theme/themes.ts (the
+ * single source of truth for prebuilt colors) or from customThemeColors.
+ * This block only supplies the shadow tokens that vary between light and
+ * dark, which applyTheme.ts still selects via the `dark` marker class.
+ */
 html.dark {
-  --color-bg-primary: #1e1e1e;
-  --color-bg-card: #262626;
-  --color-bg-elevated: #333333;
-  --color-text-primary: #dcddde;
-  --color-text-secondary: #999999;
-  --color-text-muted: #666666;
-  --color-accent: #7f6df2;
-  --color-accent-fg: #ffffff;
-  --color-green: #2ECC71;
-  --color-red: #E74C3C;
-  --color-bar-track: #262626;
-  --color-border: #333333;
-  --color-neu-light: transparent;
-  --color-neu-dark: transparent;
-
   --shadow-raised: 0 0 0 0 transparent;
   --shadow-raised-sm: 0 0 0 0 transparent;
   --shadow-raised-lg: 0 0 0 0 transparent;

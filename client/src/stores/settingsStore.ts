@@ -1,81 +1,45 @@
 import { create } from 'zustand';
-import type { CustomThemeColors, Language, PersistedSettings, ThemeMode } from '@shared/types';
+import type { CustomThemeColors, Language, NavPosition, PersistedSettings, ThemeMode } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { db } from '../db';
+import { applyAccentColor, applyTheme, applyZoom } from '../theme/applyTheme';
 
 function detectBrowserLanguage(): Language {
   const browserLang = navigator.language?.slice(0, 2).toLowerCase();
   return browserLang === 'ru' ? 'ru' : 'en';
 }
 
-const CUSTOM_COLOR_CSS_MAP: [keyof CustomThemeColors, string][] = [
-  ['bgPrimary', '--color-bg-primary'],
-  ['bgCard', '--color-bg-card'],
-  ['bgElevated', '--color-bg-elevated'],
-  ['textPrimary', '--color-text-primary'],
-  ['textSecondary', '--color-text-secondary'],
-  ['textMuted', '--color-text-muted'],
-  ['accent', '--color-accent'],
-  ['accentFg', '--color-accent-fg'],
-  ['green', '--color-green'],
-  ['red', '--color-red'],
-  ['barTrack', '--color-bar-track'],
-  ['border', '--color-border'],
-];
-
-function applyCustomTheme(colors: CustomThemeColors) {
-  const el = document.documentElement;
-  for (const [key, cssVar] of CUSTOM_COLOR_CSS_MAP) {
-    el.style.setProperty(cssVar, colors[key]);
-  }
-  el.style.setProperty('--color-neu-light', 'transparent');
-  el.style.setProperty('--color-neu-dark', 'transparent');
-}
-
-function clearCustomTheme() {
-  const el = document.documentElement;
-  for (const [, cssVar] of CUSTOM_COLOR_CSS_MAP) {
-    el.style.removeProperty(cssVar);
-  }
-  el.style.removeProperty('--color-neu-light');
-  el.style.removeProperty('--color-neu-dark');
-}
-
-function applyTheme(theme: ThemeMode, customColors?: CustomThemeColors) {
-  const cl = document.documentElement.classList;
-  cl.remove('dark', 'notion', 'custom');
-  clearCustomTheme();
-
-  if (theme === 'custom' && customColors) {
-    cl.add('custom');
-    applyCustomTheme(customColors);
-  } else if (theme !== 'light') {
-    cl.add(theme);
-  }
-}
-
-function applyZoom(zoom: number) {
-  document.documentElement.style.fontSize = `${zoom}%`;
-}
-
-function applyAccentColor(color: string) {
-  if (color) {
-    document.documentElement.style.setProperty('--color-accent', color);
-  } else {
-    document.documentElement.style.removeProperty('--color-accent');
-  }
-}
+/** Method names on `SettingsState` — excluded from the field roster `update()`'s patch can touch. */
+type SettingsAction =
+  | 'loaded' | 'load' | 'update' | 'addRecentVault'
+  | 'setTheme' | 'setCustomColors' | 'setAccentColor' | 'setZoom'
+  | 'hideTab' | 'showTab' | 'reorderTabs' | 'setNavPosition';
 
 /**
  * Runtime store state: the persisted settings roster (`PersistedSettings`,
  * owned by shared/types.ts) plus actions and `loaded` — the one field that's
  * genuinely runtime-only (never read from or written to Dexie).
+ *
+ * `update()` is a pure persist-and-set primitive — no DOM side effects, no
+ * input mutation. Fields whose value change must also be reflected on
+ * `<html>` (theme, accent, zoom) or that have caller-facing add/remove
+ * semantics (nav tabs) get an intention-revealing action instead
+ * (`setTheme`, `setAccentColor`, `setZoom`, `hideTab`/`showTab`/`reorderTabs`,
+ * `setNavPosition`); each of those calls `update()` internally.
  */
 interface SettingsState extends PersistedSettings {
   loaded: boolean;
   load: () => Promise<void>;
-  update: (patch: Partial<Omit<SettingsState, 'loaded' | 'load' | 'update' | 'addRecentVault'>>) => Promise<void>;
+  update: (patch: Partial<Omit<SettingsState, SettingsAction>>) => Promise<void>;
   addRecentVault: (path: string, name: string) => Promise<void>;
+  setTheme: (theme: ThemeMode) => Promise<void>;
+  setCustomColors: (colors: CustomThemeColors) => Promise<void>;
+  setAccentColor: (color: string) => Promise<void>;
+  setZoom: (zoom: number) => Promise<void>;
+  hideTab: (tab: string) => Promise<void>;
+  showTab: (tab: string) => Promise<void>;
+  reorderTabs: (order: string[]) => Promise<void>;
+  setNavPosition: (position: NavPosition) => Promise<void>;
 }
 
 /** Keys of the persisted settings roster, derived once from the schema's own default values. */
@@ -155,37 +119,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   update: async (patch) => {
-    // If theme is being set, keep darkMode in sync
-    if ('theme' in patch && patch.theme) {
-      patch.darkMode = patch.theme !== 'light';
-    }
-    // If darkMode is toggled directly (legacy), map to theme
-    if ('darkMode' in patch && !('theme' in patch)) {
-      patch.theme = patch.darkMode ? 'dark' : 'light';
-    }
-
-    set(patch);
-
-    if ('theme' in patch && patch.theme) {
-      applyTheme(patch.theme, get().customThemeColors);
-      applyAccentColor(get().accentColor);
-    }
-
-    if ('customThemeColors' in patch && patch.customThemeColors && get().theme === 'custom') {
-      applyCustomTheme(patch.customThemeColors);
-      applyAccentColor(get().accentColor);
-    }
-
-    if ('accentColor' in patch) {
-      applyAccentColor(patch.accentColor ?? '');
-    }
-
-    if ('uiZoom' in patch) {
-      applyZoom(patch.uiZoom ?? DEFAULT_SETTINGS.uiZoom);
-    }
-
+    // Copy — callers must not see their patch object mutated.
+    const next = { ...patch };
+    set(next);
     await db.settings.update('default', {
-      ...patch,
+      ...next,
       updatedAt: new Date().toISOString(),
     });
   },
@@ -200,5 +138,50 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       recentVaults: updated as any,
       updatedAt: new Date().toISOString(),
     });
+  },
+
+  setTheme: async (theme) => {
+    applyTheme(theme, get().customThemeColors);
+    applyAccentColor(get().accentColor);
+    // `darkMode` is a legacy mirror of `theme`, kept for vault LWW compatibility — never set independently.
+    await get().update({ theme, darkMode: theme !== 'light' });
+  },
+
+  setCustomColors: async (colors) => {
+    if (get().theme === 'custom') {
+      applyTheme('custom', colors);
+      applyAccentColor(get().accentColor);
+    }
+    await get().update({ customThemeColors: colors });
+  },
+
+  setAccentColor: async (color) => {
+    applyAccentColor(color);
+    await get().update({ accentColor: color });
+  },
+
+  setZoom: async (zoom) => {
+    applyZoom(zoom);
+    await get().update({ uiZoom: zoom });
+  },
+
+  hideTab: async (tab) => {
+    const current = get().hiddenNavTabs;
+    if (current.includes(tab)) return;
+    await get().update({ hiddenNavTabs: [...current, tab] });
+  },
+
+  showTab: async (tab) => {
+    const current = get().hiddenNavTabs;
+    if (!current.includes(tab)) return;
+    await get().update({ hiddenNavTabs: current.filter((t) => t !== tab) });
+  },
+
+  reorderTabs: async (order) => {
+    await get().update({ navTabOrder: order });
+  },
+
+  setNavPosition: async (position) => {
+    await get().update({ navPosition: position });
   },
 }));

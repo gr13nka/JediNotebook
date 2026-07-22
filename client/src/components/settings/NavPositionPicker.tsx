@@ -5,7 +5,7 @@ import { NEU } from '../../utils/shadows';
 export function NavPositionPicker() {
   const { t } = useTranslation();
   const navPosition = useSettingsStore((s) => s.navPosition);
-  const update = useSettingsStore((s) => s.update);
+  const setNavPosition = useSettingsStore((s) => s.setNavPosition);
 
   const options: { value: 'left' | 'bottom' | 'dropdown'; label: string }[] = [
     { value: 'left', label: t('settings.navLeft') },
@@ -22,7 +22,7 @@ export function NavPositionPicker() {
           return (
             <button
               key={opt.value}
-              onClick={() => update({ navPosition: opt.value })}
+              onClick={() => setNavPosition(opt.value)}
               className={`flex flex-col items-center gap-2 rounded-xl p-4 transition-colors bg-bg-card border ${
                 active ? 'border-accent text-text-primary' : 'border-border text-text-secondary'
               }`}

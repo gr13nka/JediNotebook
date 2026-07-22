@@ -7,7 +7,7 @@ const ZOOM_STEPS = [90, 100, 110, 120, 130];
 export function ZoomSettings() {
   const { t } = useTranslation();
   const uiZoom = useSettingsStore((s) => s.uiZoom);
-  const update = useSettingsStore((s) => s.update);
+  const setZoom = useSettingsStore((s) => s.setZoom);
 
   return (
     <div>
@@ -16,7 +16,7 @@ export function ZoomSettings() {
         <button
           onClick={() => {
             const idx = ZOOM_STEPS.indexOf(uiZoom);
-            if (idx > 0) update({ uiZoom: ZOOM_STEPS[idx - 1] });
+            if (idx > 0) setZoom(ZOOM_STEPS[idx - 1]);
           }}
           disabled={uiZoom <= ZOOM_STEPS[0]}
           className="w-8 h-8 flex items-center justify-center rounded-lg bg-bg-elevated text-text-primary text-lg border border-border disabled:opacity-30 transition-colors"
@@ -33,7 +33,7 @@ export function ZoomSettings() {
         <button
           onClick={() => {
             const idx = ZOOM_STEPS.indexOf(uiZoom);
-            if (idx < ZOOM_STEPS.length - 1) update({ uiZoom: ZOOM_STEPS[idx + 1] });
+            if (idx < ZOOM_STEPS.length - 1) setZoom(ZOOM_STEPS[idx + 1]);
           }}
           disabled={uiZoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}
           className="w-8 h-8 flex items-center justify-center rounded-lg bg-bg-elevated text-text-primary text-lg border border-border disabled:opacity-30 transition-colors"

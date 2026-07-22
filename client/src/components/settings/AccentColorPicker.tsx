@@ -15,7 +15,7 @@ const ACCENT_PRESETS = [
 export function AccentColorPicker() {
   const { t } = useTranslation();
   const accentColor = useSettingsStore((s) => s.accentColor);
-  const update = useSettingsStore((s) => s.update);
+  const setAccentColor = useSettingsStore((s) => s.setAccentColor);
 
   return (
     <div>
@@ -26,7 +26,7 @@ export function AccentColorPicker() {
           return (
             <button
               key={preset.color || 'default'}
-              onClick={() => update({ accentColor: preset.color })}
+              onClick={() => setAccentColor(preset.color)}
               className={`relative w-8 h-8 rounded-full transition-transform duration-150 ${
                 isActive ? 'scale-110 ring-2 ring-text-primary ring-offset-2 ring-offset-bg-card' : 'hover:scale-105'
               }`}

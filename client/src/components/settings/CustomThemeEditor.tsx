@@ -18,10 +18,10 @@ const FIELDS: { key: keyof CustomThemeColors; label: string }[] = [
 
 export function CustomThemeEditor() {
   const customThemeColors = useSettingsStore(s => s.customThemeColors);
-  const update = useSettingsStore(s => s.update);
+  const setCustomColors = useSettingsStore(s => s.setCustomColors);
 
   const handleChange = (key: keyof CustomThemeColors, value: string) => {
-    update({ customThemeColors: { ...customThemeColors, [key]: value } });
+    setCustomColors({ ...customThemeColors, [key]: value });
   };
 
   return (

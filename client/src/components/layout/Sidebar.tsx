@@ -99,7 +99,9 @@ export function Sidebar() {
   const { t } = useTranslation();
   const hiddenNavTabs = useSettingsStore((s) => s.hiddenNavTabs);
   const navTabOrder = useSettingsStore((s) => s.navTabOrder);
-  const update = useSettingsStore((s) => s.update);
+  const hideTab = useSettingsStore((s) => s.hideTab);
+  const showTab = useSettingsStore((s) => s.showTab);
+  const reorderTabs = useSettingsStore((s) => s.reorderTabs);
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tab: string } | null>(null);
   const [showHidden, setShowHidden] = useState(false);
@@ -135,13 +137,12 @@ export function Sidebar() {
   const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
 
   const toggleTabVisibility = useCallback((tab: string) => {
-    const current = hiddenNavTabs;
-    if (current.includes(tab)) {
-      update({ hiddenNavTabs: current.filter((t) => t !== tab) });
+    if (hiddenNavTabs.includes(tab)) {
+      showTab(tab);
     } else {
-      update({ hiddenNavTabs: [...current, tab] });
+      hideTab(tab);
     }
-  }, [hiddenNavTabs, update]);
+  }, [hiddenNavTabs, showTab, hideTab]);
 
   const handleReorder = useCallback((fromIdx: number, toIdx: number, position: 'above' | 'below') => {
     if (fromIdx === toIdx) return;
@@ -152,8 +153,8 @@ export function Sidebar() {
     currentOrder.splice(currentOrder.indexOf(movedRoute), 1);
     const ti = currentOrder.indexOf(targetRoute);
     currentOrder.splice(position === 'above' ? ti : ti + 1, 0, movedRoute);
-    update({ navTabOrder: currentOrder });
-  }, [allNavItems, navTabOrder, visibleNavItems, update]);
+    reorderTabs(currentOrder);
+  }, [allNavItems, navTabOrder, visibleNavItems, reorderTabs]);
 
   const contextMenuItems = useMemo(() => {
     if (!ctxMenu) return [];
