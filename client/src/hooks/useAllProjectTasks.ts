@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
+import { isActive } from '../db/repository';
 import type { Project, ProjectTask, ProjectFolder } from '@shared/types';
 
 export interface TaskGroup {
@@ -17,7 +18,7 @@ async function buildTaskGroup(project: Project): Promise<TaskGroup> {
   const allTasks = await db.projectTasks
     .where('projectId')
     .equals(project.id)
-    .filter((t) => !t.deletedAt)
+    .filter(isActive)
     .toArray();
   const tasks = allTasks.filter((t) => !t.isCompleted).sort((a, b) => a.sortOrder - b.sortOrder);
   const completedTasks = allTasks.filter((t) => t.isCompleted).sort((a, b) => {
@@ -31,7 +32,7 @@ async function buildTaskGroup(project: Project): Promise<TaskGroup> {
 export function useAllProjectTasks() {
   const groups = useLiveQuery(async () => {
     const projects = await db.projects
-      .filter((p) => !p.deletedAt && !p.isArchived)
+      .filter((p) => isActive(p) && !p.isArchived)
       .toArray();
     projects.sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -47,12 +48,12 @@ export function useAllProjectTasks() {
 
   const folderGroups = useLiveQuery(async () => {
     const folders = await db.projectFolders
-      .filter((f) => !f.deletedAt)
+      .filter(isActive)
       .toArray();
     folders.sort((a, b) => a.sortOrder - b.sortOrder);
 
     const projects = await db.projects
-      .filter((p) => !p.deletedAt && !p.isArchived)
+      .filter((p) => isActive(p) && !p.isArchived)
       .toArray();
     projects.sort((a, b) => a.sortOrder - b.sortOrder);
 

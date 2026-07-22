@@ -1,57 +1,47 @@
-import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import { generateId, getDeviceId } from '../utils/uuid';
+import { notDeleted, updateRecord } from '../db/repository';
+import { useEntity } from './useEntity';
 import type { ProjectFolder } from '@shared/types';
 import { ACTIVITY_COLORS } from '@shared/constants';
 
+const bySortOrder = (a: ProjectFolder, b: ProjectFolder) => a.sortOrder - b.sortOrder;
+
 export function useFolders() {
-  const folders = useLiveQuery(
-    () => db.projectFolders
-      .filter(f => !f.deletedAt)
-      .toArray()
-      .then(arr => arr.sort((a, b) => a.sortOrder - b.sortOrder)),
-    [],
-  );
+  const { items: folders, create, update, remove } = useEntity<ProjectFolder>(db.projectFolders, {
+    sort: bySortOrder,
+  });
 
   const createFolder = async (name: string, color?: string, parentFolderId: string | null = null) => {
-    const now = new Date().toISOString();
-    const all = await db.projectFolders.filter(f => !f.deletedAt).toArray();
-    const folder: ProjectFolder = {
-      id: generateId(),
+    const all = notDeleted(await db.projectFolders.toArray());
+    return create({
       name,
       color: color || ACTIVITY_COLORS[Math.floor(Math.random() * ACTIVITY_COLORS.length)],
       sortOrder: all.length,
       parentFolderId,
       isExpanded: true,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-      deviceId: getDeviceId(),
-    };
-    await db.projectFolders.add(folder);
-    return folder;
+    });
   };
 
-  const updateFolder = async (id: string, patch: Partial<Pick<ProjectFolder, 'name' | 'color' | 'isExpanded'>>) => {
-    await db.projectFolders.update(id, { ...patch, updatedAt: new Date().toISOString() });
-  };
+  const updateFolder = (id: string, patch: Partial<Pick<ProjectFolder, 'name' | 'color' | 'isExpanded'>>) =>
+    update(id, patch);
 
   const toggleExpanded = async (id: string) => {
     const folder = await db.projectFolders.get(id);
     if (folder) {
-      await db.projectFolders.update(id, { isExpanded: !folder.isExpanded, updatedAt: new Date().toISOString() });
+      await update(id, { isExpanded: !folder.isExpanded });
     }
   };
 
+  // Cascade: soft-delete the folder, then move its direct child projects to
+  // root (folderId: null) rather than deleting them — folders are just an
+  // organizational layer over projects.
   const deleteFolder = async (id: string) => {
-    const now = new Date().toISOString();
-    await db.projectFolders.update(id, { deletedAt: now, updatedAt: now });
-    // Move child projects to root
+    await remove(id);
     const childProjects = await db.projects.where('folderId').equals(id).toArray();
     for (const p of childProjects) {
-      await db.projects.update(p.id, { folderId: null, updatedAt: now });
+      await updateRecord(db.projects, p.id, { folderId: null });
     }
   };
 
-  return { folders: folders ?? [], createFolder, updateFolder, deleteFolder, toggleExpanded };
+  return { folders, createFolder, updateFolder, deleteFolder, toggleExpanded };
 }

@@ -1,8 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import { generateId, getDeviceId } from '../utils/uuid';
+import { newRecord, notDeleted, softDelete, updateRecord } from '../db/repository';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
+// Per-project query with recurrence-spawn logic on completion — doesn't fit
+// useEntity's flat-table shape, so this stays bespoke on top of the
+// repository primitives.
 export function useProjectTasks(projectId: string | null) {
   const tasks = useLiveQuery(
     () => {
@@ -10,23 +13,18 @@ export function useProjectTasks(projectId: string | null) {
       return db.projectTasks
         .where('projectId')
         .equals(projectId)
-        .filter((t) => !t.deletedAt)
         .toArray()
-        .then((arr) => arr.sort((a, b) => a.sortOrder - b.sortOrder));
+        .then((arr) => notDeleted(arr).sort((a, b) => a.sortOrder - b.sortOrder));
     },
     [projectId],
   );
 
   const createTask = async (title: string, recurrenceRule?: RecurrenceRule | null) => {
     if (!projectId) return null;
-    const now = new Date().toISOString();
-    const all = await db.projectTasks
-      .where('projectId')
-      .equals(projectId)
-      .filter((t) => !t.deletedAt)
-      .toArray();
-    const task: ProjectTask = {
-      id: generateId(),
+    const all = notDeleted(
+      await db.projectTasks.where('projectId').equals(projectId).toArray(),
+    );
+    const task = newRecord({
       projectId,
       title,
       sortOrder: all.length,
@@ -34,21 +32,13 @@ export function useProjectTasks(projectId: string | null) {
       completedAt: null,
       recurrenceRule: recurrenceRule ?? null,
       lastRecurredDate: null,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-      deviceId: getDeviceId(),
-    };
+    });
     await db.projectTasks.add(task);
     return task;
   };
 
-  const updateTask = async (id: string, patch: Partial<Pick<ProjectTask, 'title'>>) => {
-    await db.projectTasks.update(id, {
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    });
-  };
+  const updateTask = (id: string, patch: Partial<Pick<ProjectTask, 'title'>>) =>
+    updateRecord(db.projectTasks, id, patch);
 
   const toggleTask = async (id: string) => {
     const task = await db.projectTasks.get(id);
@@ -71,13 +61,10 @@ export function useProjectTasks(projectId: string | null) {
       if (existingIncomplete) return;
 
       const today = now.slice(0, 10);
-      const all = await db.projectTasks
-        .where('projectId')
-        .equals(task.projectId)
-        .filter((t) => !t.deletedAt)
-        .toArray();
-      await db.projectTasks.add({
-        id: generateId(),
+      const all = notDeleted(
+        await db.projectTasks.where('projectId').equals(task.projectId).toArray(),
+      );
+      await db.projectTasks.add(newRecord({
         projectId: task.projectId,
         title: task.title,
         sortOrder: all.length,
@@ -85,41 +72,31 @@ export function useProjectTasks(projectId: string | null) {
         completedAt: null,
         recurrenceRule: task.recurrenceRule,
         lastRecurredDate: today,
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
-        deviceId: getDeviceId(),
-      });
+      }));
     }
   };
 
-  const updateRecurrence = async (id: string, recurrenceRule: RecurrenceRule | null) => {
-    await db.projectTasks.update(id, {
-      recurrenceRule,
-      updatedAt: new Date().toISOString(),
-    });
-  };
+  const updateRecurrence = (id: string, recurrenceRule: RecurrenceRule | null) =>
+    updateRecord(db.projectTasks, id, { recurrenceRule });
 
+  // Cascade: soft-delete the task, then any today-tasks pointing at it.
   const deleteTask = async (id: string) => {
-    const now = new Date().toISOString();
     await db.transaction('rw', [db.projectTasks, db.todayTasks], async () => {
-      await db.projectTasks.update(id, { deletedAt: now, updatedAt: now });
-      // Also remove from today
+      await softDelete(db.projectTasks, id);
       const todayTasks = await db.todayTasks
         .where('projectTaskId')
         .equals(id)
         .filter((t) => !t.deletedAt)
         .toArray();
       for (const tt of todayTasks) {
-        await db.todayTasks.update(tt.id, { deletedAt: now, updatedAt: now });
+        await softDelete(db.todayTasks, tt.id);
       }
     });
   };
 
   const reorderTasks = async (orderedIds: string[]) => {
-    const now = new Date().toISOString();
     for (let i = 0; i < orderedIds.length; i++) {
-      await db.projectTasks.update(orderedIds[i], { sortOrder: i, updatedAt: now });
+      await updateRecord(db.projectTasks, orderedIds[i], { sortOrder: i });
     }
   };
 

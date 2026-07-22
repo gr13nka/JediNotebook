@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { db } from '../db';
-import { generateId, getDeviceId } from '../utils/uuid';
+import { newRecord, notDeleted, updateRecord } from '../db/repository';
 import { shouldCreateRecurrence } from '../utils/recurrence';
 
 export function useRecurringTaskCheck() {
@@ -22,14 +22,11 @@ export function useRecurringTaskCheck() {
           .first();
         if (existing) continue;
 
-        const now = new Date().toISOString();
-        const all = await db.projectTasks
-          .where('projectId').equals(task.projectId)
-          .filter(t => !t.deletedAt)
-          .toArray();
+        const all = notDeleted(
+          await db.projectTasks.where('projectId').equals(task.projectId).toArray(),
+        );
 
-        await db.projectTasks.add({
-          id: generateId(),
+        await db.projectTasks.add(newRecord({
           projectId: task.projectId,
           title: task.title,
           sortOrder: all.length,
@@ -37,14 +34,10 @@ export function useRecurringTaskCheck() {
           completedAt: null,
           recurrenceRule: task.recurrenceRule,
           lastRecurredDate: today,
-          createdAt: now,
-          updatedAt: now,
-          deletedAt: null,
-          deviceId: getDeviceId(),
-        });
+        }));
 
         // Update the original task's lastRecurredDate
-        await db.projectTasks.update(task.id, { lastRecurredDate: today, updatedAt: now });
+        await updateRecord(db.projectTasks, task.id, { lastRecurredDate: today });
       }
     };
     checkRecurring();

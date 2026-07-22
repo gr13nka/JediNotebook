@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { TimerState } from '@shared/types';
 import { db } from '../db';
-import { generateId, getDeviceId } from '../utils/uuid';
+import { newRecord, updateRecord } from '../db/repository';
+import { getDeviceId } from '../utils/uuid';
 import { getLogicalDate } from '../utils/time';
 
 interface TimerStore extends TimerState {
@@ -26,24 +27,18 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     }
 
     const now = new Date().toISOString();
-    const entryId = generateId();
-
-    await db.timeEntries.add({
-      id: entryId,
+    const entry = newRecord({
       activityId,
       startedAt: now,
       endedAt: null,
       durationSeconds: 0,
       isManual: false,
       date: getLogicalDate(dayStartHour),
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-      deviceId: getDeviceId(),
     });
+    await db.timeEntries.add(entry);
 
     set({
-      activeEntryId: entryId,
+      activeEntryId: entry.id,
       activeActivityId: activityId,
       startedAt: now,
       elapsed: 0,
@@ -62,10 +57,9 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       Math.floor((now.getTime() - startedAt.getTime()) / 1000),
     );
 
-    await db.timeEntries.update(state.activeEntryId, {
+    await updateRecord(db.timeEntries, state.activeEntryId, {
       endedAt: now.toISOString(),
       durationSeconds,
-      updatedAt: now.toISOString(),
     });
 
     set({

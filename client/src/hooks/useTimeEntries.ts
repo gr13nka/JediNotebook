@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import { generateId, getDeviceId } from '../utils/uuid';
+import { newRecord, notDeleted, softDelete } from '../db/repository';
 import { getLogicalDate } from '../utils/time';
 import { useSettingsStore } from '../stores/settingsStore';
 
@@ -13,8 +13,8 @@ export function useTimeEntries(date?: string) {
       db.timeEntries
         .where('date')
         .equals(targetDate)
-        .filter((e) => !e.deletedAt)
-        .toArray(),
+        .toArray()
+        .then(notDeleted),
     [targetDate],
   );
 
@@ -26,27 +26,17 @@ export function useTimeEntries(date?: string) {
     const now = new Date().toISOString();
     const logicalDate = entryDate ?? getLogicalDate(dayStartHour);
 
-    await db.timeEntries.add({
-      id: generateId(),
+    await db.timeEntries.add(newRecord({
       activityId,
       startedAt: now,
       endedAt: now,
       durationSeconds,
       isManual: true,
       date: logicalDate,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-      deviceId: getDeviceId(),
-    });
+    }));
   };
 
-  const deleteEntry = async (id: string) => {
-    await db.timeEntries.update(id, {
-      deletedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-  };
+  const deleteEntry = (id: string) => softDelete(db.timeEntries, id);
 
   const getElapsedForActivity = (activityId: string): number => {
     if (!entries) return 0;
