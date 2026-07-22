@@ -3,14 +3,9 @@ import type { BarStyle, CustomThemeColors, Language, ThemeMode } from '@shared/t
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { db } from '../db';
 
-const SUPPORTED_LANGUAGES: Language[] = ['en', 'zh', 'es', 'pt', 'ru'];
-
 function detectBrowserLanguage(): Language {
   const browserLang = navigator.language?.slice(0, 2).toLowerCase();
-  if (browserLang && SUPPORTED_LANGUAGES.includes(browserLang as Language)) {
-    return browserLang as Language;
-  }
-  return 'en';
+  return browserLang === 'ru' ? 'ru' : 'en';
 }
 
 const CUSTOM_COLOR_CSS_MAP: [keyof CustomThemeColors, string][] = [
@@ -123,7 +118,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         theme = (theme as string) === 'neu-light' ? 'light' : 'dark';
       }
 
-      const language = raw.language ?? detectBrowserLanguage();
+      // Migrate: prefer stored language, fall back to browser detection
+      let language: Language = raw.language ?? detectBrowserLanguage();
+      // Migrate removed languages (language set trimmed to en/ru)
+      if (language !== 'en' && language !== 'ru') {
+        language = 'en';
+      }
+
       const customThemeColors = raw.customThemeColors ?? DEFAULT_SETTINGS.customThemeColors;
 
       set({

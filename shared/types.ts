@@ -65,7 +65,7 @@ export interface CustomThemeColors {
   border: string;
 }
 
-export type Language = 'en' | 'zh' | 'es' | 'pt' | 'ru';
+export type Language = 'en' | 'ru';
 
 export interface TimerState {
   activeEntryId: string | null;

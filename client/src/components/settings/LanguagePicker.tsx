@@ -4,7 +4,7 @@ import { LANGUAGE_NAMES } from '../../i18n/translations';
 import { NEU } from '../../utils/shadows';
 import type { Language } from '@shared/types';
 
-const LANGUAGES: Language[] = ['en', 'zh', 'es', 'pt', 'ru'];
+const LANGUAGES: Language[] = ['en', 'ru'];
 
 export function LanguagePicker() {
   const language = useSettingsStore((s) => s.language);
