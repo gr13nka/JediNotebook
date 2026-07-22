@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import { newRecord, notDeleted, softDelete, updateRecord } from '../db/repository';
+import { newRecord, notDeleted, updateRecord } from '../db/repository';
+import { createProjectTask, deleteProjectTaskCascade } from '../db/taskOps';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 // Per-project query with recurrence-spawn logic on completion — doesn't fit
@@ -19,22 +20,9 @@ export function useProjectTasks(projectId: string | null) {
     [projectId],
   );
 
-  const createTask = async (title: string, recurrenceRule?: RecurrenceRule | null) => {
-    if (!projectId) return null;
-    const all = notDeleted(
-      await db.projectTasks.where('projectId').equals(projectId).toArray(),
-    );
-    const task = newRecord({
-      projectId,
-      title,
-      sortOrder: all.length,
-      isCompleted: false,
-      completedAt: null,
-      recurrenceRule: recurrenceRule ?? null,
-      lastRecurredDate: null,
-    });
-    await db.projectTasks.add(task);
-    return task;
+  const createTask = (title: string, recurrenceRule?: RecurrenceRule | null) => {
+    if (!projectId) return Promise.resolve(null);
+    return createProjectTask(projectId, title, recurrenceRule);
   };
 
   const updateTask = (id: string, patch: Partial<Pick<ProjectTask, 'title'>>) =>
@@ -80,19 +68,7 @@ export function useProjectTasks(projectId: string | null) {
     updateRecord(db.projectTasks, id, { recurrenceRule });
 
   // Cascade: soft-delete the task, then any today-tasks pointing at it.
-  const deleteTask = async (id: string) => {
-    await db.transaction('rw', [db.projectTasks, db.todayTasks], async () => {
-      await softDelete(db.projectTasks, id);
-      const todayTasks = await db.todayTasks
-        .where('projectTaskId')
-        .equals(id)
-        .filter((t) => !t.deletedAt)
-        .toArray();
-      for (const tt of todayTasks) {
-        await softDelete(db.todayTasks, tt.id);
-      }
-    });
-  };
+  const deleteTask = (id: string) => deleteProjectTaskCascade(id);
 
   const reorderTasks = async (orderedIds: string[]) => {
     for (let i = 0; i < orderedIds.length; i++) {

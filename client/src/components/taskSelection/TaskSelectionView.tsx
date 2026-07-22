@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAllProjectTasks } from '../../hooks/useAllProjectTasks';
 import { useTodayTasks } from '../../hooks/useTodayTasks';
 import { useProjects } from '../../hooks/useProjects';
-import { useProjectTasks } from '../../hooks/useProjectTasks';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { InfoTooltip } from '../ui/InfoTooltip';
@@ -12,7 +11,7 @@ import { TaskGroupCard, type TaskSortMode } from './TaskGroupCard';
 import { FolderGroupSection } from './FolderGroupSection';
 import { SelectableTaskRow } from './SelectableTaskRow';
 import { db } from '../../db';
-import { generateId, getDeviceId } from '../../utils/uuid';
+import { createProjectTask, deleteProjectTaskCascade } from '../../db/taskOps';
 import type { ProjectTask } from '@shared/types';
 
 const container = {
@@ -120,10 +119,6 @@ export function TaskSelectionView() {
         return tasks;
     }
   }, [allIncompleteTasks, sortMode, flatOrder]);
-
-  // Hook for adding tasks (need a default project for the hook)
-  const firstProjectId = projects.length > 0 ? projects[0].id : null;
-  const { createTask: createTaskHook } = useProjectTasks(newTaskProjectId || firstProjectId);
 
   const toggleFolder = useCallback((folderId: string) => {
     setCollapsedFolders((prev) => {
@@ -242,26 +237,7 @@ export function TaskSelectionView() {
   const handleAddTask = async () => {
     const title = newTaskTitle.trim();
     if (!title || !newTaskProjectId) return;
-    const now = new Date().toISOString();
-    const all = await db.projectTasks
-      .where('projectId')
-      .equals(newTaskProjectId)
-      .filter((t) => !t.deletedAt)
-      .toArray();
-    await db.projectTasks.add({
-      id: generateId(),
-      projectId: newTaskProjectId,
-      title,
-      sortOrder: all.length,
-      isCompleted: false,
-      completedAt: null,
-      recurrenceRule: null,
-      lastRecurredDate: null,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-      deviceId: getDeviceId(),
-    });
+    await createProjectTask(newTaskProjectId, title);
     setNewTaskTitle('');
     addInputRef.current?.focus();
   };
@@ -460,18 +436,7 @@ export function TaskSelectionView() {
                     updatedAt: now,
                   });
                 }}
-                onDelete={async () => {
-                  const now = new Date().toISOString();
-                  await db.projectTasks.update(task.id, { deletedAt: now, updatedAt: now });
-                  const todayEntries = await db.todayTasks
-                    .where('projectTaskId')
-                    .equals(task.id)
-                    .filter((t) => !t.deletedAt)
-                    .toArray();
-                  for (const tt of todayEntries) {
-                    await db.todayTasks.update(tt.id, { deletedAt: now, updatedAt: now });
-                  }
-                }}
+                onDelete={() => deleteProjectTaskCascade(task.id)}
                 onRename={async (title) => {
                   await db.projectTasks.update(task.id, {
                     title,
@@ -531,10 +496,7 @@ export function TaskSelectionView() {
                             updatedAt: now,
                           });
                         }}
-                        onDelete={async () => {
-                          const now = new Date().toISOString();
-                          await db.projectTasks.update(task.id, { deletedAt: now, updatedAt: now });
-                        }}
+                        onDelete={() => deleteProjectTaskCascade(task.id)}
                         onRename={async (title) => {
                           await db.projectTasks.update(task.id, {
                             title,

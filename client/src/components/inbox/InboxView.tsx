@@ -5,8 +5,7 @@ import { NEU } from '../../utils/shadows';
 import { useInbox } from '../../hooks/useInbox';
 import { useProjects } from '../../hooks/useProjects';
 import { useTranslation } from '../../i18n/useTranslation';
-import { db } from '../../db';
-import { generateId, getDeviceId } from '../../utils/uuid';
+import { createProjectTask } from '../../db/taskOps';
 import { ACTIVITY_COLORS } from '@shared/constants';
 import { Card } from '../ui/Card';
 
@@ -61,7 +60,7 @@ const UndoIcon = () => (
 );
 
 export function InboxView({ embedded = false }: InboxViewProps) {
-  const { items, addItem, updateItem, deleteItem } = useInbox();
+  const { items, addItem, updateItem, deleteItem, restoreItem } = useInbox();
   const { projects, createProject } = useProjects();
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
@@ -128,26 +127,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
   const handleTaskModeAssign = async (itemId: string, projectId: string) => {
     const item = items.find((i) => i.id === itemId);
     if (!item) return;
-    const now = new Date().toISOString();
-    const existingTasks = await db.projectTasks
-      .where('projectId')
-      .equals(projectId)
-      .filter((t) => !t.deletedAt)
-      .toArray();
-    await db.projectTasks.add({
-      id: generateId(),
-      projectId,
-      title: item.text,
-      sortOrder: existingTasks.length,
-      isCompleted: false,
-      completedAt: null,
-      recurrenceRule: null,
-      lastRecurredDate: null,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-      deviceId: getDeviceId(),
-    });
+    await createProjectTask(projectId, item.text);
     await deleteItem(itemId);
     setTaskModePickerId(null);
   };
@@ -207,26 +187,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
 
   const handlePickProject = async (projectId: string) => {
     if (!currentItem) return;
-    const now = new Date().toISOString();
-    const existingTasks = await db.projectTasks
-      .where('projectId')
-      .equals(projectId)
-      .filter((t) => !t.deletedAt)
-      .toArray();
-    await db.projectTasks.add({
-      id: generateId(),
-      projectId,
-      title: currentItem.text,
-      sortOrder: existingTasks.length,
-      isCompleted: false,
-      completedAt: null,
-      recurrenceRule: null,
-      lastRecurredDate: null,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-      deviceId: getDeviceId(),
-    });
+    await createProjectTask(projectId, currentItem.text);
     await deleteItem(currentItem.id);
     moveToNext();
   };
@@ -274,11 +235,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
 
   const handleUndo = async () => {
     if (!undoPending) return;
-    const now = new Date().toISOString();
-    await db.inboxItems.update(undoPending.id, {
-      deletedAt: null,
-      updatedAt: now,
-    });
+    await restoreItem(undoPending.id);
     clearUndoTimer();
   };
 
