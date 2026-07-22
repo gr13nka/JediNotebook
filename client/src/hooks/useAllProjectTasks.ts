@@ -29,66 +29,62 @@ async function buildTaskGroup(project: Project): Promise<TaskGroup> {
   return { project, tasks, completedTasks };
 }
 
-export function useAllProjectTasks() {
-  const groups = useLiveQuery(async () => {
-    const projects = await db.projects
-      .filter((p) => isActive(p) && !p.isArchived)
-      .toArray();
-    projects.sort((a, b) => a.sortOrder - b.sortOrder);
-
-    const result: TaskGroup[] = [];
-    for (const project of projects) {
-      const group = await buildTaskGroup(project);
-      if (group.tasks.length > 0 || group.completedTasks.length > 0) {
-        result.push(group);
-      }
+/**
+ * Buckets already-built project groups by folder, in folder `sortOrder`, with
+ * unfiled projects (no `folderId`) trailing as a `folder: null` bucket.
+ * Folders with no non-empty projects are dropped, same as `groups` drops
+ * empty projects.
+ */
+function bucketByFolder(groups: TaskGroup[], folders: ProjectFolder[]): FolderGroup[] {
+  const folderMap = new Map<string | null, TaskGroup[]>();
+  for (const group of groups) {
+    const folderId = group.project.folderId ?? null;
+    if (!folderMap.has(folderId)) {
+      folderMap.set(folderId, []);
     }
-    return result;
-  }, []);
+    folderMap.get(folderId)!.push(group);
+  }
 
-  const folderGroups = useLiveQuery(async () => {
-    const folders = await db.projectFolders
-      .filter(isActive)
-      .toArray();
+  const result: FolderGroup[] = [];
+  for (const folder of folders) {
+    const folderProjects = folderMap.get(folder.id);
+    if (folderProjects && folderProjects.length > 0) {
+      result.push({ folder, projects: folderProjects });
+    }
+  }
+
+  const unfiledProjects = folderMap.get(null);
+  if (unfiledProjects && unfiledProjects.length > 0) {
+    result.push({ folder: null, projects: unfiledProjects });
+  }
+
+  return result;
+}
+
+// One query, two views of the same data: `groups` is the flat project list,
+// `folderGroups` is that same list bucketed by folder. Splitting this into
+// two useLiveQuery calls (as before) ran the identical project/task fetch
+// twice on every change; deriving both shapes from one result halves that
+// work without changing what either shape looks like.
+export function useAllProjectTasks() {
+  const data = useLiveQuery(async () => {
+    const [projects, folders] = await Promise.all([
+      db.projects.filter((p) => isActive(p) && !p.isArchived).toArray(),
+      db.projectFolders.filter(isActive).toArray(),
+    ]);
+    projects.sort((a, b) => a.sortOrder - b.sortOrder);
     folders.sort((a, b) => a.sortOrder - b.sortOrder);
 
-    const projects = await db.projects
-      .filter((p) => isActive(p) && !p.isArchived)
-      .toArray();
-    projects.sort((a, b) => a.sortOrder - b.sortOrder);
-
-    const projectGroups: TaskGroup[] = [];
+    const groups: TaskGroup[] = [];
     for (const project of projects) {
       const group = await buildTaskGroup(project);
       if (group.tasks.length > 0 || group.completedTasks.length > 0) {
-        projectGroups.push(group);
+        groups.push(group);
       }
     }
 
-    const folderMap = new Map<string | null, TaskGroup[]>();
-    for (const group of projectGroups) {
-      const folderId = group.project.folderId ?? null;
-      if (!folderMap.has(folderId)) {
-        folderMap.set(folderId, []);
-      }
-      folderMap.get(folderId)!.push(group);
-    }
-
-    const result: FolderGroup[] = [];
-    for (const folder of folders) {
-      const folderProjects = folderMap.get(folder.id);
-      if (folderProjects && folderProjects.length > 0) {
-        result.push({ folder, projects: folderProjects });
-      }
-    }
-
-    const unfiledProjects = folderMap.get(null);
-    if (unfiledProjects && unfiledProjects.length > 0) {
-      result.push({ folder: null, projects: unfiledProjects });
-    }
-
-    return result;
+    return { groups, folderGroups: bucketByFolder(groups, folders) };
   }, []);
 
-  return { groups: groups ?? [], folderGroups: folderGroups ?? [] };
+  return { groups: data?.groups ?? [], folderGroups: data?.folderGroups ?? [] };
 }

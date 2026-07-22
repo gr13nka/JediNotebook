@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { VaultBackend } from './vaultBackend';
-import { isTauri } from './platform';
+import { getPlatform } from './platform';
 import { importAllFromDisk, handleExternalChange } from './vaultSync';
 import { writeQueue } from './writeQueue';
 import { writeGuard } from './writeGuard';
@@ -104,7 +104,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     if (state.isEnabled) await state.disable();
 
     let backend: VaultBackend;
-    if (isTauri()) {
+    if (getPlatform() !== 'web') {
       const { TauriVaultBackend } = await import('./tauriBackend');
       backend = new TauriVaultBackend(vaultPath);
     } else {

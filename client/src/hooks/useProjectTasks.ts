@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { notDeleted, updateRecord } from '../db/repository';
-import { createProjectTask, deleteProjectTaskCascade, spawnNextOccurrence } from '../db/taskOps';
+import { createProjectTask, deleteProjectTaskCascade, toggleProjectTask } from '../db/taskOps';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 // Per-project query with recurrence-spawn logic on completion — doesn't fit
@@ -28,24 +28,10 @@ export function useProjectTasks(projectId: string | null) {
   const updateTask = (id: string, patch: Partial<Pick<ProjectTask, 'title'>>) =>
     updateRecord(db.projectTasks, id, patch);
 
-  const toggleTask = async (id: string) => {
-    const task = await db.projectTasks.get(id);
-    if (!task) return;
-    const now = new Date().toISOString();
-    const newCompleted = !task.isCompleted;
-    await db.projectTasks.update(id, {
-      isCompleted: newCompleted,
-      completedAt: newCompleted ? now : null,
-      updatedAt: now,
-    });
-    // Completing a recurring task may spawn its next occurrence — gated by
-    // due-date + title-dedup inside spawnNextOccurrence (shared with the
-    // useRecurringTaskCheck background scan). `task` is the pre-toggle
-    // snapshot; only its recurrence-related fields are read.
-    if (newCompleted && task.recurrenceRule) {
-      await spawnNextOccurrence(task);
-    }
-  };
+  // Completion flip + recurrence-spawn gating live in toggleProjectTask so
+  // every caller outside this scoped hook (e.g. Task Selection's cross-project
+  // rows) gets the same semantics instead of reimplementing them.
+  const toggleTask = (id: string) => toggleProjectTask(id);
 
   const updateRecurrence = (id: string, recurrenceRule: RecurrenceRule | null) =>
     updateRecord(db.projectTasks, id, { recurrenceRule });

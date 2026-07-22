@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { NEU } from '../../utils/shadows';
 import { useProjectTasks } from '../../hooks/useProjectTasks';
+import { useReorderList } from '../../hooks/useReorderList';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -8,7 +9,7 @@ import { InfoTooltip } from '../ui/InfoTooltip';
 import { TaskItem } from './TaskItem';
 import { RecurrenceEditor } from './RecurrenceEditor';
 import { readPayload, hasPayload, isCopyModifier, setTaskPayload } from '../../utils/taskDnd';
-import type { RecurrenceRule } from '@shared/types';
+import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 interface ProjectTaskListProps {
   projectId: string;
@@ -49,54 +50,15 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
     }
   };
 
-  const dragIdx = useRef<number | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
-
-  const handleDragStart = (index: number) => (e: React.DragEvent) => {
-    dragIdx.current = index;
-    // Also advertise the task payload so the description editor can accept it.
-    // setTaskPayload owns effectAllowed ('copyMove') — it has to permit both
-    // this list's 'move' reorder and the editor's 'copy' drop.
-    const task = incompleteTasks[index];
-    if (task) setTaskPayload(e, task.id, task.title);
-  };
-
-  const handleDragOver = (index: number) => (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragIdx.current === null || dragIdx.current === index) {
-      setDropTarget(null);
-      return;
-    }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const position = e.clientY < midY ? 'above' : 'below';
-    setDropTarget({ index, position });
-  };
-
-  const handleDrop = (index: number) => (e: React.DragEvent) => {
-    e.preventDefault();
-    const from = dragIdx.current;
-    if (from === null || from === index) {
-      dragIdx.current = null;
-      setDropTarget(null);
-      return;
-    }
-    const ids = incompleteTasks.map((t) => t.id);
-    const [moved] = ids.splice(from, 1);
-    const targetIdx = from < index ? index : index;
-    const insertAt = dropTarget?.position === 'below' ? targetIdx + (from < index ? 0 : 1) : targetIdx - (from < index ? 1 : 0);
-    ids.splice(Math.max(0, insertAt), 0, moved);
-    const completedIds = completedTasks.map((t) => t.id);
-    reorderTasks([...ids, ...completedIds]);
-    dragIdx.current = null;
-    setDropTarget(null);
-  };
-
-  const handleDragEnd = () => {
-    setDropTarget(null);
-    dragIdx.current = null;
-  };
+  // Also advertise the task payload on dragstart so the description editor can
+  // accept it. setTaskPayload owns effectAllowed ('copyMove') — it has to
+  // permit both this list's 'move' reorder and the editor's 'copy' drop.
+  const reorder = useReorderList({
+    items: incompleteTasks,
+    getId: (t: ProjectTask) => t.id,
+    onReorder: (ids) => reorderTasks([...ids, ...completedTasks.map((t) => t.id)]),
+    onDragStart: (task, _index, e) => setTaskPayload(e, task.id, task.title),
+  });
 
   const [isTextDropTarget, setIsTextDropTarget] = useState(false);
 
@@ -150,7 +112,7 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
         <InfoTooltip text={t('projectTasks.tooltip')} />
       </div>
 
-      <div className="flex flex-col gap-0.5" onDragEnd={handleDragEnd}>
+      <div className="flex flex-col gap-0.5" onDragEnd={reorder.handleDragEnd}>
         {incompleteTasks.map((task, i) => (
           <TaskItem
             key={task.id}
@@ -159,11 +121,7 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
             onDelete={() => deleteTask(task.id)}
             onRename={(title) => updateTask(task.id, { title })}
             onUpdateRecurrence={(rule) => updateRecurrence(task.id, rule)}
-            draggable
-            onDragStart={handleDragStart(i)}
-            onDragOver={handleDragOver(i)}
-            onDrop={handleDrop(i)}
-            isDragOver={dropTarget?.index === i ? dropTarget.position : null}
+            {...reorder.getRowProps(i)}
           />
         ))}
       </div>

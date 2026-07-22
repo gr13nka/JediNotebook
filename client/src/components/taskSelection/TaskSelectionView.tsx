@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAllProjectTasks } from '../../hooks/useAllProjectTasks';
 import { useTodayTasks } from '../../hooks/useTodayTasks';
 import { useProjects } from '../../hooks/useProjects';
+import { useReorderList } from '../../hooks/useReorderList';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { InfoTooltip } from '../ui/InfoTooltip';
@@ -11,7 +12,7 @@ import { TaskGroupCard, type TaskSortMode } from './TaskGroupCard';
 import { FolderGroupSection } from './FolderGroupSection';
 import { SelectableTaskRow } from './SelectableTaskRow';
 import { db } from '../../db';
-import { createProjectTask, deleteProjectTaskCascade } from '../../db/taskOps';
+import { createProjectTask, deleteProjectTaskCascade, toggleProjectTask } from '../../db/taskOps';
 import type { ProjectTask } from '@shared/types';
 
 const container = {
@@ -54,17 +55,11 @@ export function TaskSelectionView() {
   const [newTaskProjectId, setNewTaskProjectId] = useState('');
   const addInputRef = useRef<HTMLInputElement>(null);
 
-  // Flat view drag state
-  const flatDragIdx = useRef<number | null>(null);
-  const [flatDropTarget, setFlatDropTarget] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
+  // Flat view custom order override (only 'custom' sort mode uses it)
   const [flatOrder, setFlatOrder] = useState<string[] | null>(null);
 
   // Flat view completed section
   const [flatCompletedCollapsed, setFlatCompletedCollapsed] = useState(true);
-
-  // Project drag state (grouped mode)
-  const projectDragIdx = useRef<number | null>(null);
-  const [projectDropTarget, setProjectDropTarget] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
 
   const todayTaskIds = useMemo(
     () => new Set(todayTasks.map((t) => t.projectTaskId)),
@@ -138,91 +133,19 @@ export function TaskSelectionView() {
     });
   }, []);
 
-  // Project drag handlers (grouped mode, no folders)
-  const handleProjectDragStart = (index: number) => (e: React.DragEvent) => {
-    projectDragIdx.current = index;
-    e.dataTransfer.effectAllowed = 'move';
-  };
+  // Project drag/drop (grouped mode, no folders)
+  const projectReorder = useReorderList({
+    items: groups,
+    getId: (g) => g.project.id,
+    onReorder: reorderProjects,
+  });
 
-  const handleProjectDragOver = (index: number) => (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (projectDragIdx.current === null || projectDragIdx.current === index) {
-      setProjectDropTarget(null);
-      return;
-    }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const position = e.clientY < midY ? 'above' : 'below';
-    setProjectDropTarget({ index, position });
-  };
-
-  const handleProjectDrop = (index: number) => (e: React.DragEvent) => {
-    e.preventDefault();
-    const from = projectDragIdx.current;
-    if (from === null || from === index) {
-      projectDragIdx.current = null;
-      setProjectDropTarget(null);
-      return;
-    }
-    const ordered = groups.map((g) => g.project.id);
-    const [moved] = ordered.splice(from, 1);
-    const insertAt = projectDropTarget?.position === 'below'
-      ? index + (from < index ? 0 : 1)
-      : index - (from < index ? 1 : 0);
-    ordered.splice(Math.max(0, insertAt), 0, moved);
-    reorderProjects(ordered);
-    projectDragIdx.current = null;
-    setProjectDropTarget(null);
-  };
-
-  const handleProjectDragEnd = () => {
-    setProjectDropTarget(null);
-    projectDragIdx.current = null;
-  };
-
-  // Flat drag handlers
-  const handleFlatDragStart = (index: number) => (e: React.DragEvent) => {
-    flatDragIdx.current = index;
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleFlatDragOver = (index: number) => (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (flatDragIdx.current === null || flatDragIdx.current === index) {
-      setFlatDropTarget(null);
-      return;
-    }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const position = e.clientY < midY ? 'above' : 'below';
-    setFlatDropTarget({ index, position });
-  };
-
-  const handleFlatDrop = (index: number) => (e: React.DragEvent) => {
-    e.preventDefault();
-    const from = flatDragIdx.current;
-    if (from === null || from === index) {
-      flatDragIdx.current = null;
-      setFlatDropTarget(null);
-      return;
-    }
-    const ordered = sortedFlatTasks.map((t) => t.id);
-    const [moved] = ordered.splice(from, 1);
-    const insertAt = flatDropTarget?.position === 'below'
-      ? index + (from < index ? 0 : 1)
-      : index - (from < index ? 1 : 0);
-    ordered.splice(Math.max(0, insertAt), 0, moved);
-    setFlatOrder(ordered);
-    flatDragIdx.current = null;
-    setFlatDropTarget(null);
-  };
-
-  const handleFlatDragEnd = () => {
-    setFlatDropTarget(null);
-    flatDragIdx.current = null;
-  };
+  // Flat view drag/drop — reordering only sets the local override; it isn't persisted.
+  const flatReorder = useReorderList({
+    items: sortedFlatTasks,
+    getId: (t: ProjectTask) => t.id,
+    onReorder: setFlatOrder,
+  });
 
   const sortedGroups = useMemo(() => {
     if (sortMode === 'created') {
@@ -419,40 +342,34 @@ export function TaskSelectionView() {
           variants={container}
           initial="hidden"
           animate="show"
-          onDragEnd={handleFlatDragEnd}
+          onDragEnd={flatReorder.handleDragEnd}
         >
-          {sortedFlatTasks.map((task, i) => (
-            <motion.div key={task.id} variants={item}>
-              <SelectableTaskRow
-                task={task}
-                onToggleToday={() => toggleToday(task.id, task.projectId)}
-                onToggleComplete={async () => {
-                  const t = await db.projectTasks.get(task.id);
-                  if (!t) return;
-                  const now = new Date().toISOString();
-                  await db.projectTasks.update(task.id, {
-                    isCompleted: !t.isCompleted,
-                    completedAt: !t.isCompleted ? now : null,
-                    updatedAt: now,
-                  });
-                }}
-                onDelete={() => deleteProjectTaskCascade(task.id)}
-                onRename={async (title) => {
-                  await db.projectTasks.update(task.id, {
-                    title,
-                    updatedAt: new Date().toISOString(),
-                  });
-                }}
-                isInToday={todayTaskIds.has(task.id)}
-                draggable={sortMode === 'custom'}
-                onDragStart={sortMode === 'custom' ? handleFlatDragStart(i) : undefined}
-                onDragOver={sortMode === 'custom' ? handleFlatDragOver(i) : undefined}
-                onDrop={sortMode === 'custom' ? handleFlatDrop(i) : undefined}
-                isDragOver={flatDropTarget?.index === i ? flatDropTarget.position : null}
-                projectInfo={projectMap.get(task.projectId)}
-              />
-            </motion.div>
-          ))}
+          {sortedFlatTasks.map((task, i) => {
+            const rowProps = flatReorder.getRowProps(i);
+            return (
+              <motion.div key={task.id} variants={item}>
+                <SelectableTaskRow
+                  task={task}
+                  onToggleToday={() => toggleToday(task.id, task.projectId)}
+                  onToggleComplete={() => toggleProjectTask(task.id)}
+                  onDelete={() => deleteProjectTaskCascade(task.id)}
+                  onRename={async (title) => {
+                    await db.projectTasks.update(task.id, {
+                      title,
+                      updatedAt: new Date().toISOString(),
+                    });
+                  }}
+                  isInToday={todayTaskIds.has(task.id)}
+                  draggable={sortMode === 'custom'}
+                  onDragStart={sortMode === 'custom' ? rowProps.onDragStart : undefined}
+                  onDragOver={sortMode === 'custom' ? rowProps.onDragOver : undefined}
+                  onDrop={sortMode === 'custom' ? rowProps.onDrop : undefined}
+                  isDragOver={rowProps.isDragOver}
+                  projectInfo={projectMap.get(task.projectId)}
+                />
+              </motion.div>
+            );
+          })}
 
           {/* Completed section */}
           {allCompletedTasks.length > 0 && (
@@ -486,16 +403,7 @@ export function TaskSelectionView() {
                         key={task.id}
                         task={task}
                         onToggleToday={() => toggleToday(task.id, task.projectId)}
-                        onToggleComplete={async () => {
-                          const t = await db.projectTasks.get(task.id);
-                          if (!t) return;
-                          const now = new Date().toISOString();
-                          await db.projectTasks.update(task.id, {
-                            isCompleted: !t.isCompleted,
-                            completedAt: !t.isCompleted ? now : null,
-                            updatedAt: now,
-                          });
-                        }}
+                        onToggleComplete={() => toggleProjectTask(task.id)}
                         onDelete={() => deleteProjectTaskCascade(task.id)}
                         onRename={async (title) => {
                           await db.projectTasks.update(task.id, {
@@ -521,7 +429,7 @@ export function TaskSelectionView() {
           variants={container}
           initial="hidden"
           animate="show"
-          onDragEnd={handleProjectDragEnd}
+          onDragEnd={projectReorder.handleDragEnd}
         >
           {hasFolders ? (
             folderGroups.map((folderGroup) => {
@@ -552,30 +460,33 @@ export function TaskSelectionView() {
               );
             })
           ) : (
-            sortedGroups.map((group, i) => (
-              <motion.div
-                key={group.project.id}
-                variants={item}
-                onDragOver={groupedSortMode === 'custom' ? handleProjectDragOver(i) : undefined}
-                onDrop={groupedSortMode === 'custom' ? handleProjectDrop(i) : undefined}
-              >
-                <TaskGroupCard
-                  project={group.project}
-                  tasks={group.tasks}
-                  completedTasks={group.completedTasks}
-                  onToggleToday={toggleToday}
-                  todayTaskIds={todayTaskIds}
-                  sortMode={groupedSortMode}
-                  isCollapsed={collapsedProjects.has(group.project.id)}
-                  onToggleCollapse={() => toggleProject(group.project.id)}
-                  draggableProject={groupedSortMode === 'custom'}
-                  onProjectDragStart={handleProjectDragStart(i)}
-                  onProjectDragOver={handleProjectDragOver(i)}
-                  onProjectDrop={handleProjectDrop(i)}
-                  isProjectDragOver={projectDropTarget?.index === i ? projectDropTarget.position : null}
-                />
-              </motion.div>
-            ))
+            sortedGroups.map((group, i) => {
+              const rowProps = projectReorder.getRowProps(i);
+              return (
+                <motion.div
+                  key={group.project.id}
+                  variants={item}
+                  onDragOver={groupedSortMode === 'custom' ? rowProps.onDragOver : undefined}
+                  onDrop={groupedSortMode === 'custom' ? rowProps.onDrop : undefined}
+                >
+                  <TaskGroupCard
+                    project={group.project}
+                    tasks={group.tasks}
+                    completedTasks={group.completedTasks}
+                    onToggleToday={toggleToday}
+                    todayTaskIds={todayTaskIds}
+                    sortMode={groupedSortMode}
+                    isCollapsed={collapsedProjects.has(group.project.id)}
+                    onToggleCollapse={() => toggleProject(group.project.id)}
+                    draggableProject={groupedSortMode === 'custom'}
+                    onProjectDragStart={rowProps.onDragStart}
+                    onProjectDragOver={rowProps.onDragOver}
+                    onProjectDrop={rowProps.onDrop}
+                    isProjectDragOver={rowProps.isDragOver}
+                  />
+                </motion.div>
+              );
+            })
           )}
         </motion.div>
       )}

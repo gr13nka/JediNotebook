@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
-import { useIsAndroid } from '../../vault/platform';
+import { usePlatform } from '../../vault/platform';
 import { FolderBrowserModal } from './FolderBrowserModal';
 
 function getVaultDisplayName(path: string): string {
@@ -215,7 +215,7 @@ export function VaultSetupModal() {
   const recentVaults = useSettingsStore((s) => s.recentVaults);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isAndroid = useIsAndroid();
+  const isAndroid = usePlatform() === 'android-tauri';
 
   const openVault = async (path: string) => {
     setLoading(true);

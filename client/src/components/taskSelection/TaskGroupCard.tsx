@@ -1,7 +1,8 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SelectableTaskRow } from './SelectableTaskRow';
 import { useProjectTasks } from '../../hooks/useProjectTasks';
+import { useReorderList } from '../../hooks/useReorderList';
 import { useTranslation } from '../../i18n/useTranslation';
 import type { Project, ProjectTask } from '@shared/types';
 
@@ -47,61 +48,21 @@ export function TaskGroupCard({
 }: TaskGroupCardProps) {
   const { reorderTasks, toggleTask, deleteTask, updateTask } = useProjectTasks(project.id);
   const { t } = useTranslation();
-  const dragIdx = useRef<number | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
   const [completedCollapsed, setCompletedCollapsed] = useState(true);
 
   const sortedTasks = useMemo(() => sortTasks(tasks, sortMode), [tasks, sortMode]);
 
   const isDragEnabled = sortMode === 'custom';
 
-  const handleDragStart = (index: number) => (e: React.DragEvent) => {
-    e.stopPropagation();
-    dragIdx.current = index;
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (index: number) => (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragIdx.current === null || dragIdx.current === index) {
-      setDropTarget(null);
-      return;
-    }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const position = e.clientY < midY ? 'above' : 'below';
-    setDropTarget({ index, position });
-  };
-
-  const handleDrop = (index: number) => (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const from = dragIdx.current;
-    if (from === null || from === index) {
-      dragIdx.current = null;
-      setDropTarget(null);
-      return;
-    }
-    const ordered = sortedTasks.map((t) => t.id);
-    const [moved] = ordered.splice(from, 1);
-    const targetIdx = index;
-    const insertAt = dropTarget?.position === 'below' ? targetIdx + (from < index ? 0 : 1) : targetIdx - (from < index ? 1 : 0);
-    ordered.splice(Math.max(0, insertAt), 0, moved);
-    reorderTasks(ordered);
-    dragIdx.current = null;
-    setDropTarget(null);
-  };
-
-  const handleDragEnd = () => {
-    setDropTarget(null);
-    dragIdx.current = null;
-  };
-
-  const handleDragLeave = () => {
-    setDropTarget(null);
-  };
+  // stopPropagation: this card's task rows sit inside a project row that is
+  // itself draggable (for reordering projects) — without it, a task-row drag
+  // would also register as a project-row drag on the ancestor.
+  const reorder = useReorderList({
+    items: sortedTasks,
+    getId: (t: ProjectTask) => t.id,
+    onReorder: reorderTasks,
+    stopPropagation: true,
+  });
 
   const selectedCount = tasks.filter((t) => todayTaskIds.has(t.id)).length;
 
@@ -159,23 +120,26 @@ export function TaskGroupCard({
             transition={{ duration: 0.2, ease: 'easeInOut' }}
             style={{ overflow: 'hidden' }}
           >
-            <div className="pl-4" onDragEnd={handleDragEnd} onDragLeave={handleDragLeave}>
-              {sortedTasks.map((task, i) => (
-                <SelectableTaskRow
-                  key={task.id}
-                  task={task}
-                  onToggleToday={() => onToggleToday(task.id, project.id)}
-                  onToggleComplete={() => toggleTask(task.id)}
-                  onDelete={() => deleteTask(task.id)}
-                  onRename={(title) => updateTask(task.id, { title })}
-                  isInToday={todayTaskIds.has(task.id)}
-                  draggable={isDragEnabled}
-                  onDragStart={isDragEnabled ? handleDragStart(i) : undefined}
-                  onDragOver={isDragEnabled ? handleDragOver(i) : undefined}
-                  onDrop={isDragEnabled ? handleDrop(i) : undefined}
-                  isDragOver={dropTarget?.index === i ? dropTarget.position : null}
-                />
-              ))}
+            <div className="pl-4" onDragEnd={reorder.handleDragEnd} onDragLeave={reorder.handleDragLeave}>
+              {sortedTasks.map((task, i) => {
+                const rowProps = reorder.getRowProps(i);
+                return (
+                  <SelectableTaskRow
+                    key={task.id}
+                    task={task}
+                    onToggleToday={() => onToggleToday(task.id, project.id)}
+                    onToggleComplete={() => toggleTask(task.id)}
+                    onDelete={() => deleteTask(task.id)}
+                    onRename={(title) => updateTask(task.id, { title })}
+                    isInToday={todayTaskIds.has(task.id)}
+                    draggable={isDragEnabled}
+                    onDragStart={isDragEnabled ? rowProps.onDragStart : undefined}
+                    onDragOver={isDragEnabled ? rowProps.onDragOver : undefined}
+                    onDrop={isDragEnabled ? rowProps.onDrop : undefined}
+                    isDragOver={rowProps.isDragOver}
+                  />
+                );
+              })}
 
               {/* Completed section */}
               {completedTasks.length > 0 && (

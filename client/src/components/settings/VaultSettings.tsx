@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { Button } from '../ui/Button';
 import { exportToZip, importFromZip, importFromDirectory, importFromPath } from '../../vault/webExport';
-import { isTauri, isMobileTauri } from '../../vault/platform';
+import { getPlatform } from '../../vault/platform';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { FolderBrowserModal } from '../ui/FolderBrowserModal';
 
@@ -16,6 +16,9 @@ export function VaultSettings() {
   const vaultEnabled = useSettingsStore((s) => s.vaultEnabled);
   const vaultPath = useSettingsStore((s) => s.vaultPath);
   const [folderBrowserOpen, setFolderBrowserOpen] = useState(false);
+  const platform = getPlatform();
+  const isTauri = platform !== 'web';
+  const isMobileTauri = platform === 'android-tauri' || platform === 'ios-tauri';
 
   const handleExport = async () => {
     setBusy(true);
@@ -83,7 +86,7 @@ export function VaultSettings() {
           onChange={handleImportZip}
         />
 
-        {isTauri() ? (
+        {isTauri ? (
           <Button
             variant="secondary"
             size="sm"
@@ -128,7 +131,7 @@ export function VaultSettings() {
         }}
       />
 
-      {isTauri() && vaultEnabled && vaultPath && (
+      {isTauri && vaultEnabled && vaultPath && (
         <div className="mt-4">
           <p className="text-xs font-medium text-text-secondary mb-1">
             {t('vault.currentVault')}
@@ -137,7 +140,7 @@ export function VaultSettings() {
             {vaultPath}
           </p>
           <div className="flex flex-wrap gap-2">
-            {isMobileTauri() ? (
+            {isMobileTauri ? (
               <Button
                 variant="secondary"
                 size="sm"
@@ -181,7 +184,7 @@ export function VaultSettings() {
         </div>
       )}
 
-      {isTauri() && !vaultEnabled && (
+      {isTauri && !vaultEnabled && (
         <div className="mt-4">
           <Button
             variant="secondary"

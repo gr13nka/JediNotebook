@@ -11,9 +11,11 @@ import type { ProjectTask, RecurrenceRule } from '@shared/types';
  * project the user picks, so they can't scope a `useProjectTasks(projectId)`
  * hook (that would mean instantiating one per task in a loop).
  * `spawnNextOccurrence`: shared by the two independent places a recurring
- * task can be marked complete (see its own doc comment). `useProjectTasks`
- * calls all three, so each rule (append-sortOrder, delete-cascade, spawn
- * gating) lives in exactly one place.
+ * task can be marked complete (see its own doc comment). `toggleProjectTask`:
+ * shared by every place a task's completion is flipped outside a scoped
+ * `useProjectTasks` — same cross-project constraint as create/delete above.
+ * `useProjectTasks` calls all four, so each rule (append-sortOrder,
+ * delete-cascade, spawn gating, completion flip) lives in exactly one place.
  */
 
 /** Appends a new task to `projectId`'s active task list (sortOrder = current active count). */
@@ -106,4 +108,26 @@ export async function spawnNextOccurrence(task: ProjectTask): Promise<void> {
   }));
 
   await updateRecord(db.projectTasks, task.id, { lastRecurredDate: today });
+}
+
+/**
+ * Flips a task's completion, stamping/clearing `completedAt`, then spawns its
+ * next recurrence if completing it made one due (see `spawnNextOccurrence`).
+ * No-ops if the task doesn't exist (already deleted underneath the caller).
+ */
+export async function toggleProjectTask(taskId: string): Promise<void> {
+  const task = await db.projectTasks.get(taskId);
+  if (!task) return;
+  const now = new Date().toISOString();
+  const newCompleted = !task.isCompleted;
+  await db.projectTasks.update(taskId, {
+    isCompleted: newCompleted,
+    completedAt: newCompleted ? now : null,
+    updatedAt: now,
+  });
+  // `task` is the pre-toggle snapshot; only its recurrence-related fields are
+  // read, so it's still valid after the write above.
+  if (newCompleted && task.recurrenceRule) {
+    await spawnNextOccurrence(task);
+  }
 }

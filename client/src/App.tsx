@@ -14,7 +14,7 @@ import { useSettingsStore } from './stores/settingsStore';
 import { useRecurringTaskCheck } from './hooks/useRecurringTaskCheck';
 import { useBackspaceGuard } from './hooks/useBackspaceGuard';
 import { VaultSetupModal } from './components/ui/VaultSetupModal';
-import { isTauri, detectAndroidOnce } from './vault/platform';
+import { getPlatform, detectAndroidOnce } from './vault/platform';
 
 export default function App() {
   const loadSettings = useSettingsStore((s) => s.load);
@@ -31,8 +31,8 @@ export default function App() {
 
   useEffect(() => {
     if (loaded && vaultEnabled && vaultPath) {
-      import('./vault/platform').then(({ isTauri }) => {
-        if (isTauri()) {
+      import('./vault/platform').then(({ getPlatform }) => {
+        if (getPlatform() !== 'web') {
           import('./vault/vaultStore').then(({ useVaultStore }) => {
             if (!useVaultStore.getState().isEnabled) {
               useVaultStore.getState().enable(vaultPath);
@@ -46,7 +46,7 @@ export default function App() {
   useRecurringTaskCheck();
   useBackspaceGuard();
 
-  if (loaded && isTauri() && !vaultSetupDone) {
+  if (loaded && getPlatform() !== 'web' && !vaultSetupDone) {
     return <VaultSetupModal />;
   }
 

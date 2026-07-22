@@ -1,53 +1,69 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
-/** Returns true when running inside a Tauri desktop/mobile shell */
-export function isTauri(): boolean {
-  return '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
-}
+/**
+ * Which shell the app is running in. `'web'` is the plain browser (or any
+ * context without the Tauri bridge); the other three are always Tauri, split
+ * by device class because vault UI (file-manager access, storage
+ * permissions) differs by device even within Tauri.
+ *
+ * `getPlatform()` is a synchronous snapshot; `usePlatform()` is the same
+ * value as a reactive hook. Prefer the hook in components — see its doc
+ * comment for why the snapshot alone can be temporarily wrong on Android.
+ */
+export type Platform = 'web' | 'desktop-tauri' | 'android-tauri' | 'ios-tauri';
 
-/** Returns true when running inside Tauri on a mobile device (Android/iOS) */
-export function isMobileTauri(): boolean {
-  return isTauri() && /Android|iPhone|iPad/i.test(navigator.userAgent);
+/** `__TAURI_INTERNALS__`/`__TAURI__` are injected once at startup and never disappear, so this is safe to compute only once. */
+let inTauriShellCache: boolean | null = null;
+function inTauriShell(): boolean {
+  if (inTauriShellCache === null) {
+    inTauriShellCache = '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
+  }
+  return inTauriShellCache;
 }
 
 /**
- * Cached Android detection result.
- * `null` = not yet probed, `true`/`false` = resolved.
+ * Cached result of the Android probe in `detectAndroidOnce`. `null` = not yet
+ * resolved, `true`/`false` = resolved. Read by `getPlatform()`; `listeners`
+ * lets `usePlatform()` re-render when it resolves.
  */
 let androidCache: boolean | null = null;
+const listeners = new Set<() => void>();
 
-/** Listeners waiting for the async detection result */
-const listeners = new Set<(v: boolean) => void>();
+function resolveAndroidCache(v: boolean): boolean {
+  androidCache = v;
+  listeners.forEach((fn) => fn());
+  listeners.clear();
+  return v;
+}
 
 /**
- * Probe the Kotlin android-storage plugin as a UA fallback.
- * Call once at startup (e.g. from App.tsx) so subsequent
- * `isAndroidTauri()` calls are reliable and synchronous.
+ * Probes the Kotlin android-storage plugin as a fallback Android check. Call
+ * once at startup (App.tsx) so subsequent `getPlatform()`/`usePlatform()`
+ * calls don't rely on the UA sniff alone.
+ *
+ * Why a probe at all: some Android WebViews' user-agent string omits
+ * "Android" entirely, so `getPlatform()`'s UA fallback can't be trusted by
+ * itself. This asks the native plugin directly, which is only reachable from
+ * an actual Android host.
  */
 export async function detectAndroidOnce(): Promise<boolean> {
   if (androidCache !== null) return androidCache;
 
   // Fast path: UA already says Android
-  if (isTauri() && /Android/i.test(navigator.userAgent)) {
-    androidCache = true;
-    listeners.forEach(fn => fn(true));
-    listeners.clear();
-    return true;
+  if (inTauriShell() && /Android/i.test(navigator.userAgent)) {
+    return resolveAndroidCache(true);
   }
 
   // Fallback: probe the Kotlin android-storage plugin (WebView UA may lack "Android")
   // Try camelCase (Kotlin method name) first, then snake_case as fallback
-  if (isTauri()) {
+  if (inTauriShell()) {
     const { invoke } = await import('@tauri-apps/api/core');
     for (const cmd of ['checkStoragePermission', 'check_storage_permission']) {
       try {
         await invoke<{ granted: boolean }>(`plugin:android-storage|${cmd}`);
         // If invoke didn't throw, the plugin exists → Android
         console.log('[platform] Android detected via plugin probe:', cmd);
-        androidCache = true;
-        listeners.forEach(fn => fn(true));
-        listeners.clear();
-        return true;
+        return resolveAndroidCache(true);
       } catch (e) {
         console.warn('[platform] probe failed for', cmd, e);
       }
@@ -55,28 +71,39 @@ export async function detectAndroidOnce(): Promise<boolean> {
   }
 
   console.log('[platform] Not Android. UA:', navigator.userAgent);
-  androidCache = false;
-  listeners.forEach(fn => fn(false));
-  listeners.clear();
-  return false;
+  return resolveAndroidCache(false);
 }
 
-/** Returns true when running inside Tauri on Android */
-export function isAndroidTauri(): boolean {
-  if (androidCache !== null) return androidCache;
-  // Synchronous fallback before cache is warm
-  return isTauri() && /Android/i.test(navigator.userAgent);
+/**
+ * Synchronous platform snapshot.
+ *
+ * Android is read from `detectAndroidOnce`'s cache once it has resolved;
+ * until then (or if it's never called — e.g. outside App.tsx, such as in
+ * tests) this falls back to sniffing `navigator.userAgent` for "Android",
+ * which is the same fallback `detectAndroidOnce` exists to correct and can
+ * misclassify an Android WebView as `'desktop-tauri'`. Call `detectAndroidOnce()`
+ * at startup and use `usePlatform()` wherever the corrected answer matters
+ * for what's rendered.
+ */
+export function getPlatform(): Platform {
+  if (!inTauriShell()) return 'web';
+  const isAndroid = androidCache !== null ? androidCache : /Android/i.test(navigator.userAgent);
+  if (isAndroid) return 'android-tauri';
+  if (/iPhone|iPad/i.test(navigator.userAgent)) return 'ios-tauri';
+  return 'desktop-tauri';
 }
 
-/** Reactive hook that re-renders when async Android detection resolves */
-export function useIsAndroid(): boolean {
-  const [val, setVal] = useState(isAndroidTauri());
+/** Reactive `getPlatform()` — re-renders once `detectAndroidOnce`'s probe resolves. */
+export function usePlatform(): Platform {
+  const [platform, setPlatform] = useState(getPlatform());
   useEffect(() => {
-    // If cache is already resolved, use it immediately
-    if (androidCache !== null) { setVal(androidCache); return; }
-    // Otherwise subscribe for when it resolves
-    listeners.add(setVal);
-    return () => { listeners.delete(setVal); };
+    if (androidCache !== null) {
+      setPlatform(getPlatform());
+      return;
+    }
+    const onResolve = () => setPlatform(getPlatform());
+    listeners.add(onResolve);
+    return () => { listeners.delete(onResolve); };
   }, []);
-  return val;
+  return platform;
 }
