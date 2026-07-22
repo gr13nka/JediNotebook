@@ -20,10 +20,11 @@ import type { ProjectTask, RecurrenceRule, TimeBox } from '@shared/types';
 
 /**
  * Count of active (non-deleted) tasks currently in `timeBox`, across all
- * projects — `timeBox` isn't indexed yet (Dexie schema bump lands later), so
- * this is a full-table filter, same pattern as `seed.ts`'s `isBreak` lookup.
+ * projects. Used to append new/moved tasks to the end of a box's manual
+ * order (`timeBoxOrder`) — by `createProjectTask`/`spawnNextOccurrence`
+ * below, and by `useTaskRollover` for the box moves it applies.
  */
-async function countActiveInBox(timeBox: TimeBox): Promise<number> {
+export async function countActiveInBox(timeBox: TimeBox): Promise<number> {
   return db.projectTasks.filter((t) => !t.deletedAt && t.timeBox === timeBox).count();
 }
 

@@ -12,6 +12,7 @@ import { InboxPage } from './pages/InboxPage';
 
 import { useSettingsStore } from './stores/settingsStore';
 import { useRecurringTaskCheck } from './hooks/useRecurringTaskCheck';
+import { useTaskRollover } from './hooks/useTaskRollover';
 import { useBackspaceGuard } from './hooks/useBackspaceGuard';
 import { VaultSetupModal } from './components/ui/VaultSetupModal';
 import { getPlatform, detectAndroidOnce } from './vault/platform';
@@ -43,6 +44,7 @@ export default function App() {
     }
   }, [loaded, vaultEnabled, vaultPath]);
 
+  useTaskRollover();
   useRecurringTaskCheck();
   useBackspaceGuard();
 
