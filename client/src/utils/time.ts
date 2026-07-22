@@ -25,10 +25,9 @@ function pad(n: number): string {
   return n.toString().padStart(2, '0');
 }
 
-export function getLogicalDate(dayStartHour: number): string {
-  const now = new Date();
-  const adjusted = new Date(now);
-  if (now.getHours() < dayStartHour) {
+export function getLogicalDate(dayStartHour: number, reference: Date = new Date()): string {
+  const adjusted = new Date(reference);
+  if (reference.getHours() < dayStartHour) {
     adjusted.setDate(adjusted.getDate() - 1);
   }
   return adjusted.toISOString().split('T')[0];
