@@ -1,43 +1,21 @@
 import { useEffect } from 'react';
 import { db } from '../db';
-import { newRecord, notDeleted, updateRecord } from '../db/repository';
-import { shouldCreateRecurrence } from '../utils/recurrence';
+import { spawnNextOccurrence } from '../db/taskOps';
 
+// Background counterpart to useProjectTasks.toggleTask's interactive spawn:
+// catches recurring tasks that were completed while the app wasn't running
+// (e.g. overnight) by re-scanning all completed recurring tasks on mount
+// and whenever the tab regains visibility. Both paths share the actual
+// spawn/gating logic in db/taskOps.ts's spawnNextOccurrence.
 export function useRecurringTaskCheck() {
   useEffect(() => {
     const checkRecurring = async () => {
-      const today = new Date().toISOString().slice(0, 10);
       const tasks = await db.projectTasks
-        .filter(t => !t.deletedAt && t.isCompleted && t.recurrenceRule !== null)
+        .filter((t) => !t.deletedAt && t.isCompleted && t.recurrenceRule !== null)
         .toArray();
 
       for (const task of tasks) {
-        if (!task.recurrenceRule) continue;
-        if (!shouldCreateRecurrence(task.lastRecurredDate, task.recurrenceRule, today)) continue;
-
-        // Check if there's already a pending (incomplete) task with same title in same project
-        const existing = await db.projectTasks
-          .where('projectId').equals(task.projectId)
-          .filter(t => !t.deletedAt && !t.isCompleted && t.title === task.title)
-          .first();
-        if (existing) continue;
-
-        const all = notDeleted(
-          await db.projectTasks.where('projectId').equals(task.projectId).toArray(),
-        );
-
-        await db.projectTasks.add(newRecord({
-          projectId: task.projectId,
-          title: task.title,
-          sortOrder: all.length,
-          isCompleted: false,
-          completedAt: null,
-          recurrenceRule: task.recurrenceRule,
-          lastRecurredDate: today,
-        }));
-
-        // Update the original task's lastRecurredDate
-        await updateRecord(db.projectTasks, task.id, { lastRecurredDate: today });
+        await spawnNextOccurrence(task);
       }
     };
     checkRecurring();

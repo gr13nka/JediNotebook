@@ -1,5 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
+import { getLogicalDate } from '../utils/time';
+import { useSettingsStore } from '../stores/settingsStore';
 import type { Activity, TimeEntry } from '@shared/types';
 
 interface DailySummary {
@@ -29,6 +31,7 @@ export function useAnalytics() {
     () => db.activities.filter((a) => !a.deletedAt).toArray(),
     [],
   );
+  const dayStartHour = useSettingsStore((s) => s.dayStartHour);
 
   const getDailySummary = async (date: string): Promise<DailySummary[]> => {
     const acts = await db.activities.filter((a) => !a.deletedAt).toArray();
@@ -55,9 +58,13 @@ export function useAnalytics() {
 
     for (let i = 6; i >= 0; i--) {
       const d = new Date(end);
-      d.setDate(d.getDate() - i);
+      // UTC throughout (both the walk and the label) — `end` came from a
+      // logical-date string, i.e. UTC midnight. Reading the label via local
+      // getters while the date string is UTC-derived could show a weekday
+      // one day off from `dateStr` in negative-UTC-offset timezones.
+      d.setUTCDate(d.getUTCDate() - i);
       const dateStr = d.toISOString().split('T')[0];
-      const dayLabel = d.toLocaleDateString('en', { weekday: 'short' });
+      const dayLabel = d.toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' });
       const summary = await getDailySummary(dateStr);
       days.push({
         date: dateStr,
@@ -76,9 +83,10 @@ export function useAnalytics() {
 
     for (let i = 29; i >= 0; i--) {
       const d = new Date(end);
-      d.setDate(d.getDate() - i);
+      // See getWeeklySummary above: UTC throughout for the same reason.
+      d.setUTCDate(d.getUTCDate() - i);
       const dateStr = d.toISOString().split('T')[0];
-      const dayLabel = d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
+      const dayLabel = d.toLocaleDateString('en', { month: 'short', day: 'numeric', timeZone: 'UTC' });
       const summary = await getDailySummary(dateStr);
       days.push({
         date: dateStr,
@@ -103,20 +111,26 @@ export function useAnalytics() {
       entriesByDate.set(e.date, existing);
     });
 
-    // Get sorted unique dates
-    const dates = Array.from(entriesByDate.keys()).sort();
-
     return acts.map((a) => {
       let currentStreak = 0;
       let longestStreak = 0;
       let tempStreak = 0;
 
-      // Check from most recent date backwards
-      const today = new Date().toISOString().split('T')[0];
+      // Check from most recent date backwards. `today` must be the LOGICAL
+      // date (respecting dayStartHour), not the plain calendar date — it's
+      // compared against entriesByDate keys, which come from
+      // TimeEntry.date (always a logical date). Using calendar-today here
+      // used to make streaks read as broken near the day boundary (e.g. a
+      // 1am entry still counts toward "yesterday" logically, but a plain
+      // calendar `today` would look for it under today's date and miss it).
+      const today = getLogicalDate(dayStartHour);
       const d = new Date(today);
       let checking = true;
 
       for (let i = 0; i < 365 && checking; i++) {
+        // UTC walk — `d` is anchored on `today`, a UTC-midnight-parsed
+        // logical-date string; local getDate/setDate would read/write the
+        // wrong calendar day for it outside UTC-ish timezones.
         const dateStr = d.toISOString().split('T')[0];
         const dayEntries = entriesByDate.get(dateStr) ?? [];
         const hasActivity = dayEntries.some(
@@ -132,7 +146,7 @@ export function useAnalytics() {
           if (i > 0) checking = false;
         }
 
-        d.setDate(d.getDate() - 1);
+        d.setUTCDate(d.getUTCDate() - 1);
       }
 
       longestStreak = Math.max(longestStreak, tempStreak);
@@ -150,12 +164,14 @@ export function useAnalytics() {
     days: number = 7,
   ): Promise<{ activityId: string; activityName: string; avgSeconds: number }[]> => {
     const acts = await db.activities.filter((a) => !a.deletedAt).toArray();
-    const end = new Date();
+    // Same logical-vs-calendar concern as getStreaks: anchor on the logical
+    // "today" so the window lines up with TimeEntry.date near the boundary.
+    const end = new Date(getLogicalDate(dayStartHour));
     const dateStrings: string[] = [];
 
     for (let i = 0; i < days; i++) {
       const d = new Date(end);
-      d.setDate(d.getDate() - i);
+      d.setUTCDate(d.getUTCDate() - i); // UTC — see getStreaks above
       dateStrings.push(d.toISOString().split('T')[0]);
     }
 

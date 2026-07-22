@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import { newRecord, notDeleted, updateRecord } from '../db/repository';
-import { createProjectTask, deleteProjectTaskCascade } from '../db/taskOps';
+import { notDeleted, updateRecord } from '../db/repository';
+import { createProjectTask, deleteProjectTaskCascade, spawnNextOccurrence } from '../db/taskOps';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 // Per-project query with recurrence-spawn logic on completion — doesn't fit
@@ -38,29 +38,12 @@ export function useProjectTasks(projectId: string | null) {
       completedAt: newCompleted ? now : null,
       updatedAt: now,
     });
-    // If completing a recurring task, auto-create next occurrence
+    // Completing a recurring task may spawn its next occurrence — gated by
+    // due-date + title-dedup inside spawnNextOccurrence (shared with the
+    // useRecurringTaskCheck background scan). `task` is the pre-toggle
+    // snapshot; only its recurrence-related fields are read.
     if (newCompleted && task.recurrenceRule) {
-      // Dedup guard: don't create if an incomplete task with same title already exists
-      const existingIncomplete = await db.projectTasks
-        .where('projectId')
-        .equals(task.projectId)
-        .filter((t) => !t.deletedAt && !t.isCompleted && t.title === task.title)
-        .first();
-      if (existingIncomplete) return;
-
-      const today = now.slice(0, 10);
-      const all = notDeleted(
-        await db.projectTasks.where('projectId').equals(task.projectId).toArray(),
-      );
-      await db.projectTasks.add(newRecord({
-        projectId: task.projectId,
-        title: task.title,
-        sortOrder: all.length,
-        isCompleted: false,
-        completedAt: null,
-        recurrenceRule: task.recurrenceRule,
-        lastRecurredDate: today,
-      }));
+      await spawnNextOccurrence(task);
     }
   };
 

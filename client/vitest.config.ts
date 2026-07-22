@@ -15,12 +15,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
-    // Pinned so date-boundary tests (getLogicalDate, recurrence) are
-    // reproducible regardless of the host machine's timezone. See the
-    // getLogicalDate tests for why this matters — the function itself is
-    // NOT timezone-safe (mixes local-hour comparison with UTC
-    // serialization), so results legitimately differ by host timezone
-    // outside of tests too.
-    env: { TZ: 'UTC' },
+    // No TZ pin: getLogicalDate (client/src/utils/time.ts) works entirely
+    // in local date components and recurrence (client/src/utils/recurrence.ts)
+    // works entirely in UTC — neither mixes the two anymore, so both are
+    // deterministic regardless of the host machine's timezone. If a future
+    // date-boundary test genuinely needs a specific timezone, simulate it
+    // per-test with `vi.stubEnv('TZ', ...)` rather than re-pinning globally.
   },
 });

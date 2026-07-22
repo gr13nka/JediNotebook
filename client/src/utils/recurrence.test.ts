@@ -23,20 +23,41 @@ describe('getNextOccurrenceDate', () => {
     expect(getNextOccurrenceDate(rule, '2026-07-21')).toBe('2026-08-04');
   });
 
-  it(
-    'BUG (pinned, not fixed): weekly `daysOfWeek` is stored on the rule but ' +
-      'never consulted — the next date is always fromDate + interval*7 days, ' +
-      'landing on the same weekday as fromDate regardless of which days were ' +
-      'selected. RecurrenceEditor.tsx lets a user pick e.g. Mon/Wed/Fri, but ' +
-      'this function cannot produce those dates.',
-    () => {
-      const rule: RecurrenceRule = { frequency: 'weekly', interval: 1, daysOfWeek: [1, 3, 5] };
-      // 2026-07-21 is a Tuesday; a Mon/Wed/Fri schedule should plausibly
-      // produce Wednesday (2026-07-22) as the next occurrence. Instead it
-      // ignores daysOfWeek entirely and just adds 7 days.
-      expect(getNextOccurrenceDate(rule, '2026-07-21')).toBe('2026-07-28');
-    },
-  );
+  describe('weekly with daysOfWeek', () => {
+    // 2026-07-21 is a Tuesday. Mon/Wed/Fri = [1, 3, 5].
+    const monWedFri: RecurrenceRule = { frequency: 'weekly', interval: 1, daysOfWeek: [1, 3, 5] };
+
+    it('advances to the next selected weekday within the same week', () => {
+      expect(getNextOccurrenceDate(monWedFri, '2026-07-21')).toBe('2026-07-22'); // Tue -> Wed
+    });
+
+    it('chains through multiple selected days within the same week', () => {
+      expect(getNextOccurrenceDate(monWedFri, '2026-07-22')).toBe('2026-07-24'); // Wed -> Fri
+    });
+
+    it('wraps to next week\'s first selected day once past the last selected day (interval 1)', () => {
+      // Fri (the last selected day) -> Monday, still the following week, no gap.
+      expect(getNextOccurrenceDate(monWedFri, '2026-07-24')).toBe('2026-07-27');
+    });
+
+    it('skips a full week before resuming when interval is 2', () => {
+      const rule: RecurrenceRule = { ...monWedFri, interval: 2 };
+      // Fri 07-24 wraps: interval 1 would resume Mon 07-27, but interval 2
+      // skips that whole Mon/Wed/Fri week and resumes Mon 08-03.
+      expect(getNextOccurrenceDate(rule, '2026-07-24')).toBe('2026-08-03');
+    });
+
+    it('treats Sunday (0) as a valid selected day when wrapping', () => {
+      const rule: RecurrenceRule = { frequency: 'weekly', interval: 1, daysOfWeek: [0, 3] }; // Sun/Wed
+      // Thu (past both selected days that week) wraps to Sunday.
+      expect(getNextOccurrenceDate(rule, '2026-07-23')).toBe('2026-07-26');
+    });
+
+    it('is independent of the stored order of daysOfWeek', () => {
+      const rule: RecurrenceRule = { frequency: 'weekly', interval: 1, daysOfWeek: [5, 1, 3] };
+      expect(getNextOccurrenceDate(rule, '2026-07-21')).toBe('2026-07-22');
+    });
+  });
 
   it('advances monthly by the interval, keeping the day of month when it fits', () => {
     const rule: RecurrenceRule = { frequency: 'monthly', interval: 1 };
@@ -64,29 +85,32 @@ describe('getNextOccurrenceDate', () => {
   });
 
   it(
-    'BUG (pinned, not fixed): monthly recurrence skips a month when ' +
-      'fromDate falls on a day that overflows the immediately-following ' +
-      'month. `date.setMonth(m+1)` on Jan 31 rolls over Feb entirely ' +
-      '(Feb has 28/29 days) landing in March, *before* any dayOfMonth ' +
-      'clamp runs. No dayOfMonth set: next date should conceptually be ' +
-      'end-of-February but is March 3.',
+    'does not skip a month when fromDate falls on a day that overflows ' +
+      'the immediately-following month (no dayOfMonth set: falls back to ' +
+      'fromDate\'s own day-of-month, clamped)',
     () => {
+      // Jan 31 + 1 month: February doesn't have a 31st, so the day clamps
+      // to Feb's actual length (28, 2026 isn't a leap year) instead of
+      // overflowing into March.
       const rule: RecurrenceRule = { frequency: 'monthly', interval: 1 };
-      expect(getNextOccurrenceDate(rule, '2026-01-31')).toBe('2026-03-03');
+      expect(getNextOccurrenceDate(rule, '2026-01-31')).toBe('2026-02-28');
     },
   );
 
   it(
-    'BUG (pinned, not fixed): the same overflow corrupts the dayOfMonth ' +
-      'clamp too — clamping is computed against the *already-overflowed* ' +
-      'month (March), so "31st of next month" from Jan 31 resolves to ' +
-      'March 31 instead of the intended Feb 28, silently skipping ' +
-      'February\'s occurrence altogether.',
+    'clamps an explicit dayOfMonth against the correct target month, not ' +
+      'an already-overflowed one',
     () => {
       const rule: RecurrenceRule = { frequency: 'monthly', interval: 1, dayOfMonth: 31 };
-      expect(getNextOccurrenceDate(rule, '2026-01-31')).toBe('2026-03-31');
+      expect(getNextOccurrenceDate(rule, '2026-01-31')).toBe('2026-02-28');
     },
   );
+
+  it('does not clamp when the interval skips past the short month entirely', () => {
+    // Jan 31 + 2 months = March, which does have a 31st — no clamping needed.
+    const rule: RecurrenceRule = { frequency: 'monthly', interval: 2, dayOfMonth: 31 };
+    expect(getNextOccurrenceDate(rule, '2026-01-31')).toBe('2026-03-31');
+  });
 });
 
 describe('shouldCreateRecurrence', () => {

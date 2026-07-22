@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { formatDuration, getLogicalDate } from './time';
 
-// vitest.config.ts pins TZ=UTC for this whole test run. getLogicalDate
-// compares `reference.getHours()` (local) but serializes the result via
-// `.toISOString()` (UTC) — those only agree when local time IS UTC. Running
-// under any other host timezone can shift the returned date by an extra day
-// for early-morning reference times (see the getLogicalDate describe block
-// below and the test-run report for a concrete reproduction). Pinning TZ
-// here keeps these tests deterministic and matches the boundary values
-// documented in the refactor plan.
+// getLogicalDate builds its result from LOCAL date components throughout
+// (both the dayStartHour comparison and the output string), so every case
+// below is timezone-independent — no TZ pin needed in vitest.config.ts.
+// The 'is timezone-independent' case near the end of the getLogicalDate
+// block reproduces the bug this used to have (mixing a local-hour
+// comparison with UTC serialization) to guard against regressing it.
 
 describe('formatDuration', () => {
   it('clamps negative durations to zero', () => {
@@ -92,5 +90,22 @@ describe('getLogicalDate', () => {
     vi.setSystemTime(frozen);
     expect(getLogicalDate(6)).toBe(getLogicalDate(6, frozen));
     expect(getLogicalDate(6)).toBe('2026-07-21');
+  });
+
+  it('is timezone-independent: local hour comparison and output stay consistent east of UTC', () => {
+    // Regression guard for the original bug: it compared local
+    // `reference.getHours()` but serialized via `.toISOString()` (UTC).
+    // Under UTC+3, 2026-01-01 01:00 local is still 2025-12-31 22:00 UTC —
+    // the old implementation decremented the date correctly (01:00 < 6) but
+    // then serialized the UTC instant, landing on 2025-12-30 instead of the
+    // correct 2025-12-31.
+    vi.stubEnv('TZ', 'Etc/GMT-3'); // POSIX sign is inverted: this IS UTC+3
+    try {
+      const reference = new Date(2026, 0, 1, 1, 0); // Jan 1, 01:00 local
+      expect(reference.getTimezoneOffset()).toBe(-180); // sanity: UTC+3
+      expect(getLogicalDate(6, reference)).toBe('2025-12-31');
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

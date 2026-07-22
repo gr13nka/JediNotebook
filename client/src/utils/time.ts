@@ -30,7 +30,11 @@ export function getLogicalDate(dayStartHour: number, reference: Date = new Date(
   if (reference.getHours() < dayStartHour) {
     adjusted.setDate(adjusted.getDate() - 1);
   }
-  return adjusted.toISOString().split('T')[0];
+  // Built from LOCAL date components (not toISOString(), which serializes in
+  // UTC) — the hour comparison above is local, so the output must be too.
+  // Mixing the two made the logical date jump an extra day east of UTC
+  // (local hour already past dayStartHour, but UTC date still one behind).
+  return `${adjusted.getFullYear()}-${pad(adjusted.getMonth() + 1)}-${pad(adjusted.getDate())}`;
 }
 
 export function getTodayRange(dayStartHour: number): { start: Date; end: Date } {
