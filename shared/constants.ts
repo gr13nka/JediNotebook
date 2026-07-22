@@ -63,13 +63,6 @@ export const DEFAULT_SETTINGS = {
   vaultPath: '',
   vaultSetupDone: false,
   recentVaults: [] as Array<{ path: string; name: string; lastOpened: string }>,
-  currentStreak: 0,
-  longestStreak: 0,
-  lastActiveDate: '',
-  totalXP: 0,
-  todayXP: 0,
-  todayXPDate: '',
-  gamificationEnabled: true,
   bottomNavTabs: ['/inbox', '/projects', '/tasks', '/today', '/settings'] as string[],
   bottomNavScrollable: false,
   bottomNavPages: [

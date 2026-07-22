@@ -2,7 +2,6 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { generateId, getDeviceId } from '../utils/uuid';
 import type { Project } from '@shared/types';
-import { awardXP, XP_VALUES } from '../utils/streak';
 
 export function useProjects() {
   const projects = useLiveQuery(
@@ -33,7 +32,6 @@ export function useProjects() {
       deviceId: getDeviceId(),
     };
     await db.projects.add(project);
-    awardXP(XP_VALUES.createProject);
     return project;
   };
 

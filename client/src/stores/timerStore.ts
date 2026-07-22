@@ -3,7 +3,6 @@ import type { TimerState } from '@shared/types';
 import { db } from '../db';
 import { generateId, getDeviceId } from '../utils/uuid';
 import { getLogicalDate } from '../utils/time';
-import { awardXP, XP_VALUES } from '../utils/streak';
 
 interface TimerStore extends TimerState {
   start: (activityId: string, dayStartHour: number) => Promise<void>;
@@ -68,8 +67,6 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       durationSeconds,
       updatedAt: now.toISOString(),
     });
-
-    if (durationSeconds >= 60) awardXP(XP_VALUES.stopTimer);
 
     set({
       activeEntryId: null,

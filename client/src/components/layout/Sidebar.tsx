@@ -6,7 +6,6 @@ import { create } from 'zustand';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { ContextMenu } from '../ui/ContextMenu';
-import { SidebarStreakIndicator } from '../gamification/SidebarStreakIndicator';
 
 // Shared sidebar state so AppShell can react to it
 export const useSidebarStore = create<{
@@ -337,7 +336,6 @@ export function Sidebar() {
       )}
 
       <div className="mt-auto pt-4 px-4 flex flex-col gap-2">
-        <SidebarStreakIndicator collapsed={collapsed} />
         {!collapsed && <span className="text-xs text-text-muted/50">v1.0</span>}
       </div>
 

@@ -12,7 +12,6 @@ import { AccentColorPicker } from '../components/settings/AccentColorPicker';
 import { ZoomSettings } from '../components/settings/ZoomSettings';
 import { VaultSettings } from '../components/settings/VaultSettings';
 import { MobileProjectSettings } from '../components/settings/MobileProjectSettings';
-import { GamificationSettings } from '../components/settings/GamificationSettings';
 import { Card } from '../components/ui/Card';
 import { NEU } from '../utils/shadows';
 import { useTranslation } from '../i18n/useTranslation';
@@ -75,7 +74,6 @@ const sectionComponents = [
   { key: 'settings.navPosition', component: NavigationSection },
   { key: 'settings.time', component: TimeSection },
   { key: 'settings.tasks', component: TaskSettings },
-  { key: 'settings.gamification', component: GamificationSettings },
   { key: 'settings.vault', component: VaultSettings },
 ] as const;
 

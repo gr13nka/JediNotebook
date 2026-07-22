@@ -4,7 +4,6 @@ import { generateId, getDeviceId } from '../utils/uuid';
 import { getLogicalDate } from '../utils/time';
 import { useSettingsStore } from '../stores/settingsStore';
 import type { TodayTask } from '@shared/types';
-import { awardXP, XP_VALUES } from '../utils/streak';
 
 export interface EnrichedTodayTask extends TodayTask {
   taskTitle: string;
@@ -100,7 +99,6 @@ export function useTodayTasks() {
         updatedAt: now,
       });
     });
-    if (newCompleted) awardXP(XP_VALUES.completeTask);
   };
 
   const toggleToday = async (projectTaskId: string, projectId: string) => {

@@ -94,13 +94,6 @@ interface SettingsState {
   vaultPath: string;
   vaultSetupDone: boolean;
   recentVaults: Array<{ path: string; name: string; lastOpened: string }>;
-  currentStreak: number;
-  longestStreak: number;
-  lastActiveDate: string;
-  totalXP: number;
-  todayXP: number;
-  todayXPDate: string;
-  gamificationEnabled: boolean;
   bottomNavTabs: string[];
   bottomNavScrollable: boolean;
   bottomNavPages: string[][];
@@ -152,13 +145,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         vaultPath: raw.vaultPath ?? DEFAULT_SETTINGS.vaultPath,
         vaultSetupDone: raw.vaultSetupDone ?? DEFAULT_SETTINGS.vaultSetupDone,
         recentVaults: raw.recentVaults ?? DEFAULT_SETTINGS.recentVaults,
-        currentStreak: raw.currentStreak ?? DEFAULT_SETTINGS.currentStreak,
-        longestStreak: raw.longestStreak ?? DEFAULT_SETTINGS.longestStreak,
-        lastActiveDate: raw.lastActiveDate ?? DEFAULT_SETTINGS.lastActiveDate,
-        totalXP: raw.totalXP ?? DEFAULT_SETTINGS.totalXP,
-        todayXP: raw.todayXP ?? DEFAULT_SETTINGS.todayXP,
-        todayXPDate: raw.todayXPDate ?? DEFAULT_SETTINGS.todayXPDate,
-        gamificationEnabled: raw.gamificationEnabled ?? DEFAULT_SETTINGS.gamificationEnabled,
         bottomNavTabs: raw.bottomNavTabs ?? DEFAULT_SETTINGS.bottomNavTabs,
         bottomNavScrollable: raw.bottomNavScrollable ?? DEFAULT_SETTINGS.bottomNavScrollable,
         bottomNavPages: raw.bottomNavPages ?? DEFAULT_SETTINGS.bottomNavPages,
