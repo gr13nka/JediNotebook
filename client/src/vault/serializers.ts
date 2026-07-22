@@ -4,7 +4,9 @@ import type {
   ProjectFolder, InboxItem,
 } from '@shared/types';
 import { parseFrontmatter, stringifyFrontmatter } from './frontmatter';
-import { entityFilename } from './sanitize';
+import {
+  ACTIVITIES, PROJECTS, PROJECT_TASKS, TIME_LOG, TODAY, INBOX, SETTINGS, FOLDERS,
+} from './vaultLayout';
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -33,7 +35,7 @@ export function serializeActivity(a: Activity): { path: string; content: string 
   const meta = pickMeta(omitDeleted(a) as any, ACTIVITY_META_KEYS);
   const body = `# ${a.name}\n`;
   return {
-    path: `activities/${entityFilename(a.name, a.id)}.md`,
+    path: ACTIVITIES.buildPath(a.name, a.id),
     content: stringifyFrontmatter(meta, body),
   };
 }
@@ -71,13 +73,12 @@ export function serializeProject(
   tasks: ProjectTask[],
 ): Map<string, string> {
   const files = new Map<string, string>();
-  const dirName = entityFilename(p.name, p.id);
 
   // project.md
   const projectMeta = pickMeta(omitDeleted(p) as any, PROJECT_META_KEYS);
   const projectBody = p.description || '';
   files.set(
-    `projects/${dirName}/project.md`,
+    PROJECTS.buildPath(p.name, p.id),
     stringifyFrontmatter(projectMeta, projectBody),
   );
 
@@ -109,7 +110,7 @@ export function serializeProject(
     .join('\n');
 
   files.set(
-    `projects/${dirName}/tasks.md`,
+    PROJECT_TASKS.buildPath(p.name, p.id),
     stringifyFrontmatter(tasksMeta, checklist ? `## Tasks\n\n${checklist}\n` : ''),
   );
 
@@ -202,7 +203,7 @@ export function serializeTimeLog(
   }
 
   return {
-    path: `time-log/${date}.md`,
+    path: TIME_LOG.buildPath(date),
     content: stringifyFrontmatter(meta, body),
   };
 }
@@ -266,7 +267,7 @@ export function serializeTodayTasks(
     .join('\n');
 
   return {
-    path: `today/${date}.md`,
+    path: TODAY.buildPath(date),
     content: stringifyFrontmatter(meta, checklist ? `## Today — ${date}\n\n${checklist}\n` : ''),
   };
 }
@@ -318,7 +319,7 @@ export function serializeInbox(items: InboxItem[]): { path: string; content: str
     : '';
 
   return {
-    path: 'inbox.md',
+    path: INBOX.path,
     content: stringifyFrontmatter(meta, body),
   };
 }
@@ -340,7 +341,7 @@ export function deserializeInbox(content: string): Omit<InboxItem, 'deletedAt'>[
 export function serializeSettings(s: UserSettings): { path: string; content: string } {
   const { id: _, deletedAt: _d, ...rest } = s as any;
   return {
-    path: 'settings.json',
+    path: SETTINGS.path,
     content: JSON.stringify(rest, null, 2) + '\n',
   };
 }
@@ -356,7 +357,7 @@ export function serializeFolders(
 ): { path: string; content: string } {
   const active = folders.filter(f => !f.deletedAt);
   return {
-    path: 'folders.json',
+    path: FOLDERS.path,
     content: JSON.stringify(active, null, 2) + '\n',
   };
 }

@@ -1,18 +1,7 @@
 import type Dexie from 'dexie';
 import { writeQueue } from './writeQueue';
 import { writeGuard } from './writeGuard';
-
-/** Table name → vault entity type mapping */
-const TABLE_TO_TYPE: Record<string, string> = {
-  activities: 'activities',
-  timeEntries: 'timeEntries',
-  settings: 'settings',
-  projects: 'projects',
-  projectTasks: 'projectTasks',
-  todayTasks: 'todayTasks',
-  projectFolders: 'projectFolders',
-  inboxItems: 'inboxItems',
-};
+import { TABLE_TO_TYPE } from './vaultLayout';
 
 /**
  * Register Dexie hooks on all tables to intercept creates/updates/deletes

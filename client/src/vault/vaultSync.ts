@@ -11,6 +11,10 @@ import {
   serializeFolders, deserializeFolders,
 } from './serializers';
 import { extractShortIdFromFilename, uuidMatchesShortId } from './sanitize';
+import {
+  ACTIVITIES, PROJECTS, PROJECT_TASKS, TIME_LOG, TODAY, INBOX, SETTINGS, FOLDERS,
+  vaultDirs, tableFromPath,
+} from './vaultLayout';
 
 const VAULT_VERSION = 1;
 
@@ -26,7 +30,7 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
   }, null, 2) + '\n');
 
   // Ensure directories exist
-  for (const dir of ['activities', 'projects', 'time-log', 'today']) {
+  for (const dir of vaultDirs()) {
     await backend.mkdir(dir);
   }
 
@@ -129,8 +133,8 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
 
   // Settings
   try {
-    if (await safeExists('settings.json')) {
-      const content = await backend.readFile('settings.json');
+    if (await safeExists(SETTINGS.path)) {
+      const content = await backend.readFile(SETTINGS.path);
       const imported = deserializeSettings(content);
       const existing = await db.settings.get('default');
       if (!existing || (imported.updatedAt && imported.updatedAt > (existing.updatedAt || ''))) {
@@ -142,8 +146,8 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
 
   // Folders
   try {
-    if (await safeExists('folders.json')) {
-      const content = await backend.readFile('folders.json');
+    if (await safeExists(FOLDERS.path)) {
+      const content = await backend.readFile(FOLDERS.path);
       const folders = deserializeFolders(content);
       for (const f of folders) {
         await mergeEntity(db.projectFolders, f);
@@ -153,7 +157,7 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
 
   // Activities
   try {
-    const activityFiles = await backend.listFiles('activities', '.md');
+    const activityFiles = await backend.listFiles(ACTIVITIES.dir, ACTIVITIES.fileExtension);
     for (const filePath of activityFiles) {
       const content = await backend.readFile(filePath);
       const activity = deserializeActivity(content);
@@ -166,9 +170,9 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
   // Projects + Tasks
   try {
     let projectCount = 0;
-    const projectDirs = await backend.listDirs('projects');
+    const projectDirs = await backend.listDirs(PROJECTS.dir);
     for (const dirPath of projectDirs) {
-      const projectPath = dirPath + '/project.md';
+      const projectPath = `${dirPath}/${PROJECTS.fileName}`;
       if (!(await safeExists(projectPath))) continue;
 
       const projectContent = await backend.readFile(projectPath);
@@ -184,7 +188,7 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
       projectCount++;
 
       // Tasks
-      const tasksPath = dirPath + '/tasks.md';
+      const tasksPath = `${dirPath}/${PROJECT_TASKS.fileName}`;
       if (await safeExists(tasksPath)) {
         const tasksContent = await backend.readFile(tasksPath);
         const tasks = deserializeTasks(tasksContent);
@@ -198,8 +202,8 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
 
   // Inbox
   try {
-    if (await safeExists('inbox.md')) {
-      const content = await backend.readFile('inbox.md');
+    if (await safeExists(INBOX.path)) {
+      const content = await backend.readFile(INBOX.path);
       const items = deserializeInbox(content);
       for (const item of items) {
         await mergeEntity(db.inboxItems, item);
@@ -209,8 +213,8 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
 
   // Time logs
   try {
-    if (await safeExists('time-log')) {
-      const timeLogFiles = await backend.listFiles('time-log', '.md');
+    if (await safeExists(TIME_LOG.dir)) {
+      const timeLogFiles = await backend.listFiles(TIME_LOG.dir, TIME_LOG.fileExtension);
       for (const filePath of timeLogFiles) {
         const content = await backend.readFile(filePath);
         const { entries } = deserializeTimeLog(content);
@@ -223,8 +227,8 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
 
   // Today tasks
   try {
-    if (await safeExists('today')) {
-      const todayFiles = await backend.listFiles('today', '.md');
+    if (await safeExists(TODAY.dir)) {
+      const todayFiles = await backend.listFiles(TODAY.dir, TODAY.fileExtension);
       for (const filePath of todayFiles) {
         const content = await backend.readFile(filePath);
         const { tasks } = deserializeTodayTasks(content);
@@ -317,7 +321,7 @@ export async function writeEntityToDisk(
       // Re-serialize the parent project's tasks.md
       const task = await db.projectTasks.get(entityId);
       if (task) {
-        await writeEntityToDisk(backend, 'projects', task.projectId);
+        await writeEntityToDisk(backend, PROJECTS.table, task.projectId);
       }
       break;
     }
@@ -348,7 +352,7 @@ export async function writeEntityToDisk(
       const allItems = await db.inboxItems.toArray();
       const activeItems = allItems.filter(i => !i.deletedAt);
       if (activeItems.length === 0) {
-        if (await backend.exists('inbox.md')) await backend.deleteFile('inbox.md');
+        if (await backend.exists(INBOX.path)) await backend.deleteFile(INBOX.path);
       } else {
         const { path, content } = serializeInbox(activeItems);
         await backend.writeFile(path, content);
@@ -376,8 +380,9 @@ async function deleteEntityFile(backend: VaultBackend, entityId: string): Promis
   const path = fileIndex.getPath(entityId);
   if (path) {
     // If it's a project.md, delete the whole project directory
-    if (path.endsWith('/project.md')) {
-      const dir = path.replace('/project.md', '');
+    const projectFileSuffix = `/${PROJECTS.fileName}`;
+    if (path.endsWith(projectFileSuffix)) {
+      const dir = path.slice(0, -projectFileSuffix.length);
       const files = await backend.listFiles(dir);
       for (const f of files) await backend.deleteFile(f);
     } else {
@@ -413,43 +418,34 @@ export async function handleExternalChange(
   // create or modify — re-read and merge
   const content = await backend.readFile(filePath);
 
-  if (filePath === 'settings.json') {
+  if (filePath === SETTINGS.path) {
     const imported = deserializeSettings(content);
     await db.settings.put({ id: 'default', ...imported } as any);
-  } else if (filePath === 'folders.json') {
+  } else if (filePath === FOLDERS.path) {
     const folders = deserializeFolders(content);
     for (const f of folders) await mergeEntity(db.projectFolders, f);
-  } else if (filePath === 'inbox.md') {
+  } else if (filePath === INBOX.path) {
     const items = deserializeInbox(content);
     for (const item of items) await mergeEntity(db.inboxItems, item);
-  } else if (filePath.startsWith('activities/')) {
+  } else if (ACTIVITIES.matchesPath(filePath)) {
     const activity = deserializeActivity(content);
     await mergeEntity(db.activities, activity);
     fileIndex.set(activity.id, filePath);
-  } else if (filePath.startsWith('time-log/')) {
+  } else if (TIME_LOG.matchesPath(filePath)) {
     const { entries } = deserializeTimeLog(content);
     for (const e of entries) await mergeEntity(db.timeEntries, e);
-  } else if (filePath.startsWith('today/')) {
+  } else if (TODAY.matchesPath(filePath)) {
     const { tasks } = deserializeTodayTasks(content);
     for (const t of tasks) await mergeEntity(db.todayTasks, t);
-  } else if (filePath.match(/^projects\/[^/]+\/project\.md$/)) {
+  } else if (PROJECTS.matchesPath(filePath)) {
     const project = deserializeProject(content);
     const dirName = filePath.split('/')[1] || '';
     const nameMatch = dirName.match(/^(.+)\s+\([a-f0-9]{6}\)$/);
     project.name = nameMatch ? nameMatch[1] : dirName;
     await mergeEntity(db.projects, project);
     fileIndex.set(project.id, filePath);
-  } else if (filePath.match(/^projects\/[^/]+\/tasks\.md$/)) {
+  } else if (PROJECT_TASKS.matchesPath(filePath)) {
     const tasks = deserializeTasks(content);
     for (const t of tasks) await mergeEntity(db.projectTasks, t);
   }
-}
-
-function tableFromPath(filePath: string): string | null {
-  if (filePath.startsWith('activities/')) return 'activities';
-  if (filePath.startsWith('time-log/')) return 'timeEntries';
-  if (filePath.startsWith('today/')) return 'todayTasks';
-  if (filePath.match(/^projects\/[^/]+\/project\.md$/)) return 'projects';
-  if (filePath.match(/^projects\/[^/]+\/tasks\.md$/)) return 'projectTasks';
-  return null;
 }
