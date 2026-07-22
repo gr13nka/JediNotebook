@@ -48,8 +48,7 @@ function clearCustomTheme() {
 
 function applyTheme(theme: ThemeMode, customColors?: CustomThemeColors) {
   const cl = document.documentElement.classList;
-  cl.remove('dark', 'notion', 'neu-light', 'neu-dark',
-    'dracula', 'gruvbox', 'nord', 'solarized', 'catppuccin', 'tokyonight', 'custom');
+  cl.remove('dark', 'notion', 'custom');
   clearCustomTheme();
 
   if (theme === 'custom' && customColors) {
@@ -119,6 +118,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       let theme: ThemeMode = raw.theme ?? (darkMode ? 'dark' : 'light');
       // Migrate legacy 'notion' theme
       if ((theme as string) === 'notion') theme = 'dark';
+      // Migrate removed prebuilt palettes (theme set trimmed to light/dark/custom)
+      if (theme !== 'light' && theme !== 'dark' && theme !== 'custom') {
+        theme = (theme as string) === 'neu-light' ? 'light' : 'dark';
+      }
 
       const language = raw.language ?? detectBrowserLanguage();
       const customThemeColors = raw.customThemeColors ?? DEFAULT_SETTINGS.customThemeColors;
@@ -128,7 +131,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         dayEndHour: settings.dayEndHour,
         timezone: settings.timezone,
         barStyle: settings.barStyle,
-        darkMode: theme !== 'light' && theme !== 'neu-light',
+        darkMode: theme !== 'light',
         theme,
         language,
         maxTasksPerProject,
@@ -163,7 +166,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   update: async (patch) => {
     // If theme is being set, keep darkMode in sync
     if ('theme' in patch && patch.theme) {
-      patch.darkMode = patch.theme !== 'light' && patch.theme !== 'neu-light';
+      patch.darkMode = patch.theme !== 'light';
     }
     // If darkMode is toggled directly (legacy), map to theme
     if ('darkMode' in patch && !('theme' in patch)) {

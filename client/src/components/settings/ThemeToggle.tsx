@@ -14,16 +14,8 @@ interface ThemeSwatch {
 }
 
 const THEMES: ThemeSwatch[] = [
-  { id: 'light',      labelKey: 'settings.themeLight',      bg: '#F0F1F4', card: '#FAFBFC', accent: '#1F2937' },
-  { id: 'dark',       labelKey: 'settings.themeDark',       bg: '#1e1e1e', card: '#262626', accent: '#7f6df2' },
-  { id: 'neu-light',  labelKey: 'settings.theme3dLight',    bg: '#E0E5EC', card: '#E0E5EC', accent: '#2D3748' },
-  { id: 'neu-dark',   labelKey: 'settings.theme3dDark',     bg: '#2D2D32', card: '#2D2D32', accent: '#E0E0E0' },
-  { id: 'dracula',    labelKey: 'settings.themeDracula',    bg: '#282a36', card: '#2e303e', accent: '#bd93f9' },
-  { id: 'gruvbox',    labelKey: 'settings.themeGruvbox',    bg: '#1d2021', card: '#282828', accent: '#fe8019' },
-  { id: 'nord',       labelKey: 'settings.themeNord',       bg: '#2e3440', card: '#3b4252', accent: '#88c0d0' },
-  { id: 'solarized',  labelKey: 'settings.themeSolarized',  bg: '#002b36', card: '#073642', accent: '#2aa198' },
-  { id: 'catppuccin', labelKey: 'settings.themeCatppuccin', bg: '#1e1e2e', card: '#24243a', accent: '#cba6f7' },
-  { id: 'tokyonight', labelKey: 'settings.themeTokyoNight', bg: '#1a1b26', card: '#1f2032', accent: '#7aa2f7' },
+  { id: 'light', labelKey: 'settings.themeLight', bg: '#F0F1F4', card: '#FAFBFC', accent: '#1F2937' },
+  { id: 'dark',  labelKey: 'settings.themeDark',  bg: '#1e1e1e', card: '#262626', accent: '#7f6df2' },
 ];
 
 export function ThemeToggle() {

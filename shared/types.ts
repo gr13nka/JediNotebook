@@ -48,10 +48,7 @@ export interface UserSettings {
 
 export type BarStyle = 'thick-linear' | 'segmented' | 'circular';
 
-export type ThemeMode =
-  | 'light' | 'dark' | 'neu-light' | 'neu-dark'
-  | 'dracula' | 'gruvbox' | 'nord' | 'solarized' | 'catppuccin' | 'tokyonight'
-  | 'custom';
+export type ThemeMode = 'light' | 'dark' | 'custom';
 
 export interface CustomThemeColors {
   bgPrimary: string;
