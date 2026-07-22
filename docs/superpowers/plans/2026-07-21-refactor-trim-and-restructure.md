@@ -203,10 +203,26 @@ Phase 1.13 cuts this from 11 themes to 3 first.
 
 Low risk, high readability. Batch into one or two commits.
 
+> **Findings from Phase 2's tests (2026-07-22)** — five genuine bugs pinned (not fixed) by
+> the new suites; the first three fold into the Phase 4 items below:
+> 1. `getLogicalDate` mixes local `getHours()` with UTC `toISOString()` — east of UTC the
+>    returned date can shift an extra day (verified: UTC+3, `2026-01-01 01:00` local with
+>    `dayStartHour 6` → `'2025-12-30'`, expected `'2025-12-31'`). Fix in the Phase 4
+>    logical-date item: serialize from local date components, not `toISOString()`.
+> 2. Weekly recurrence ignores `daysOfWeek` entirely (`recurrence.ts:9-11`) — next
+>    occurrence is always same-weekday + interval·7d. Fold into the recurrence unification.
+> 3. Monthly recurrence overflows before the `dayOfMonth` clamp (`recurrence.ts:12-17`) —
+>    `dayOfMonth: 31` from Jan 31 lands on Mar 31, silently skipping February.
+> 4. Activity with empty name round-trips via vault as `'Untitled'` (heading-based name
+>    extraction). Minor; normalize during Phase 3.1's uniform serializer shape.
+> 5. `serializeFolders` writes `deletedAt` to disk, unlike every other serializer.
+>    Normalize during Phase 3.1.
+
 - **Logical-date consistency:** `useAnalytics.ts:115` computes `today` as a plain calendar
   date and compares it against `timeEntries.date`, which holds *logical* dates — streaks
   can read as broken near a day boundary. Route through `getLogicalDate(dayStartHour)`.
-  (The `useHabits` instance of this bug disappears with Phase 1.10.)
+  (The `useHabits` instance of this bug disappears with Phase 1.10.) **Also make
+  `getLogicalDate` timezone-safe (finding 1 above).**
 - **Dual recurrence mechanisms:** `useProjectTasks.toggleTask` creates the next occurrence
   immediately on completion, gated only by a title dedup; `useRecurringTaskCheck` independently
   re-scans on mount and on `visibilitychange`, gated by `shouldCreateRecurrence()`'s real
