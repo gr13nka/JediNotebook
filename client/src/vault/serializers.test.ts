@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   serializeActivity, deserializeActivity,
-  serializeProject, deserializeProject, deserializeTasks,
+  serializeProjectFile, serializeProjectTasksFile, deserializeProject, deserializeTasks,
   serializeTimeLog, deserializeTimeLog,
   serializeTodayTasks, deserializeTodayTasks,
   serializeInbox, deserializeInbox,
@@ -215,27 +215,34 @@ describe('Activity serialization', () => {
 // ─── Project (+ tasks) ────────────────────────────────────────────
 
 describe('Project + tasks serialization', () => {
-  it('round-trips project fields; name is deliberately left for the caller to fill from the directory', () => {
+  it('round-trips project fields, including name (decoded from the directory name)', () => {
     const p = makeProject();
-    const files = serializeProject(p, []);
+    const { path, content } = serializeProjectFile(p);
     const dirName = entityFilename(p.name, p.id);
-    const projectContent = files.get(`projects/${dirName}/project.md`);
-    expect(projectContent).toBeDefined();
+    expect(path).toBe(`projects/${dirName}/project.md`);
 
-    const back = deserializeProject(projectContent!);
-    // documented: deserializeProject always returns name: '' — the caller
-    // (vaultSync) is responsible for filling it in from the directory name.
-    expect(back.name).toBe('');
-    const { name, deletedAt, ...expected } = p;
-    expect(back).toEqual({ ...expected, name: '' });
+    // Phase 3.1b: deserializeProject(dirName, content) decodes the name from
+    // the directory name itself, rather than returning name: '' and leaving
+    // that to the caller.
+    const back = deserializeProject(dirName, content);
+    expect(back.name).toBe(p.name);
+    const { deletedAt, ...expected } = p;
+    expect(back).toEqual(expected);
   });
 
   it('round-trips a project name with unsafe characters into the directory name (filename encoding pin)', () => {
     const p = makeProject({ name: SPECIAL_CHARS });
-    const files = serializeProject(p, []);
+    const projectFile = serializeProjectFile(p);
+    const tasksFile = serializeProjectTasksFile(p, []);
     const expectedDir = `${sanitizeFilename(SPECIAL_CHARS)} (${shortId(p.id)})`;
-    expect(files.has(`projects/${expectedDir}/project.md`)).toBe(true);
-    expect(files.has(`projects/${expectedDir}/tasks.md`)).toBe(true);
+    expect(projectFile.path).toBe(`projects/${expectedDir}/project.md`);
+    expect(tasksFile.path).toBe(`projects/${expectedDir}/tasks.md`);
+
+    // The directory name only round-trips exactly for names that don't
+    // collide with sanitization (no unsafe chars to begin with); SPECIAL_CHARS
+    // does, so decoding it back recovers the sanitized form, not the original.
+    const back = deserializeProject(expectedDir, projectFile.content);
+    expect(back.name).toBe(sanitizeFilename(SPECIAL_CHARS));
   });
 
   it('filters soft-deleted tasks and sorts the rest by sortOrder', () => {
@@ -243,9 +250,7 @@ describe('Project + tasks serialization', () => {
     const t1 = makeTask({ id: 'task-1', title: 'Second', sortOrder: 1 });
     const t2 = makeTask({ id: 'task-2', title: 'First', sortOrder: 0 });
     const deletedTask = makeTask({ id: 'task-3', title: 'Deleted', sortOrder: -1, deletedAt: '2026-07-01T00:00:00.000Z' });
-    const files = serializeProject(p, [t1, t2, deletedTask]);
-    const dirName = entityFilename(p.name, p.id);
-    const tasksContent = files.get(`projects/${dirName}/tasks.md`)!;
+    const { content: tasksContent } = serializeProjectTasksFile(p, [t1, t2, deletedTask]);
 
     const back = deserializeTasks(tasksContent);
     expect(back.map(t => t.id)).toEqual(['task-2', 'task-1']); // sorted, deleted one dropped
@@ -254,9 +259,7 @@ describe('Project + tasks serialization', () => {
   it('round-trips task fields including a full recurrence rule (deletedAt excluded)', () => {
     const p = makeProject();
     const task = makeTask({ title: SPECIAL_CHARS });
-    const files = serializeProject(p, [task]);
-    const dirName = entityFilename(p.name, p.id);
-    const tasksContent = files.get(`projects/${dirName}/tasks.md`)!;
+    const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
 
     const [back] = deserializeTasks(tasksContent);
     expect('deletedAt' in back).toBe(false);
@@ -268,9 +271,7 @@ describe('Project + tasks serialization', () => {
   it('round-trips a task with null recurrenceRule, lastRecurredDate and completedAt', () => {
     const p = makeProject();
     const task = makeTask({ recurrenceRule: null, lastRecurredDate: null, isCompleted: true, completedAt: '2026-07-20T12:00:00.000Z' });
-    const files = serializeProject(p, [task]);
-    const dirName = entityFilename(p.name, p.id);
-    const tasksContent = files.get(`projects/${dirName}/tasks.md`)!;
+    const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
 
     const [back] = deserializeTasks(tasksContent);
     expect(back.recurrenceRule).toBeNull();
@@ -281,9 +282,7 @@ describe('Project + tasks serialization', () => {
   it('round-trips a non-ASCII task title', () => {
     const p = makeProject();
     const task = makeTask({ title: NON_ASCII });
-    const files = serializeProject(p, [task]);
-    const dirName = entityFilename(p.name, p.id);
-    const tasksContent = files.get(`projects/${dirName}/tasks.md`)!;
+    const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
 
     const [back] = deserializeTasks(tasksContent);
     expect(back.title).toBe(NON_ASCII);
@@ -444,17 +443,15 @@ describe('Project folders serialization', () => {
   });
 
   it(
-    'note (pinned, not fixed): unlike Activity/Project (omitDeleted()), serializeFolders ' +
-      'does NOT strip `deletedAt` before writing — a surviving folder\'s `deletedAt: null` ' +
-      'is written into folders.json verbatim; deserializeFolders strips the key back out ' +
-      'on read. Harmless in practice (the value is always null for a non-deleted folder) ' +
-      "but inconsistent with the module's stated 'deletedAt is never written to disk' intent.",
+    'normalized in Phase 3.1b: serializeFolders now strips `deletedAt` via omitDeleted(), ' +
+      'like every other serializer, instead of writing a surviving folder\'s `deletedAt: null` ' +
+      'into folders.json verbatim. deserializeFolders already tolerated the key being present ' +
+      'or absent, so this is a write-side-only change — no read-side behavior moved.',
     () => {
       const folder = makeFolder();
       const { content } = serializeFolders([folder]);
       const parsed = JSON.parse(content);
-      expect('deletedAt' in parsed[0]).toBe(true);
-      expect(parsed[0].deletedAt).toBeNull();
+      expect('deletedAt' in parsed[0]).toBe(false);
     },
   );
 });

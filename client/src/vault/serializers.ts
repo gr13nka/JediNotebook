@@ -7,6 +7,7 @@ import { parseFrontmatter, stringifyFrontmatter } from './frontmatter';
 import {
   ACTIVITIES, PROJECTS, PROJECT_TASKS, TIME_LOG, TODAY, INBOX, SETTINGS, FOLDERS,
 } from './vaultLayout';
+import { extractNameFromDirName } from './sanitize';
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -68,21 +69,21 @@ const PROJECT_META_KEYS = [
   'createdAt', 'updatedAt', 'deviceId',
 ];
 
-export function serializeProject(
+/** Serialize project.md — the project's own fields. Independent of its tasks. */
+export function serializeProjectFile(p: Project): { path: string; content: string } {
+  const meta = pickMeta(omitDeleted(p) as any, PROJECT_META_KEYS);
+  const body = p.description || '';
+  return {
+    path: PROJECTS.buildPath(p.name, p.id),
+    content: stringifyFrontmatter(meta, body),
+  };
+}
+
+/** Serialize tasks.md for one project: frontmatter task list + human-readable checklist. */
+export function serializeProjectTasksFile(
   p: Project,
   tasks: ProjectTask[],
-): Map<string, string> {
-  const files = new Map<string, string>();
-
-  // project.md
-  const projectMeta = pickMeta(omitDeleted(p) as any, PROJECT_META_KEYS);
-  const projectBody = p.description || '';
-  files.set(
-    PROJECTS.buildPath(p.name, p.id),
-    stringifyFrontmatter(projectMeta, projectBody),
-  );
-
-  // tasks.md
+): { path: string; content: string } {
   const activeTasks = tasks
     .filter(t => !t.deletedAt)
     .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -109,20 +110,22 @@ export function serializeProject(
     .map(t => `- [${t.isCompleted ? 'x' : ' '}] ${t.title}`)
     .join('\n');
 
-  files.set(
-    PROJECT_TASKS.buildPath(p.name, p.id),
-    stringifyFrontmatter(tasksMeta, checklist ? `## Tasks\n\n${checklist}\n` : ''),
-  );
-
-  return files;
+  return {
+    path: PROJECT_TASKS.buildPath(p.name, p.id),
+    content: stringifyFrontmatter(tasksMeta, checklist ? `## Tasks\n\n${checklist}\n` : ''),
+  };
 }
 
-export function deserializeProject(projectContent: string): Omit<Project, 'deletedAt'> {
-  const { meta, body } = parseFrontmatter(projectContent);
-  // Name is extracted from the directory name, passed separately
+/**
+ * `dirName` is the project's directory name as it appears on disk (e.g.
+ * "Meeting Notes (019abc)") — the name is encoded there, not in the
+ * frontmatter, so it's decoded here rather than left for the caller.
+ */
+export function deserializeProject(dirName: string, content: string): Omit<Project, 'deletedAt'> {
+  const { meta, body } = parseFrontmatter(content);
   return {
     id: meta.id as string,
-    name: '', // Filled by caller from directory name
+    name: extractNameFromDirName(dirName),
     description: body.trim(),
     color: (meta.color as string) || '#2BA89E',
     icon: (meta.icon as string) || '',
@@ -355,7 +358,12 @@ export function deserializeSettings(content: string): Partial<UserSettings> {
 export function serializeFolders(
   folders: ProjectFolder[],
 ): { path: string; content: string } {
-  const active = folders.filter(f => !f.deletedAt);
+  // omitDeleted() here for consistency with every other serializer (Phase
+  // 3.1b) — previously this was the one serializer that wrote a surviving
+  // row's `deletedAt: null` to disk verbatim. deserializeFolders already
+  // tolerates the key being absent (destructuring an absent key is a no-op),
+  // so this is a pure write-side normalization.
+  const active = folders.filter(f => !f.deletedAt).map(omitDeleted);
   return {
     path: FOLDERS.path,
     content: JSON.stringify(active, null, 2) + '\n',

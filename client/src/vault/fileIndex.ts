@@ -46,3 +46,11 @@ export class FileIndex {
     return this.idToPath.size;
   }
 }
+
+/**
+ * The vault's single fileIndex instance. Lives here (rather than in
+ * vaultSync.ts, its main consumer) so vaultKinds.ts can also read it —
+ * `gatherWriteSet` needs a kind's previous path to detect renames — without
+ * creating a circular import between the two.
+ */
+export const fileIndex = new FileIndex();

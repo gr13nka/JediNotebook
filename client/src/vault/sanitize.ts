@@ -31,3 +31,14 @@ export function extractShortIdFromFilename(filename: string): string | null {
 export function uuidMatchesShortId(uuid: string, sid: string): boolean {
   return shortId(uuid) === sid;
 }
+
+/**
+ * Inverse of `entityFilename`: recover the human-readable name from an
+ * encoded directory/file name like "Meeting Notes (019abc)". Falls back to
+ * the raw string when it doesn't match the encoded pattern (e.g. a directory
+ * created by hand outside the app).
+ */
+export function extractNameFromDirName(dirName: string): string {
+  const match = dirName.match(/^(.+)\s+\([a-f0-9]{6}\)$/);
+  return match ? match[1] : dirName;
+}
