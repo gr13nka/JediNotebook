@@ -59,6 +59,7 @@ export const DEFAULT_SETTINGS = {
     ['/tasks', '/settings'],
   ] as string[][],
   mobileProjectGrid: false,
+  lastRolloverDate: null as string | null,
 } satisfies PersistedSettings;
 
 export const BREAK_ACTIVITY = {

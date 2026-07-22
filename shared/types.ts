@@ -68,6 +68,8 @@ export interface UserSettings {
   bottomNavScrollable: boolean;
   bottomNavPages: string[][];
   mobileProjectGrid: boolean;
+  /** Logical date (YYYY-MM-DD) the box-rollover last ran; `null` before the v10 migration or first rollover. Guards `useTaskRollover()` idempotency. */
+  lastRolloverDate: string | null;
   updatedAt: string;
   deviceId: string;
 }

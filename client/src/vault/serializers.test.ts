@@ -172,6 +172,7 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
       ['/tasks', '/settings'],
     ],
     mobileProjectGrid: false,
+    lastRolloverDate: null,
     updatedAt: '2026-07-21T08:00:00.000Z',
     deviceId: 'device-abc',
     ...overrides,
