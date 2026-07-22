@@ -25,26 +25,55 @@ export interface TimeEntry {
   deviceId: string;
 }
 
+export type NavPosition = 'left' | 'bottom' | 'dropdown';
+
+/**
+ * THE settings roster: every field the app persists to Dexie's `settings`
+ * table and mirrors to the vault's `settings.json` (see `vault/serializers.ts`
+ * `serializeSettings`/`deserializeSettings`). This is the single place the
+ * roster is declared — `DEFAULT_SETTINGS` (`shared/constants.ts`) is checked
+ * against it with `satisfies`, and `SettingsState` (`stores/settingsStore.ts`)
+ * extends it, so adding/removing a field only ever happens here.
+ *
+ * `id`/`updatedAt`/`deviceId` are the Dexie row envelope for this singleton
+ * row — see `PersistedSettings` for the roster without them. Unlike every
+ * other table, the settings row has no `createdAt`/`deletedAt`: it's a
+ * fixed-id singleton, not a soft-deletable envelope record (see
+ * `db/seed.ts`).
+ */
 export interface UserSettings {
   id: string;
   dayStartHour: number;
   dayEndHour: number;
   timezone: string;
   barStyle: BarStyle;
-  darkMode: boolean; // legacy — prefer theme
+  darkMode: boolean; // legacy — always mirrors `theme`, never independently trusted (see settingsStore.load())
   theme: ThemeMode;
   language: Language;
   maxTasksPerProject: number;
-  navPosition: 'left' | 'bottom' | 'dropdown';
+  navPosition: NavPosition;
   pointsCounterVisible: boolean;
   accentColor: string;
+  uiZoom: number;
+  pointsColorFixed: boolean;
+  hiddenNavTabs: string[];
+  navTabOrder: string[];
+  dropdownFabCorner: string;
+  customThemeColors: CustomThemeColors;
   vaultEnabled: boolean;
   vaultPath: string;
   vaultSetupDone: boolean;
   recentVaults: Array<{ path: string; name: string; lastOpened: string }>;
+  bottomNavTabs: string[];
+  bottomNavScrollable: boolean;
+  bottomNavPages: string[][];
+  mobileProjectGrid: boolean;
   updatedAt: string;
   deviceId: string;
 }
+
+/** The settings roster minus the Dexie row envelope — what `DEFAULT_SETTINGS` supplies and `SettingsState` persists. */
+export type PersistedSettings = Omit<UserSettings, 'id' | 'updatedAt' | 'deviceId'>;
 
 export type BarStyle = 'thick-linear' | 'segmented' | 'circular';
 

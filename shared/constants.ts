@@ -1,3 +1,5 @@
+import type { PersistedSettings } from './types';
+
 export const ACTIVITY_COLORS = [
   '#E04848', // coral red
   '#2BA89E', // teal
@@ -41,6 +43,10 @@ export const DEFAULT_CUSTOM_THEME_COLORS = {
   border: '#1a3a5c',
 };
 
+// `satisfies PersistedSettings` is the enforcement: a field added to (or
+// removed from) `UserSettings` in shared/types.ts without a matching default
+// here is a compile error, not a silent runtime reset. Keeps the `as const`
+// literal types below (not widened to the interface's field types).
 export const DEFAULT_SETTINGS = {
   dayStartHour: 6,
   dayEndHour: 2,
@@ -70,7 +76,7 @@ export const DEFAULT_SETTINGS = {
     ['/tasks', '/settings'],
   ] as string[][],
   mobileProjectGrid: false,
-};
+} satisfies PersistedSettings;
 
 export const BREAK_ACTIVITY = {
   name: 'Break',

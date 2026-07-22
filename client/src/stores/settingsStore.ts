@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BarStyle, CustomThemeColors, Language, ThemeMode } from '@shared/types';
+import type { CustomThemeColors, Language, PersistedSettings, ThemeMode } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { db } from '../db';
 
@@ -66,36 +66,40 @@ function applyAccentColor(color: string) {
   }
 }
 
-interface SettingsState {
-  dayStartHour: number;
-  dayEndHour: number;
-  timezone: string;
-  barStyle: BarStyle;
-  darkMode: boolean;
-  theme: ThemeMode;
-  language: Language;
-  maxTasksPerProject: number;
-  navPosition: 'left' | 'bottom' | 'dropdown';
-  pointsCounterVisible: boolean;
-  accentColor: string;
-  uiZoom: number;
-  pointsColorFixed: boolean;
-  hiddenNavTabs: string[];
-  navTabOrder: string[];
-  dropdownFabCorner: string;
-  customThemeColors: CustomThemeColors;
-  vaultEnabled: boolean;
-  vaultPath: string;
-  vaultSetupDone: boolean;
-  recentVaults: Array<{ path: string; name: string; lastOpened: string }>;
-  bottomNavTabs: string[];
-  bottomNavScrollable: boolean;
-  bottomNavPages: string[][];
-  mobileProjectGrid: boolean;
+/**
+ * Runtime store state: the persisted settings roster (`PersistedSettings`,
+ * owned by shared/types.ts) plus actions and `loaded` — the one field that's
+ * genuinely runtime-only (never read from or written to Dexie).
+ */
+interface SettingsState extends PersistedSettings {
   loaded: boolean;
   load: () => Promise<void>;
   update: (patch: Partial<Omit<SettingsState, 'loaded' | 'load' | 'update' | 'addRecentVault'>>) => Promise<void>;
   addRecentVault: (path: string, name: string) => Promise<void>;
+}
+
+/** Keys of the persisted settings roster, derived once from the schema's own default values. */
+const SETTINGS_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof PersistedSettings)[];
+
+/**
+ * Keeps only the fields the current schema still declares. A saved row can
+ * carry stale keys left behind by a deleted feature (e.g. old gamification
+ * fields) — picking known keys drops them from state here, so they stop
+ * leaking into the app and are gone from the row after the next `update()`
+ * (which only ever persists patches built from `SettingsState`).
+ *
+ * A key is picked only if the raw value is present (`!= null`), matching the
+ * `raw.field ?? DEFAULT_SETTINGS.field` fallback this replaces: a `null` or
+ * `undefined` stored value still falls through to the default below.
+ */
+function pickKnownSettings(raw: Record<string, unknown>): Partial<PersistedSettings> {
+  const picked: Partial<PersistedSettings> = {};
+  for (const key of SETTINGS_KEYS) {
+    if (raw[key] != null) {
+      (picked as Record<string, unknown>)[key] = raw[key];
+    }
+  }
+  return picked;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -105,59 +109,45 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   load: async () => {
     const settings = await db.settings.get('default');
     if (settings) {
-      const raw = settings as any;
-      const darkMode = raw.darkMode ?? DEFAULT_SETTINGS.darkMode;
-      const maxTasksPerProject = raw.maxTasksPerProject ?? DEFAULT_SETTINGS.maxTasksPerProject;
+      // Loosely typed on purpose: a row saved by an older build can carry
+      // fields the current schema no longer declares (e.g. deleted
+      // gamification fields), which `pickKnownSettings` below is what drops.
+      const raw = settings as unknown as Record<string, unknown>;
 
-      // Migrate: prefer theme field, fall back to darkMode boolean
-      let theme: ThemeMode = raw.theme ?? (darkMode ? 'dark' : 'light');
-      // Migrate legacy 'notion' theme
-      if ((theme as string) === 'notion') theme = 'dark';
-      // Migrate removed prebuilt palettes (theme set trimmed to light/dark/custom)
-      if (theme !== 'light' && theme !== 'dark' && theme !== 'custom') {
-        theme = (theme as string) === 'neu-light' ? 'light' : 'dark';
+      // 1. Known fields from the saved row win over the default; everything
+      //    else (missing, or a stale/removed key) falls back to DEFAULT_SETTINGS.
+      const merged: PersistedSettings = { ...DEFAULT_SETTINGS, ...pickKnownSettings(raw) };
+
+      // 2. Explicit migrations only, applied on top of the merged defaults.
+
+      // Legacy `darkMode` boolean -> `theme`, for rows saved before `theme` existed.
+      if (raw.theme == null && raw.darkMode != null) {
+        merged.theme = raw.darkMode ? 'dark' : 'light';
+      }
+      // Legacy 'notion' theme -> 'dark'.
+      if ((merged.theme as string) === 'notion') {
+        merged.theme = 'dark';
+      }
+      // Removed prebuilt themes (palette trimmed to light/dark/custom) -> light/dark.
+      if (merged.theme !== 'light' && merged.theme !== 'dark' && merged.theme !== 'custom') {
+        merged.theme = (merged.theme as string) === 'neu-light' ? 'light' : 'dark';
+      }
+      // `darkMode` always mirrors the fully-resolved theme — never trusted from the row directly.
+      merged.darkMode = merged.theme !== 'light';
+
+      // Rows saved before `language` existed fall back to browser detection, not the static default.
+      if (raw.language == null) {
+        merged.language = detectBrowserLanguage();
+      }
+      // Removed languages (language set trimmed to en/ru) -> 'en'.
+      if (merged.language !== 'en' && merged.language !== 'ru') {
+        merged.language = 'en';
       }
 
-      // Migrate: prefer stored language, fall back to browser detection
-      let language: Language = raw.language ?? detectBrowserLanguage();
-      // Migrate removed languages (language set trimmed to en/ru)
-      if (language !== 'en' && language !== 'ru') {
-        language = 'en';
-      }
-
-      const customThemeColors = raw.customThemeColors ?? DEFAULT_SETTINGS.customThemeColors;
-
-      set({
-        dayStartHour: settings.dayStartHour,
-        dayEndHour: settings.dayEndHour,
-        timezone: settings.timezone,
-        barStyle: settings.barStyle,
-        darkMode: theme !== 'light',
-        theme,
-        language,
-        maxTasksPerProject,
-        navPosition: raw.navPosition ?? DEFAULT_SETTINGS.navPosition,
-        pointsCounterVisible: raw.pointsCounterVisible ?? DEFAULT_SETTINGS.pointsCounterVisible,
-        accentColor: raw.accentColor ?? DEFAULT_SETTINGS.accentColor,
-        uiZoom: raw.uiZoom ?? DEFAULT_SETTINGS.uiZoom,
-        pointsColorFixed: raw.pointsColorFixed ?? DEFAULT_SETTINGS.pointsColorFixed,
-        hiddenNavTabs: raw.hiddenNavTabs ?? DEFAULT_SETTINGS.hiddenNavTabs,
-        navTabOrder: raw.navTabOrder ?? DEFAULT_SETTINGS.navTabOrder,
-        dropdownFabCorner: raw.dropdownFabCorner ?? DEFAULT_SETTINGS.dropdownFabCorner,
-        customThemeColors,
-        vaultEnabled: raw.vaultEnabled ?? DEFAULT_SETTINGS.vaultEnabled,
-        vaultPath: raw.vaultPath ?? DEFAULT_SETTINGS.vaultPath,
-        vaultSetupDone: raw.vaultSetupDone ?? DEFAULT_SETTINGS.vaultSetupDone,
-        recentVaults: raw.recentVaults ?? DEFAULT_SETTINGS.recentVaults,
-        bottomNavTabs: raw.bottomNavTabs ?? DEFAULT_SETTINGS.bottomNavTabs,
-        bottomNavScrollable: raw.bottomNavScrollable ?? DEFAULT_SETTINGS.bottomNavScrollable,
-        bottomNavPages: raw.bottomNavPages ?? DEFAULT_SETTINGS.bottomNavPages,
-        mobileProjectGrid: raw.mobileProjectGrid ?? DEFAULT_SETTINGS.mobileProjectGrid,
-        loaded: true,
-      });
-      applyTheme(theme, customThemeColors);
-      applyAccentColor(raw.accentColor ?? DEFAULT_SETTINGS.accentColor);
-      applyZoom(raw.uiZoom ?? DEFAULT_SETTINGS.uiZoom);
+      set({ ...merged, loaded: true });
+      applyTheme(merged.theme, merged.customThemeColors);
+      applyAccentColor(merged.accentColor);
+      applyZoom(merged.uiZoom);
     } else {
       applyZoom(DEFAULT_SETTINGS.uiZoom);
       set({ language: detectBrowserLanguage(), loaded: true });
