@@ -12,7 +12,6 @@ const TABLE_TO_TYPE: Record<string, string> = {
   todayTasks: 'todayTasks',
   projectFolders: 'projectFolders',
   inboxItems: 'inboxItems',
-  mindMaps: 'mindMaps',
 };
 
 /**

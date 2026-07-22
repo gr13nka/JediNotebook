@@ -6,7 +6,6 @@ export const XP_VALUES = {
   stopTimer: 10,
   createTask: 5,
   addInboxItem: 5,
-  createMindMap: 5,
   createProject: 5,
 } as const;
 

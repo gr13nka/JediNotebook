@@ -59,16 +59,6 @@ const GearIcon = () => (
   </svg>
 );
 
-const MindMapIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="3" />
-    <line x1="12" y1="3" x2="12" y2="9" />
-    <line x1="12" y1="15" x2="12" y2="21" />
-    <line x1="3" y1="12" x2="9" y2="12" />
-    <line x1="15" y1="12" x2="21" y2="12" />
-  </svg>
-);
-
 const DragDotsIcon = () => (
   <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
     <circle cx="5" cy="3" r="1.2" />
@@ -91,7 +81,6 @@ const iconMap: Record<string, React.FC> = {
   '/tasks': ListIcon,
   '/today': SunIcon,
   '/inbox': InboxIcon,
-  '/mindmap': MindMapIcon,
   '/settings': GearIcon,
 };
 
@@ -120,7 +109,6 @@ export function DropdownNav() {
     { to: '/tasks', label: t('nav.taskSelection'), icon: ListIcon },
     { to: '/today', label: t('nav.today'), icon: SunIcon },
     { to: '/inbox', label: t('nav.inbox'), icon: InboxIcon },
-    { to: '/mindmap', label: t('nav.mindmap'), icon: MindMapIcon },
     { to: '/settings', label: t('nav.settings'), icon: GearIcon },
   ], [t]);
 

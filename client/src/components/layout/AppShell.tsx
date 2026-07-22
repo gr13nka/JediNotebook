@@ -6,8 +6,8 @@ import { DesktopBottomNav } from './DesktopBottomNav';
 import { DropdownNav } from './DropdownNav';
 import { useSettingsStore } from '../../stores/settingsStore';
 
-const WIDE_PAGES = ['/projects', '/tasks', '/mindmap', '/settings'];
-const FULL_BLEED_PAGES = ['/projects', '/mindmap'];
+const WIDE_PAGES = ['/projects', '/tasks', '/settings'];
+const FULL_BLEED_PAGES = ['/projects'];
 const HIDE_NAV_PAGES: string[] = [];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

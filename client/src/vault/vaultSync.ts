@@ -6,7 +6,6 @@ import {
   serializeProject, deserializeProject, deserializeTasks,
   serializeTimeLog, deserializeTimeLog,
   serializeTodayTasks, deserializeTodayTasks,
-  serializeMindMap, deserializeMindMap,
   serializeInbox, deserializeInbox,
   serializeSettings, deserializeSettings,
   serializeFolders, deserializeFolders,
@@ -27,7 +26,7 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
   }, null, 2) + '\n');
 
   // Ensure directories exist
-  for (const dir of ['activities', 'projects', 'mind-maps', 'time-log', 'today']) {
+  for (const dir of ['activities', 'projects', 'time-log', 'today']) {
     await backend.mkdir(dir);
   }
 
@@ -64,14 +63,6 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
     // Index the project directory
     const projectPath = [...files.keys()][0]; // project.md path
     if (projectPath) fileIndex.set(p.id, projectPath);
-  }
-
-  // Mind maps
-  const mindMaps = await db.mindMaps.filter(m => !m.deletedAt).toArray();
-  for (const m of mindMaps) {
-    const { path, content } = serializeMindMap(m);
-    await backend.writeFile(path, content);
-    fileIndex.set(m.id, path);
   }
 
   // Inbox (single file for all items)
@@ -205,18 +196,6 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
     counts.projects = projectCount;
   } catch (err) { errors.push(`projects: ${err}`); }
 
-  // Mind maps
-  try {
-    const mindMapFiles = await backend.listFiles('mind-maps', '.md');
-    for (const filePath of mindMapFiles) {
-      const content = await backend.readFile(filePath);
-      const mindMap = deserializeMindMap(content);
-      await mergeEntity(db.mindMaps, mindMap);
-      fileIndex.set(mindMap.id, filePath);
-    }
-    counts.mindMaps = mindMapFiles.length;
-  } catch (err) { errors.push(`mindMaps: ${err}`); }
-
   // Inbox
   try {
     if (await safeExists('inbox.md')) {
@@ -342,19 +321,6 @@ export async function writeEntityToDisk(
       }
       break;
     }
-    case 'mindMaps': {
-      const m = await db.mindMaps.get(entityId);
-      if (!m || m.deletedAt) {
-        await deleteEntityFile(backend, entityId);
-        return;
-      }
-      const { path, content } = serializeMindMap(m);
-      const oldPath = fileIndex.getPath(m.id);
-      if (oldPath && oldPath !== path) await backend.deleteFile(oldPath);
-      await backend.writeFile(path, content);
-      fileIndex.set(m.id, path);
-      break;
-    }
     case 'timeEntries': {
       const e = await db.timeEntries.get(entityId);
       if (!e) return;
@@ -460,10 +426,6 @@ export async function handleExternalChange(
     const activity = deserializeActivity(content);
     await mergeEntity(db.activities, activity);
     fileIndex.set(activity.id, filePath);
-  } else if (filePath.startsWith('mind-maps/')) {
-    const mindMap = deserializeMindMap(content);
-    await mergeEntity(db.mindMaps, mindMap);
-    fileIndex.set(mindMap.id, filePath);
   } else if (filePath.startsWith('time-log/')) {
     const { entries } = deserializeTimeLog(content);
     for (const e of entries) await mergeEntity(db.timeEntries, e);
@@ -485,7 +447,6 @@ export async function handleExternalChange(
 
 function tableFromPath(filePath: string): string | null {
   if (filePath.startsWith('activities/')) return 'activities';
-  if (filePath.startsWith('mind-maps/')) return 'mindMaps';
   if (filePath.startsWith('time-log/')) return 'timeEntries';
   if (filePath.startsWith('today/')) return 'todayTasks';
   if (filePath.match(/^projects\/[^/]+\/project\.md$/)) return 'projects';

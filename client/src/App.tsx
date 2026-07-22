@@ -9,7 +9,6 @@ import { ProjectsPage } from './pages/ProjectsPage';
 import { TaskSelectionPage } from './pages/TaskSelectionPage';
 import { TodayPage } from './pages/TodayPage';
 import { InboxPage } from './pages/InboxPage';
-import { MindMapPage } from './pages/MindMapPage';
 
 import { useSettingsStore } from './stores/settingsStore';
 import { useRecurringTaskCheck } from './hooks/useRecurringTaskCheck';
@@ -67,7 +66,6 @@ export default function App() {
             <Route path="/tasks" element={<TaskSelectionPage />} />
             <Route path="/today" element={<TodayPage />} />
             <Route path="/inbox" element={<InboxPage />} />
-            <Route path="/mindmap" element={<MindMapPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </motion.div>

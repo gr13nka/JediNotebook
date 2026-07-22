@@ -1,7 +1,7 @@
 import type {
   Activity, TimeEntry, UserSettings,
   Project, ProjectTask, TodayTask,
-  ProjectFolder, InboxItem, MindMap, MindMapNode,
+  ProjectFolder, InboxItem,
 } from '@shared/types';
 import { parseFrontmatter, stringifyFrontmatter } from './frontmatter';
 import { entityFilename } from './sanitize';
@@ -293,54 +293,6 @@ export function deserializeTodayTasks(content: string): {
   }));
 
   return { date, tasks };
-}
-
-// ─── Mind Map ─────────────────────────────────────────────────────
-
-const MINDMAP_META_KEYS = [
-  'id', 'rootNodeId', 'color', 'createdAt', 'updatedAt', 'deviceId',
-];
-
-export function serializeMindMap(m: MindMap): { path: string; content: string } {
-  const meta: Record<string, unknown> = pickMeta(omitDeleted(m) as any, MINDMAP_META_KEYS);
-  meta.nodes = m.nodes;
-
-  // Build human-readable tree body
-  const body = `# ${m.title}\n\n${buildTreeText(m.nodes, m.rootNodeId, 0)}`;
-  return {
-    path: `mind-maps/${entityFilename(m.title || 'Untitled', m.id)}.md`,
-    content: stringifyFrontmatter(meta, body),
-  };
-}
-
-function buildTreeText(nodes: MindMapNode[], nodeId: string, depth: number): string {
-  const node = nodes.find(n => n.id === nodeId);
-  if (!node) return '';
-  const indent = '  '.repeat(depth);
-  let text = `${indent}- ${node.text}\n`;
-  for (const childId of node.children) {
-    text += buildTreeText(nodes, childId, depth + 1);
-  }
-  return text;
-}
-
-export function deserializeMindMap(content: string): Omit<MindMap, 'deletedAt'> {
-  const { meta, body } = parseFrontmatter(content);
-  let title = '';
-  const headingMatch = body.match(/^#\s+(.+)$/m);
-  if (headingMatch) title = headingMatch[1].trim();
-  if (!title) title = 'Untitled';
-
-  return {
-    id: meta.id as string,
-    title,
-    nodes: (meta.nodes as MindMapNode[]) || [],
-    rootNodeId: (meta.rootNodeId as string) || '',
-    color: (meta.color as string) || '#E04848',
-    createdAt: meta.createdAt as string,
-    updatedAt: meta.updatedAt as string,
-    deviceId: meta.deviceId as string,
-  };
 }
 
 // ─── Inbox ────────────────────────────────────────────────────────

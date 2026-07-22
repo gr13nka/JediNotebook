@@ -60,16 +60,6 @@ const ListIcon = () => (
   </svg>
 );
 
-const MindMapIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="3" />
-    <line x1="12" y1="3" x2="12" y2="9" />
-    <line x1="12" y1="15" x2="12" y2="21" />
-    <line x1="3" y1="12" x2="9" y2="12" />
-    <line x1="15" y1="12" x2="21" y2="12" />
-  </svg>
-);
-
 const GearIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
@@ -89,7 +79,6 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { to: '/today', labelKey: 'nav.today', icon: SunIcon },
   { to: '/projects', labelKey: 'nav.projects', icon: FolderIcon },
   { to: '/inbox', labelKey: 'nav.inbox', icon: InboxIcon },
-  { to: '/mindmap', labelKey: 'nav.mindmap', shortLabelKey: 'nav.mindmapShort', icon: MindMapIcon },
   { to: '/tasks', labelKey: 'nav.taskSelection', shortLabelKey: 'nav.tasksShort', icon: ListIcon },
   { to: '/settings', labelKey: 'nav.settings', icon: GearIcon },
 ];

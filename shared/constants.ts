@@ -74,7 +74,7 @@ export const DEFAULT_SETTINGS = {
   bottomNavScrollable: false,
   bottomNavPages: [
     ['/', '/today', '/projects', '/inbox'],
-    ['/mindmap', '/tasks', '/settings'],
+    ['/tasks', '/settings'],
   ] as string[][],
   mobileProjectGrid: false,
 };
