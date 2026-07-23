@@ -4,386 +4,224 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Full-stack productivity app: time tracking, task management, habit tracking, Pomodoro timer, task timer, mind maps, inbox, notes, analytics, gamification/XP system, PDF storage. Offline-first with optional multi-device sync (REST) and optional Vault sync (Tauri/desktop).
+Client-only productivity app: activity time tracking, projects/tasks with folders and time-boxing (today/week/later), inbox quick-capture, analytics, a staleness counter. Offline-first — Dexie (IndexedDB) is the only database. There is no backend server: the pre-refactor Express/REST-sync stack was deleted (`server/` and `client/src/sync/` no longer exist). The only sync mechanism left is Vault sync (Tauri-only, Obsidian-style file sync).
 
-**Tech Stack**: React 19, TypeScript 5.7, Vite 6, Tailwind CSS 4, Zustand 5, Dexie 4 (IndexedDB), Motion (animations), Recharts | Express 4, better-sqlite3, TSX runtime | Shared types in `/shared/`
+**Tech Stack**: React 19, TypeScript 5.7, Vite 6, Tailwind CSS 4, Zustand 5, Dexie 4 (IndexedDB), Motion (animations), Recharts, React Router 7 | Tauri v2 (desktop + Android) | Vitest (116 tests) | Shared types in `/shared/`
 
-> **Deep documentation**: See `.planning/research/` for detailed docs on [feature interactions](./planning/research/FEATURE_INTERACTIONS.md), [data flows & hooks](./planning/research/DATA_FLOWS.md), [component catalog](./planning/research/COMPONENT_CATALOG.md), and [dependencies & pitfalls](./planning/research/DEPENDENCIES_AND_PITFALLS.md).
+> **History**: `.planning/research/*.md` describe the codebase **before** the 2026-07 trim refactor — they still document habits, mind maps, Pomodoro, task timer, notes, PDF documents, fatigue check, review page, REST sync, gamification/XP, and 11 themes, all of which are now deleted. Treat them as historical background only, never as current fact. The refactor plan (what was cut and why) is at `docs/superpowers/plans/2026-07-21-refactor-trim-and-restructure.md`.
 
 ## Commands
 
 ```bash
-# Client dev (port 5173, proxies /api to :3000)
+# Client dev (port 5173)
 cd client && npm run dev
 
-# Server dev (port 3000, auto-reload via tsx watch)
-cd server && npm run dev
-
-# Type check client
+# Typecheck
 cd client && npx tsc --noEmit
 
-# Build client
-cd client && npm run build    # → client/dist/
+# Build (typecheck via tsc -b, then bundle)
+cd client && npm run build      # → client/dist/
 
-# Production server (serves API + built client static files)
-cd server && npm start
+# Tests (vitest, node environment, src/**/*.test.ts)
+cd client && npm run test       # one-shot
+cd client && npm run test:watch
 
-# Docker
-docker compose up --build     # port 3000, SQLite persisted in timer-data volume
+# Tauri desktop dev/build
+cd client && npm run tauri:dev
+cd client && npm run tauri:build
+
+# Android: build, install debug APK, launch on connected device
+./build-android.sh
+
+# macOS: build .app and install to /Applications
+./build-macos.sh
 ```
 
-No test framework is configured. No linter is configured.
+No linter is configured. `client/tsconfig.json` has `noUnusedLocals`/`noUnusedParameters` off, so deleting a feature's call sites does not surface newly-dead code via typecheck — grep for it manually (see Tooling notes).
+
+## Tooling notes
+
+- **Serena MCP hangs in this repo.** Do not use it (`find_symbol`, `get_symbols_overview`, etc.). Use plain `Read`/`Grep`/`Glob` instead.
+- **Plain `grep` output is truncated by the `rtk` shell hook.** For an exhaustive search (e.g. confirming zero remaining references after a deletion), use `rtk proxy grep ...` to bypass the filter.
 
 ## File Structure
 
 ```
 client/src/
-├── App.tsx                  # Router (React Router v6, AnimatePresence transitions)
-├── main.tsx                 # Entry point
-├── index.css                # Global styles + theme CSS custom properties
+├── App.tsx                  # Router (6 routes), starts settings load, task rollover, recurring-task check, backspace guard, vault auto-enable
+├── main.tsx / index.css
 ├── components/
 │   ├── activities/          # ActivityCard, ActivityForm, ActivityList, ActivityMenu
-│   ├── analytics/           # DailyView, WeeklyView, MonthlyView, StreaksView
-│   ├── fatigue/             # FatigueCheck (10-question fatigue scale)
-│   ├── habits/              # HabitCard, HabitList, WeeklyTracker, AddHabitModal
-│   ├── inbox/               # InboxView
-│   ├── layout/              # AppShell, Sidebar, BottomNav, DesktopBottomNav, DropdownNav
-│   ├── mindmap/             # MindMapView, MindMapCanvas, MindMapNode, MindMapToolbar, MindUnloadMode
-│   ├── notes/               # NoteCard, NoteEditor, NoteList
-│   ├── pomodoro/            # PomodoroTimer, PresetSelector, PresetFormModal
-│   ├── progress/            # ProgressBar, CircularBar, SegmentedBar, ThickLinearBar
-│   ├── projects/            # ProjectsView, ProjectTaskList, TaskItem, FileTree, RecurrenceEditor
-│   ├── settings/            # ThemeToggle, CustomThemeEditor, NavPositionPicker, + 10 more
-│   ├── taskSelection/       # TaskSelectionView, TaskGroupCard, PointsCounter
-│   ├── timer/               # TimerDisplay, ManualEntry
-│   ├── today/               # TodayTaskCard
-│   ├── review/              # ReviewPage components
-│   ├── gamification/        # XP display, level progress, streak UI
-│   └── ui/                  # Button, Card, Input, Modal, ConfirmModal, Toggle, ContextMenu, InfoTooltip, RotaryDial, ProcrastinationConfirmModal, VaultSetupModal
-├── db/                      # index.ts (Dexie schema), seed.ts (default data)
-├── hooks/                   # 21 data hooks (useActivities, useTimer, useHabits, useTaskTimer, usePdfDocuments, etc.)
-├── i18n/                    # translations.ts (5 languages), useTranslation.ts
-├── pages/                   # 11 page components (one per route)
-├── stores/                  # 6 Zustand stores (timer, pomodoro, settings, projectUI, mindMapUI, taskTimer)
-├── sync/                    # syncEngine.ts (pull-before-push REST sync)
-├── vault/                   # vaultStore, vaultSync, tauriBackend (Obsidian-style vault sync, Tauri-only)
-├── utils/                   # uuid, time, colors, shadows, recurrence, markdown, procrastinationCheck, streak
-└── workers/                 # timer.worker.ts, pomodoro.worker.ts
-server/src/
-├── index.ts                 # Express server + route mounting
-├── database.ts              # SQLite connection & table initialization
-├── middleware/auth.ts        # API key validation
-├── routes/                  # health.ts, sync.ts
-└── services/syncService.ts  # LWW merge + conflict resolution
+│   ├── analytics/           # DailyView, WeeklyView, MonthlyView, StreaksView — rendered inside SettingsPage, not a route
+│   ├── inbox/                # InboxView
+│   ├── layout/               # AppShell, Sidebar, BottomNav, DesktopBottomNav, DropdownNav
+│   ├── progress/             # ProgressBar, CircularBar, SegmentedBar, ThickLinearBar
+│   ├── projects/             # ProjectsView, ProjectTabs, ProjectTaskList, TaskItem, FileTree, RecurrenceEditor, ProjectDraftEditor, folder/project modals
+│   ├── settings/             # ThemeToggle, CustomThemeEditor, BarStylePicker, NavPositionPicker, BottomNavSettings, LanguagePicker, VaultSettings, + 6 more
+│   ├── taskSelection/        # TaskSelectionView (box tabs), TaskGroupCard, FolderGroupSection, SelectableTaskRow, StalenessCounter
+│   ├── timer/                # TimerDisplay, ManualEntry
+│   ├── today/                # TodayTaskCard
+│   └── ui/                   # Button, Card, Input, Modal, ConfirmModal, ConfirmDialog, BottomSheet, ContextMenu, InfoTooltip, RotaryDial, EmojiPicker, FolderBrowserModal, InlineTextEdit, VaultSetupModal, Toggle
+├── db/
+│   ├── index.ts              # Dexie schema (v10) + clearAllTables/snapshotAllTables/restoreFromSnapshot (vault-switch only)
+│   ├── repository.ts         # Single owner of the record envelope + soft delete (newRecord/updateRecord/softDelete/notDeleted)
+│   ├── taskOps.ts            # Cross-project ProjectTask ops: create/delete/toggle, box-order bookkeeping, recurrence spawn
+│   ├── rollover.ts           # computeRollover — pure box-move rules, no I/O
+│   ├── migrations.ts         # classifyTimeBoxForMigration — v10 upgrade's one-shot classifier
+│   └── seed.ts
+├── hooks/                    # 17 hooks — see Key Patterns
+├── i18n/                     # translations.ts (en, ru only), useTranslation.ts
+├── pages/                    # HomePage, ProjectsPage, TaskSelectionPage, TodayPage, InboxPage, SettingsPage — one per route
+├── stores/                   # timerStore, settingsStore, projectUIStore (+ inline useSidebarStore in Sidebar.tsx)
+├── theme/                    # themes.ts (PREBUILT_THEMES data), applyTheme.ts
+├── vault/                    # vaultStore, vaultSync, vaultLayout.ts, vaultKinds.ts, serializers.ts, tauriBackend/memoryBackend/platform, writeQueue/writeGuard/pollingWatcher/fileIndex (Tauri-only file sync)
+├── utils/                    # uuid, time, colors, shadows, recurrence, markdown, taskDnd
+└── workers/                  # timer.worker.ts (only worker left — no Pomodoro worker)
 shared/
-├── types.ts                 # All TypeScript interfaces, ThemeMode union, Language union
-└── constants.ts             # DEFAULT_SETTINGS, DEFAULT_CUSTOM_THEME_COLORS, ACTIVITY_COLORS
+├── types.ts                  # All entity interfaces; UserSettings is the single settings roster
+└── constants.ts               # DEFAULT_SETTINGS (satisfies PersistedSettings), ACTIVITY_COLORS, DEFAULT_CUSTOM_THEME_COLORS
 ```
+
+There is no `server/` directory and no root `package.json` — this is a client-only repo now.
 
 ## Architecture
 
-- **Offline-first**: Dexie (IndexedDB) is the primary database. The server is entirely optional — only needed for multi-device sync.
-- **Sync**: Two independent sync systems exist (they don't coordinate):
-  - **REST sync**: LWW conflict resolution by `updatedAt`. Pull before push. **Only syncs activities, timeEntries, and settings** (3 of 14 tables) — everything else is local-only. Client: `sync/syncEngine.ts`. Server: `services/syncService.ts`. Note: `lastSyncedAt` is a module-level variable (not persisted) — full re-pull on every page load.
-  - **Vault sync** (Tauri-only): Obsidian-style file-based sync for all entities. Client: `vault/vaultSync.ts`.
-- **State**: Zustand stores for timer/settings/pomodoro/projectUI/mindMapUI/taskTimer global state. Dexie `useLiveQuery()` for reactive data queries. Two data persistence paths: hook path (Dexie + useLiveQuery for reactivity) and store path (Zustand for high-frequency state, Dexie writes only at lifecycle boundaries). See [DATA_FLOWS.md](.planning/research/DATA_FLOWS.md) for details.
-- **Routing**: React Router v6 in `App.tsx`. 11 routes wrapped in `AnimatePresence` for page transitions (y-axis slide + fade, 200ms).
-- **Navigation**: Three modes (`navPosition` setting): `'left'` (sidebar), `'bottom'` (desktop bottom nav), `'dropdown'` (FAB + dropdown). Responsive — mobile always shows BottomNav (md breakpoint: 768px). Tabs can be hidden/reordered via context menu.
-- **Workers**: Timer and Pomodoro ticks run in Web Workers (just count seconds, no DB/store access). Main thread coordinates everything. Timer and TaskTimer workers use module-level singleton pattern to prevent orphaned workers during HMR. Pomodoro worker uses `useRef` (safe for StrictMode but can leak on HMR). The two workers have different designs: timer.worker computes elapsed from absolute timestamp (self-correcting), pomodoro.worker just fires ticks (store manages countdown).
-- **Gamification**: XP/streak system via `utils/streak.ts`. `awardXP()` called from 8 hooks on create/complete actions. Streaks, levels (quadratic formula), daily XP — all persisted in settingsStore. See [FEATURE_INTERACTIONS.md](.planning/research/FEATURE_INTERACTIONS.md) for all XP touchpoints.
-- **Soft deletes**: All entities use `deletedAt` field, never hard delete. Queries always filter `!deletedAt`. Cascade deletes (e.g., project → tasks → todayTasks) are handled in hooks, not the database.
-- **Logical date**: Configurable day boundary (`dayStartHour`/`dayEndHour`). A "day" can span midnight (e.g., 6am to 2am). TimeEntry `date` field is always logical YYYY-MM-DD via `getLogicalDate()`.
-- **Seeding**: `db/seed.ts` runs on first load — creates break activity, default settings, 4 default habits, 3 pomodoro presets. Idempotent (checks existence before adding).
+- **Offline-first, client-only**: Dexie (IndexedDB) is the only database. No REST sync, no Express server, no Docker — all deleted in the 2026-07-21 refactor.
+- **Vault sync** (Tauri-only): Obsidian-style file sync, the sole remaining sync system. Built on two single-owner registries:
+  - `vault/vaultLayout.ts` — the only place that knows an entity kind's directory, filename shape, and Dexie table. Four shapes (`perEntityFile`, `perEntityDir`, `perDateFile`, `singleton`) cover all 8 synced kinds: activities, projects, projectTasks, timeEntries (time-log), todayTasks, inbox, settings, folders.
+  - `vault/vaultKinds.ts` — one `VaultKind` object per layout entry, giving `collectFiles`/`discoverPaths`/`parseFile`/`mergeRow`/`gatherWriteSet` uniformly so `vaultSync.ts`'s four fan-outs (export/import/write/external-change) stay generic loops instead of per-kind switches. **Adding a vault-synced entity kind = one `vaultLayout.ts` entry + one `vaultKinds.ts` object.**
+  - Note: `todayTasks` is still round-tripped by vault sync (for backward compatibility with pre-refactor vault files) but the app itself never creates new rows in it — `/today` is now driven entirely by `ProjectTask.timeBox` (see Time-boxing below).
+- **Data layer single owners**:
+  - `db/repository.ts` — the record envelope (`id`/`createdAt`/`updatedAt`/`deletedAt`/`deviceId`) and soft-delete convention, used by every table.
+  - `hooks/useEntity.ts` — generic reactive CRUD for a flat table with the standard envelope (not-deleted filter + sort + create/update/remove wired through the repository). Bespoke hooks (`useProjectTasks`, `useTaskBox`, etc.) exist only where per-parent queries or cascades don't fit this shape.
+  - `db/taskOps.ts` — cross-project `ProjectTask` writes (create/delete/toggle, recurrence spawn) that can't be scoped to one project's hook.
+  - `db/rollover.ts` + `hooks/useTaskRollover.ts` — the daily time-box rollover (pure rule function + the Dexie transaction/idempotency-guard that applies it).
+  - `db/migrations.ts` — one-shot classification logic used only by the Dexie v10 upgrade.
+- **Settings — single roster**: `UserSettings` in `shared/types.ts` is the one place the settings field list is declared. `DEFAULT_SETTINGS` (`shared/constants.ts`) is checked against it with `satisfies PersistedSettings` — a field added/removed from the interface without a matching default is a compile error. `settingsStore.load()` picks known keys from the saved row, spreads over defaults, then applies a short, explicit list of legacy migrations (old `darkMode` boolean, retired `'notion'` theme, retired prebuilt themes → light/dark, retired languages → en). `update()` is a pure persist-and-set primitive; side-effecting concerns (theme/accent/zoom DOM application, nav-tab add/remove semantics) get their own named actions (`setTheme`, `setAccentColor`, `setZoom`, `hideTab`/`showTab`/`reorderTabs`, `setNavPosition`) that call `update()` internally.
+- **Theming — single data table**: `theme/themes.ts` defines each prebuilt theme's 12 color tokens once (`PREBUILT_THEMES`); `theme/applyTheme.ts` is the only code that writes them onto `<html>` as inline CSS custom properties. `useThemeColors.ts` (Recharts palette) and `ThemeToggle.tsx` (swatch UI) both read `PREBUILT_THEMES` instead of hardcoding colors.
+- **Time-boxing** (replaces the old date-scoped `todayTasks` table): every `ProjectTask` carries `timeBox` (`'today' | 'week' | 'later'`), an optional `scheduledDate` pin, and a cross-project `timeBoxOrder`. `hooks/useTaskBox.ts` is the live-query + move/reorder/toggle surface for one box; `/today` (`TodayPage`) is `useTaskBox('today')`, and `/tasks` (`TaskSelectionView`) has box tabs (`today`/`week`/`later`/`all`, defaulting to **week**). `hooks/useTaskRollover.ts` runs `db/rollover.ts`'s `computeRollover()` on mount and on tab-visibility-regain: it demotes everything left in `'today'` (incomplete → `week`, completed → `later`) and promotes any task whose `scheduledDate` is due, all inside one Dexie transaction that also stamps `settings.lastRolloverDate` (the idempotency guard).
+- **Routing**: React Router 7, 6 routes, `AnimatePresence` page transitions (y-slide + fade, 200ms).
+- **Navigation**: three modes via `navPosition` (`'left'` sidebar / `'bottom'` desktop bar / `'dropdown'` FAB+menu), still hand-duplicated across `Sidebar.tsx`, `BottomNav.tsx`, `DesktopBottomNav.tsx`, `DropdownNav.tsx` (the last also needs its own `iconMap`) — any nav-item change touches all four. `BottomNav` itself has two layouts (classic 4-tabs-+-More vs. a scrollable paged variant), switched by the `bottomNavScrollable` setting.
+- **Workers**: only `timer.worker.ts` remains (module-level singleton, survives HMR/StrictMode). No Pomodoro worker.
+- **Soft deletes**: every entity uses `deletedAt`; never hard-deleted except the vault's whole-vault `clearAllTables`/`restoreFromSnapshot` pair (`db/index.ts`), used only around a vault switch.
+- **Logical date**: `getLogicalDate(dayStartHour, reference?)` (`utils/time.ts`) builds the date from **local** date components (not `toISOString()`, which is UTC) after rolling back one day if the local hour is before `dayStartHour`. Used for `TimeEntry.date`, rollover's `today`, and recurrence-completion dating.
 
 ## Routes
 
 | Path | Page Component | Notes |
 |------|---------------|-------|
-| `/` | `HomePage` | Timer, activity list, fatigue check button, pomodoro access |
-| `/projects` | `ProjectsPage` | Wide + full-bleed layout. Tabbed project editor with folders |
-| `/tasks` | `TaskSelectionPage` | Wide layout. All tasks by project/folder, points counter |
-| `/today` | `TodayPage` | Daily task list, completion tracking, focus mode overlay |
-| `/inbox` | `InboxPage` | Quick-capture inbox for ideas/tasks |
-| `/mindmap` | `MindMapPage` | Wide + full-bleed layout. Mind maps with "Mind Unload" mode |
-| `/habits` | `HabitsPage` | Boolean & numeric habits, weekly tracker, streaks |
-| `/analytics` | `AnalyticsPage` | 4 tabs: daily, weekly, monthly, streaks |
-| `/notes` | `NotesPage` | Wide layout. Markdown notes with pin/sort |
-| `/review` | `ReviewPage` | Review/reflection view |
-| `/settings` | `SettingsPage` | 11 settings sections with staggered animation |
+| `/` | `HomePage` | Timer + activity list |
+| `/projects` | `ProjectsPage` | Wide + full-bleed. Tabbed project editor with folders |
+| `/tasks` | `TaskSelectionPage` | Wide. All tasks by project/folder; box tabs (today/week/later/all), default **week** |
+| `/today` | `TodayPage` | The `'today'` time-box; focus mode overlay |
+| `/inbox` | `InboxPage` | Quick-capture inbox |
+| `/settings` | `SettingsPage` | Settings tab (7 sections) + Analytics tab (daily/weekly/monthly/streaks sub-tabs) |
 
-**Layout classes** in `AppShell.tsx`: `WIDE_PAGES` (`/projects`, `/tasks`, `/notes`, `/mindmap`) get `max-w-6xl`. `FULL_BLEED_PAGES` (`/projects`, `/mindmap`) get no padding/max-width.
+**Layout classes** in `AppShell.tsx`: `WIDE_PAGES` = `/projects`, `/tasks`, `/settings` (`max-w-6xl`). `FULL_BLEED_PAGES` = `/projects` only (no padding/max-width).
 
-> **Note**: The `/notes` route uses label key `nav.ideas` (not `nav.notes`) — intentional but potentially confusing.
+> There is no `/habits`, `/mindmap`, `/notes`, `/analytics`, or `/review` route — those pages were deleted. Analytics lives inside `/settings` as a tab, not its own route.
 
 ## Database
 
-**Dexie (client) — 14 tables** (schema version 9):
+**Dexie (client-only) — schema version 10.** 14 tables are still *declared*, but several are retired-legacy:
 
-`activities`, `timeEntries`, `settings`, `habits`, `habitEntries`, `notes`, `pomodoroPresets`, `projects`, `projectTasks`, `todayTasks`, `projectFolders`, `inboxItems`, `mindMaps`, `pdfDocuments`
+- **Active**: `activities`, `timeEntries`, `settings`, `projects`, `projectTasks`, `projectFolders`, `inboxItems`.
+- **Legacy — declared for data-safety only, no code anywhere reads or writes them**: `habits`, `habitEntries`, `notes`, `pomodoroPresets`, `mindMaps`, `pdfDocuments`. Any pre-existing rows sit untouched in IndexedDB; nothing creates new ones.
+- **`todayTasks`**: no longer written by the app's own UI (superseded by `timeBox` on `projectTasks`), but still declared and still round-tripped by vault sync for backward compatibility with vaults written by older builds.
 
-**SQLite (server) — 3 tables**: `activities`, `time_entries`, `user_settings` (only what syncs)
+All records carry: `id` (UUID v7), `createdAt`, `updatedAt`, `deletedAt`, `deviceId` — except the `settings` row, a fixed-id (`'default'`) singleton with no `createdAt`/`deletedAt`.
 
-All records have: `id` (UUID v7, time-sortable), `createdAt`, `updatedAt`, `deletedAt`, `deviceId`.
-
-`deviceId` comes from `getDeviceId()` (localStorage) — attached to every record for sync attribution.
-
-**Schema version history**: v1 (activities, timeEntries, settings) → v2 (+habits, habitEntries) → v3 (+notes) → v4 (+pomodoroPresets) → v5 (+projects, projectTasks, todayTasks) → v6 (+projectFolders, folderId on projects, recurrence fields on tasks — has upgrade function) → v7 (+inboxItems) → v8 (+mindMaps) → v9 (+pdfDocuments). Only v6 has a custom upgrade function; others are index-only changes handled automatically by Dexie.
-
-> See [DATA_FLOWS.md](.planning/research/DATA_FLOWS.md#dexie-database-schema) for full table/index reference and synced vs local-only breakdown.
-
-**Seeding** (`db/seed.ts`): On first load, creates break activity (`isBreak: true`), default settings record (id='default'), 4 habits (Meditate, Read, Steps, Water), 3 pomodoro presets (Classic 25/5, Long Focus 50/10, Short Sprint 15/3).
+**v10 migration** (`db/index.ts` + `db/migrations.ts`): adds `timeBox`/`scheduledDate` indexes to `projectTasks`; a one-shot `classifyTimeBoxForMigration` assigns every pre-existing task `'today'` or `'later'` (never `'week'` — no historical signal for it) based on whether it was in the old `todayTasks` list, and stamps `settings.lastRolloverDate` in the same transaction so `useTaskRollover` doesn't immediately re-demote what the migration just placed in `'today'`.
 
 ## Stores
 
-6 Zustand stores in `client/src/stores/` (+ 1 inline store in Sidebar.tsx):
+3 Zustand stores in `client/src/stores/` + 1 inline store in `Sidebar.tsx`:
 
-| Store | Purpose | Key State | Persistence |
-|-------|---------|-----------|-------------|
-| `timerStore` | Active timer lifecycle | `isRunning`, `elapsed`, `activeActivityId`, `startedAt`, `activeEntryId`. Actions: `start()`, `stop()`, `tick()`, `restore()` | Dexie `timeEntries` (on start/stop) |
-| `pomodoroStore` | Pomodoro work/break cycles | `isActive`, `isPaused`, `phase` ('work'\|'break'\|'longBreak'), `remainingSeconds`, `currentSession`, `linkedActivityId`, `selectedPresetId`. Actions: `startSession()`, `pause()`, `resume()`, `skip()`, `stop()`, `tick()` | Ephemeral |
-| `settingsStore` | User settings + theme + persistence | All settings fields (see below). Actions: `load()`, `update(patch)`. Internal: `applyTheme()`, `applyAccentColor()`, `applyZoom()` | Dexie `settings` (every update) |
-| `projectUIStore` | Project view UI state | `openTabs[]`, `activeTabId`, `sidebarCollapsed`, `splitDirection`. Actions: `openTab()`, `closeTab()`, `setActiveTab()`, `toggleSidebar()` | Ephemeral |
-| `mindMapUIStore` | Mind map view UI state | `activeMindMapId`, `selectedNodeId`, `mindUnloadActive`, `timerVisible`, `pendingEditNodeId` | Ephemeral |
-| `taskTimerStore` | Per-task countdown timer | `isRunning`, `remainingSeconds`, `activeTodayTaskId`, `linkedActivityId`, `isOvertime`. Actions: `start()`, `stop()`, `tick()`, `reset()` | Ephemeral |
+| Store | Purpose | Persistence |
+|-------|---------|-------------|
+| `timerStore` | Active timer lifecycle: `start()`/`stop()`/`tick()`/`restore()`. `restore()` only resumes a timer this device started (ignores a running entry synced from another device — clock skew renders as negative elapsed). | Dexie `timeEntries` |
+| `settingsStore` | The full `PersistedSettings` roster + `loaded` + theme/accent/zoom/nav-tab actions | Dexie `settings` (singleton row) |
+| `projectUIStore` | Project editor UI: open tabs, active tab, sidebar collapse, split direction, per-project task drafts, quick-add draft | Ephemeral |
+| `useSidebarStore` (in `Sidebar.tsx`) | `collapsed` toggle | Ephemeral |
 
-**Note**: A 7th store (`useSidebarStore`) is defined inline in `Sidebar.tsx` — manages `collapsed` state, imported by `AppShell.tsx`.
-
-**Cross-store interactions** (critical — see [FEATURE_INTERACTIONS.md](.planning/research/FEATURE_INTERACTIONS.md)):
-- `usePomodoro` reads/writes `timerStore` AND `settingsStore` — auto-starts/stops activity timer during work phases
-- `useTaskTimer` reads/writes `timerStore` AND `settingsStore` — starts activity timer when task timer starts with linked activity
-- **No coordination** between Pomodoro and Task Timer for `timerStore` — they can conflict if both active with same linked activity
-
-**Settings fields**: `dayStartHour` (6), `dayEndHour` (2, currently unused), `timezone`, `theme` (ThemeMode), `language` (Language), `barStyle`, `uiZoom` (110), `accentColor`, `customThemeColors`, `navPosition` ('left'\|'bottom'\|'dropdown'), `hiddenNavTabs[]`, `navTabOrder[]`, `dropdownFabCorner`, `syncEnabled`, `syncServerUrl`, `syncApiKey`, `maxTasksPerProject` (5), `timerNotificationsEnabled`, `timerNotificationIntervalMinutes` (30), `pointsCounterVisible`, `pointsColorFixed`, `procrastinationWords[]`, `dismissedProcrastinationTaskIds[]`, `taskTimerMinutes` (20), `gamificationEnabled` (true), `currentStreak`, `longestStreak`, `lastActiveDate`, `totalXP`, `todayXP`, `todayXPDate`, `vaultEnabled`, `vaultPath`, `vaultSetupDone`. Defaults in `shared/constants.ts` as `DEFAULT_SETTINGS`.
-
-> **Type drift warning**: `UserSettings` in `shared/types.ts` only includes sync-relevant fields (~14 fewer than `SettingsState` in the store). The store's `SettingsState` is the canonical runtime type. See [DEPENDENCIES_AND_PITFALLS.md](.planning/research/DEPENDENCIES_AND_PITFALLS.md#10-typescript-type-drift) for the full list of drifted fields.
-
-> See [DEPENDENCIES_AND_PITFALLS.md](.planning/research/DEPENDENCIES_AND_PITFALLS.md#settings-field-impact-map) for which components/features each setting affects.
-
-## Navigation System
-
-Three modes controlled by `settingsStore.navPosition`:
-
-| Mode | Desktop (≥768px) | Mobile (<768px) |
-|------|-----------------|-----------------|
-| `'left'` | Sidebar (collapsible 56–224px) | BottomNav |
-| `'bottom'` | DesktopBottomNav (fixed h-14) | BottomNav |
-| `'dropdown'` | DropdownNav (draggable FAB + menu) | DropdownNav |
-
-**Tab management**: `hiddenNavTabs[]` hides routes, `navTabOrder[]` reorders them. Both configurable via right-click context menu on nav items. All nav components support drag-to-reorder.
-
-**Mobile BottomNav**: 4 main tabs always visible (`/`, `/today`, `/projects`, `/habits`), 6 secondary tabs in "More" popup.
-
-**AppShell** (`layout/AppShell.tsx`): Conditionally renders Sidebar/BottomNav/DesktopBottomNav/DropdownNav based on `navPosition`. Applies `WIDE_PAGES`/`FULL_BLEED_PAGES` layout classes per route.
+No Pomodoro store, no Task Timer store, no Mind Map UI store — those features are gone.
 
 ## Theming System
 
-11 themes via CSS custom properties on `<html>`:
+3 themes: `light`, `dark` (both data objects in `theme/themes.ts`'s `PREBUILT_THEMES`), and `custom` (user-defined, colors in `settingsStore.customThemeColors`). Down from 11 pre-refactor.
 
-| Theme | Class | Type |
-|-------|-------|------|
-| Light | (none — default) | Flat light |
-| Dark | `dark` | Flat dark |
-| 3D Light | `neu-light` | Neumorphic light |
-| 3D Dark | `neu-dark` | Neumorphic dark |
-| Dracula | `dracula` | Flat dark |
-| Gruvbox | `gruvbox` | Flat dark |
-| Nord | `nord` | Flat dark |
-| Solarized | `solarized` | Flat dark |
-| Catppuccin | `catppuccin` | Flat dark |
-| Tokyo Night | `tokyonight` | Flat dark |
-| Custom | `custom` | User-defined (inline CSS vars) |
+- `ThemeColors`/`CustomThemeColors` share the same 12-field shape; `THEME_COLOR_CSS_VARS` (`theme/themes.ts`) is the single map from field name to CSS custom property.
+- `theme/applyTheme.ts`'s `applyTheme()` is the only place that writes those properties onto `<html>` (inline styles, not a CSS class per theme) — it also toggles the `dark`/`custom` marker classes that `index.css`'s remaining shadow rules select on.
+- `useThemeColors()` / `useIsDark()` (`hooks/useThemeColors.ts`) and `ThemeToggle.tsx`'s swatches both read `PREBUILT_THEMES` directly — neither hardcodes a color.
+- `BarStyle` still has 3 values (`thick-linear`, `segmented`, `circular`) — unrelated to theme, unchanged.
 
-**How it works**:
-- `index.css` defines `--shadow-*` and `--color-*` CSS custom properties per `html.{class}` block
-- `shadows.ts` exports `NEU` object mapping semantic names to `var(--shadow-*)` — components use `NEU.raised`, `NEU.pressed`, etc. via `style={{ boxShadow: NEU.xxx }}`
-- `settingsStore.applyTheme()` toggles the class on `<html>`, clears any inline custom properties, then applies new ones for the `custom` theme
-- Tailwind `@theme` block maps colors so components use utilities like `bg-bg-card`, `text-text-primary`
-- Flat dark themes: all shadows transparent except `modal`/`tooltip`. Neumorphic themes: dual highlight+shadow.
-- **Custom theme**: Colors are stored in `customThemeColors` (persisted in Dexie settings). Applied via `element.style.setProperty()` on `<html>` — no CSS class needed. A `custom` class is added as a marker for `getThemeSnapshot()`.
-- **Accent color override**: `accentColor` (separate setting) overrides `--color-accent` from any theme, including custom. Always re-applied after theme switch.
-- **Dark mode detection**: `useIsDark()` returns `theme !== 'light' && theme !== 'neu-light'` — all prebuilt dark themes + custom are treated as dark.
+### How to Add a New Prebuilt Theme (now 2 files)
 
-**Shadow tokens**: `raised`, `raisedSm`, `raisedLg`, `pressed`, `pressedSm`, `pressedDeep`, `sidebarRight`, `bottomNavUp`, `modal`, `tooltipSm`, `topBar`
+1. **`client/src/theme/themes.ts`** — add an entry to `PREBUILT_THEMES` with the 12 `ThemeColors` fields and a `labelKey`.
+2. **`client/src/i18n/translations.ts`** — add that `labelKey` (e.g. `'settings.themeMyTheme'`) to both `en` and `ru`.
 
-**Color tokens** (12 colors — Tailwind classes `text-text-primary`, `bg-bg-card`, etc.): `bg-primary`, `bg-card`, `bg-elevated`, `text-primary`, `text-secondary`, `text-muted`, `accent`, `accent-fg`, `green`, `red`, `bar-track`, `border` (+ `neu-light`, `neu-dark` for neumorphic only)
-
-**Chart colors**: `useThemeColors()` in `hooks/useThemeColors.ts` returns `{ textPrimary, textSecondary, accent, bgPrimary, border, barTrack }` for Recharts. Each built-in theme has a hardcoded object; the custom theme reads from `settingsStore.customThemeColors`.
-
-### How to Add a New Prebuilt Theme
-
-6 files must be touched. Use an existing dark flat theme (e.g., Dracula) as a template:
-
-1. **`shared/types.ts`** — Add the new ID to the `ThemeMode` union (e.g., `| 'mytheme'`).
-
-2. **`client/src/index.css`** — Add an `html.mytheme { }` block after the other theme blocks. Define all 12 `--color-*` tokens + 11 `--shadow-*` tokens. For flat dark themes, copy the shadow values from `html.dark` (all transparent except modal/tooltip). Set `--color-neu-light`/`--color-neu-dark` to `transparent`.
-
-3. **`client/src/stores/settingsStore.ts`** — Add `'mytheme'` to the `cl.remove(...)` list inside `applyTheme()`.
-
-4. **`client/src/hooks/useThemeColors.ts`** — Add a `const MYTHEME = { textPrimary, textSecondary, accent, bgPrimary, border, barTrack }` object. Add `cl.contains('mytheme')` check in `getThemeSnapshot()` (before the `dark` fallback). Add a `case 'mytheme':` in `useThemeColors()`.
-
-5. **`client/src/i18n/translations.ts`** — Add `'settings.themeMyTheme': 'My Theme'` to all 5 language blocks (en, zh, es, pt, ru). Theme proper names are typically untranslated.
-
-6. **`client/src/components/settings/ThemeToggle.tsx`** — Add an entry to the `THEMES` array: `{ id: 'mytheme', labelKey: 'settings.themeMyTheme', bg: '...', card: '...', accent: '...' }`.
-
-**Verify**: `cd client && npx tsc --noEmit` then `npm run build`.
+`ThemeToggle.tsx`, `applyTheme.ts`, and `useThemeColors.ts` all consume `PREBUILT_THEMES` already — no other file needs touching, and `settingsStore.load()`'s theme-migration branch only needs updating if you ever *remove* a theme.
 
 ### Custom Theme (User-Defined)
 
-Users can create their own theme via Settings > Theme > Custom swatch. The `CustomThemeEditor` component (`settings/CustomThemeEditor.tsx`) shows native `<input type="color">` pickers for all 12 color tokens. Colors are stored in `settingsStore.customThemeColors` (type `CustomThemeColors` from `shared/types.ts`) and persisted to Dexie. Default colors are in `shared/constants.ts` as `DEFAULT_CUSTOM_THEME_COLORS`.
-
-When the custom theme is active, `applyTheme('custom', colors)`:
-1. Removes all theme classes from `<html>`
-2. Clears any previous inline CSS properties
-3. Adds `custom` class as a marker
-4. Sets all 12 `--color-*` + 2 `--color-neu-*` properties via `element.style.setProperty()`
-
-The `ThemeToggle` swatch for Custom renders dynamically using the user's stored `customThemeColors`.
-
-## UI Components
-
-> **Full catalog**: See [COMPONENT_CATALOG.md](.planning/research/COMPONENT_CATALOG.md) for all 88 components across 17 directories with props, shadows, animations, hooks, and page composition reference.
-
-Reusable primitives in `components/ui/` (12 components):
-
-| Component | Shadow | Animation | Notes |
-|-----------|--------|-----------|-------|
-| `Card` | `NEU.raised` | Hover: `y: -6`, tap: `scale: 0.94` (spring 400/25) | `rounded-2xl bg-bg-card p-4`. Interactive only if `onClick` provided |
-| `Button` | `NEU.raisedSm` (primary/secondary/danger), none (ghost) | — | 4 variants: `primary`, `secondary`, `ghost`, `danger`. 3 sizes: `sm`, `md`, `lg` |
-| `Input` | `NEU.pressed` | — | `rounded-xl`, focus: `border-accent`. Optional `label` prop |
-| `Modal` | `NEU.modal` on dialog, `NEU.pressedDeep` on backdrop | Scale 0.95→1 + opacity (spring 400/30) | `z-50`, body scroll lock, `max-w-md` |
-| `Toggle` | `NEU.pressedSm` track, `NEU.raisedSm` thumb | Thumb x: 4→24 (spring 500/30) | Green when checked, optional label |
-| `ContextMenu` | `NEU.modal` | Scale 0.95→1 (0.1s) | Fixed position, auto-adjusts to viewport bounds. Items: `danger?` prop for red |
-| `ConfirmModal` | via Modal | via Modal | Wraps Modal with cancel/delete buttons |
-| `InfoTooltip` | `NEU.tooltipSm` | Opacity + y (0.15s) | "i" button, auto-positions above/below |
-| `RotaryDial` | — | Spring rotation | Circular dial input component |
-| `ProcrastinationConfirmModal` | via Modal | — | 5-second countdown, disabled until 0 |
+Unchanged in spirit: `CustomThemeEditor.tsx` shows 12 color pickers, stored in `settingsStore.customThemeColors` (Dexie-persisted). `setCustomColors()`/`setTheme('custom')` route through `applyTheme('custom', colors)`, the same function prebuilt themes use.
 
 ## Key Patterns
 
-> **Full hook/store reference**: See [DATA_FLOWS.md](.planning/research/DATA_FLOWS.md) for all 21 hooks and 6 stores with inputs, outputs, reactive queries, and side effects.
-
-- **Hook pattern**: All data hooks (e.g., `useActivities()`) wrap `useLiveQuery()` for reactive queries and return `{ data[], createX, updateX, deleteX }`. Create always includes `generateId()`, `getDeviceId()`, timestamps. Delete always sets `deletedAt` (soft delete).
-- **Cascade soft deletes**: Handled in hooks, not DB. E.g., `useProjects.deleteProject()` soft-deletes the project, then soft-deletes all its tasks, then soft-deletes all todayTasks referencing those tasks. **Note**: Habit deletion does NOT cascade to habitEntries (orphaned entries remain in IndexedDB, filtered by `!deletedAt` on the habit). See [DEPENDENCIES_AND_PITFALLS.md](.planning/research/DEPENDENCIES_AND_PITFALLS.md#critical-cascade-soft-delete-chains) for all cascade chains.
-- **XP on mutations**: Most data-mutating hooks call `awardXP()` — complete task (15 XP), check habit (10 XP), stop timer ≥60s (10 XP), create note (10 XP), create task (5 XP), add inbox item (5 XP), create mind map (5 XP), create project (5 XP). New hooks should follow this convention.
-- **Enriched queries**: Some hooks join data — e.g., `useTodayTasks` enriches each todayTask with its project task title and project name. `useAllProjectTasks` groups tasks by project and folder.
-- **Store persistence**: `settingsStore` persists to Dexie on every update via `db.settings.update()`.
-- **Timer restore**: On app load, `timerStore.restore()` checks for `endedAt === null` entries to resume interrupted timers.
-- **Worker singleton**: Timer/pomodoro workers use module-level variables to track the single worker instance, preventing orphaned workers during HMR/StrictMode double-mounts.
-- **Settings migration**: `settingsStore.load()` handles legacy `darkMode` boolean → `theme` field and legacy `'notion'` → `'dark'` theme.
-- **Settings pipeline**: Add field to `SettingsState` → add default in `DEFAULT_SETTINGS` (`shared/constants.ts`) → handle missing field in `load()` (fallback to default) → `update()` auto-persists → build UI in `components/settings/`.
-- **Pomodoro phases**: Work → break/longBreak → work cycle. Long break every N sessions. Respects `autoStartBreaks`/`autoStartWork` flags.
-- **Card component** (`ui/Card.tsx`): standard wrapper with `NEU.raised` shadow.
-- **Responsive**: Sidebar on desktop, BottomNav on mobile (768px breakpoint).
-- **Page transitions**: Motion `AnimatePresence` with y-axis slide + fade (200ms).
-- **Animation springs**: Standard spring config: `stiffness: 400, damping: 25-30`. Toggle thumb: `stiffness: 500, damping: 30`. Sidebar collapse: `stiffness: 400, damping: 35`.
+- **Hook pattern**: `hooks/useEntity.ts` gives flat tables reactive CRUD for free (not-deleted filter, sort, create/update/remove via `db/repository.ts`). A hook that needs per-parent scoping or cascades (e.g. `useProjectTasks`, `useTaskBox`) stays bespoke on top of the same repository primitives instead of using `useEntity` directly.
+- **Cascade soft deletes**: still handled in hooks, not the DB (e.g. deleting a project soft-deletes its tasks). `db/repository.ts` deliberately does not own cross-table cascades.
+- **Recurrence spawn**: `db/taskOps.ts`'s `spawnNextOccurrence()` is the single implementation shared by both triggers that can complete a recurring task — the interactive toggle (`useProjectTasks`/`useTaskBox`'s `toggleProjectTask`) and the background catch-up scan (`useRecurringTaskCheck`, for tasks completed while the app wasn't running).
+- **Staleness counter** (`hooks/useStalenessScore.ts`): sum of every incomplete task's age² in days, recomputed every minute; higher is worse. Setting names (`pointsCounterVisible`, `pointsColorFixed`) are legacy from when this was a points/gamification feature — kept as-is, no gamification/XP system remains anywhere in the code.
+- **Settings pipeline**: add a field to `UserSettings` (`shared/types.ts`) → add its default to `DEFAULT_SETTINGS` (`shared/constants.ts`, enforced by `satisfies PersistedSettings`) → build UI in `components/settings/` calling `settingsStore.getState().update({ myField: value })` or a dedicated action. No separate "handle missing field in `load()`" step is needed unless the new field needs a non-default migration — `pickKnownSettings` + the `...DEFAULT_SETTINGS` spread already covers "missing".
+- **Worker singleton**: `useTimer` keeps `timer.worker.ts` as a module-level singleton to survive HMR/StrictMode double-mounts.
+- **Drag-and-drop**: `utils/taskDnd.ts` + `hooks/useReorderList.ts` are the shared primitives behind every draggable list (project tasks, box tabs, task selection rows) — payload encode/decode, copy-vs-move modifier detection, and the drag-index/hit-test bookkeeping for row reordering.
+- **Animation springs**: `stiffness: 400, damping: 25–30` standard; toggle thumb `500/30`.
 
 ## Features
 
-Beyond the core timer, the app includes:
+- **Activity Time Tracking**: core timer (`HomePage`), manual entry, daily budgets.
+- **Projects & Tasks**: folder hierarchy, tabbed project editor (`ProjectsView`/`ProjectTabs`), recurrence (daily/weekly/monthly), drag-reorder, `maxTasksPerProject` limit.
+- **Time-boxing**: today/week/later boxes on every task (`ProjectTask.timeBox`), manual promote/demote, optional `scheduledDate` pin, automatic daily rollover. Replaces the old date-scoped Today List.
+- **Inbox**: quick-capture, sort into projects, soft-delete with an explicit undelete ("Undo") path.
+- **Analytics**: daily/weekly/monthly summaries + per-activity streaks (Recharts), embedded as a tab inside `/settings` (not its own route).
+- **Staleness Counter**: quadratic incomplete-task-age score, visibility toggle (`pointsCounterVisible`).
+- **Vault Sync** (Tauri-only): Obsidian-style file sync for activities, projects, projectTasks, timeEntries, todayTasks (legacy round-trip only), inbox, settings, folders. Blocks app rendering on non-web Tauri platforms until vault setup is completed (`VaultSetupModal`).
 
-- **Projects & Tasks**: Folder hierarchy, tabbed project editor, task recurrence (daily/weekly/monthly), drag-reorder, max tasks per project limit
-- **Today View**: Pick tasks from projects into daily list, completion tracking, focus mode (fullscreen overlay), reordering
-- **Habits**: Boolean (checkbox) and numeric (with target/unit) types, weekly tracker grid, streak calculation
-- **Analytics**: Daily/weekly/monthly activity summaries via Recharts, streak analysis, 7-day averages
-- **Notes**: Markdown-enabled (headings, bold, italic, code, links, lists), pin/sort, color-coded
-- **Mind Maps**: Hierarchical node-based brainstorming, "Mind Unload" rapid-capture mode, focus countdown timer, export
-- **Inbox**: Quick-capture for ideas/tasks, sort into projects
-- **Pomodoro**: Work/break/long-break cycles, customizable presets, activity linking, auto-start options
-- **Fatigue Check**: 10-question fatigue scale (FAS), scoring to distinguish laziness vs. burnout
-- **Procrastination Checker**: Detects configurable risk keywords in task titles, 5-second countdown confirmation modal
-- **Points/Staleness Counter**: Gamified scoring based on incomplete task age (quadratic formula), visibility toggle
-- **Task Selection**: Unified view of all projects/tasks grouped by folder, bulk selection
-- **Gamification/XP**: XP earned from create/complete actions across the app, daily streaks, levels (quadratic formula), longest streak tracking. All state in settingsStore. UI in `components/gamification/`. Controlled by `gamificationEnabled` setting.
-- **Task Timer**: Per-task countdown timer separate from Pomodoro. Links to today tasks, can auto-start/stop activity timer via linked activity. Uses `taskTimerStore` + `useTaskTimer` hook. Overtime tracking when countdown reaches zero.
-- **PDF Documents**: Store and manage PDF files (Blob data in IndexedDB). Pin/sort functionality similar to notes. `pdfDocuments` table (v9).
-- **Review**: Review/reflection page at `/review`. Components in `components/review/`.
-- **Vault Sync** (Tauri-only): Obsidian-style file-based sync in `vault/`. Second sync system independent from REST sync. Controlled by `vaultEnabled`/`vaultPath`/`vaultSetupDone` settings. Blocks app rendering if Tauri + vault not configured.
+**Deleted in the 2026-07 refactor** (do not re-introduce without checking the refactor plan): habits, habit tracking, mind maps, Pomodoro, task timer, notes ("Ideas"), PDF documents, fatigue check, review page, REST sync + Express server, gamification/XP, procrastination checker, timer notifications, 8 of 11 themes, 3 of 5 languages (zh/es/pt).
 
-## Utilities Reference
+## i18n
 
-| File | Key Exports |
-|------|-------------|
-| `utils/uuid.ts` | `generateId()` (UUID v7), `getDeviceId()` (localStorage-backed) |
-| `utils/time.ts` | `formatDuration()`, `formatDurationLong()`, `getLogicalDate()`, `getTodayRange()`, `getProgressRatio()`, `getOverfillColor()` |
-| `utils/colors.ts` | `getNextColor()`, `resetColorIndex()` — cyclic color assignment from `ACTIVITY_COLORS` |
-| `utils/shadows.ts` | `NEU` object (11 shadow tokens as CSS var references) |
-| `utils/recurrence.ts` | `getNextOccurrenceDate()`, `shouldCreateRecurrence()` |
-| `utils/markdown.ts` | `renderMarkdown()`, `renderLineMd()`, `stripMarkdown()` |
-| `utils/procrastinationCheck.ts` | `isProcrastinationRisky()`, `getMatchedWords()` |
-| `utils/streak.ts` | `awardXP(xpAmount)`, `XP_VALUES` — gamification system, streak tracking, level calculation |
-
-## Conventions
-
-- Path alias: `@shared/*` → `../shared/*` (configured in vite.config.ts and tsconfig.json)
-- Styles: Tailwind utility classes + inline `style={{ boxShadow: NEU.xxx }}` for shadows
-- No hard deletes — always set `deletedAt`
-- Timestamps are ISO 8601 strings
-- All IDs are UUID v7 (time-sortable) via `generateId()`
-- Color-coded entities: activities, projects, notes, habits all have a `color` field
-- i18n: 5 languages (en, zh, es, pt, ru). `TranslationKey` type auto-derived from `en` keys. Add keys to all 5 language blocks in `i18n/translations.ts`.
+2 languages: `en`, `ru` (`shared/types.ts`'s `Language` union). `TranslationKey` is derived as `keyof typeof en` and exported from `i18n/translations.ts`; `ru` is typed as `Record<TranslationKey, string>`, so a key missing from `ru` is a compile error. Add new keys to **both** blocks. `settingsStore.load()` falls back a saved `zh`/`es`/`pt` row to `'en'`.
 
 ## How to Add...
 
-### New Page (7+ files)
+### New Page
 
-> See [DEPENDENCIES_AND_PITFALLS.md](.planning/research/DEPENDENCIES_AND_PITFALLS.md#navigation-system-dependency-chain) for the full dependency chain and current route inventory.
-
-1. **`client/src/pages/MyPage.tsx`** — Create page component.
-2. **`client/src/App.tsx`** — Add `<Route path="/mypage" element={<MyPage />} />`.
-3. **`client/src/components/layout/AppShell.tsx`** — Add to `WIDE_PAGES`/`FULL_BLEED_PAGES` if needed.
-4. **`client/src/components/layout/Sidebar.tsx`** — Add to `allNavItems` array with route, label key, icon.
-5. **`client/src/components/layout/BottomNav.tsx`** — Add to `allMainNavItems` (always visible, max 4) OR `allMoreNavItems` (in "More" popup).
-6. **`client/src/components/layout/DesktopBottomNav.tsx`** — Add to `allNavItems` array.
-7. **`client/src/components/layout/DropdownNav.tsx`** — Add to `allNavItems` array **AND** the `iconMap` record (easy to miss).
-8. **`client/src/i18n/translations.ts`** — Add `'nav.mypage': 'My Page'` to all 5 language blocks.
-
-**Note**: SVG icons are duplicated across all 4 nav components (different sizes). Any icon change must be replicated 4 times.
+1. **`client/src/pages/MyPage.tsx`** — page component.
+2. **`client/src/App.tsx`** — add the `<Route>`.
+3. **`AppShell.tsx`** — add to `WIDE_PAGES`/`FULL_BLEED_PAGES` if needed.
+4. **`Sidebar.tsx`**, **`BottomNav.tsx`**, **`DesktopBottomNav.tsx`**, **`DropdownNav.tsx`** — add the nav item to each (`DropdownNav` also needs an `iconMap` entry). SVG icons are duplicated across all four — any icon change repeats 4 times.
+5. **`i18n/translations.ts`** — add `'nav.mypage'` to both `en` and `ru`.
 
 ### New Dexie Table
 
-1. **`shared/types.ts`** — Define the entity interface (must include `id`, `createdAt`, `updatedAt`, `deletedAt`, `deviceId`).
-2. **`client/src/db/index.ts`** — Bump version number. Add table to new `.version(N).stores({ myTable: 'id, ...' })` call. Add `EntityTable` type declaration. If existing rows need migration, add `.upgrade(tx => ...)`.
-3. **`client/src/hooks/useMyData.ts`** — Create hook wrapping `useLiveQuery()` with CRUD operations.
-4. **`client/src/db/seed.ts`** — Optionally seed default data.
+1. **`shared/types.ts`** — entity interface (`id`/`createdAt`/`updatedAt`/`deletedAt`/`deviceId`).
+2. **`client/src/db/index.ts`** — bump the version, add a `.stores({...})` call (reuse the previous version's unchanged tables verbatim — Dexie upgrade transactions can only touch tables named in their own version's call).
+3. **`client/src/hooks/useMyData.ts`** — wrap `hooks/useEntity.ts` if it's a flat table, or write a bespoke hook on `db/repository.ts` primitives otherwise.
+4. **`client/src/db/seed.ts`** — optional default data.
+5. If vault-synced: add a `vault/vaultLayout.ts` entry + a `vault/vaultKinds.ts` object (see Architecture above).
 
 ### New Settings Field
 
-1. **`shared/constants.ts`** — Add default value to `DEFAULT_SETTINGS`.
-2. **`client/src/stores/settingsStore.ts`** — Add field to `SettingsState` interface. In `load()`, add fallback: `myField: saved.myField ?? DEFAULT_SETTINGS.myField`.
-3. **Build UI component** in `components/settings/` that reads from `settingsStore` and calls `settingsStore.getState().update({ myField: value })`.
-4. **`client/src/pages/SettingsPage.tsx`** — Add component to the settings sections array.
-5. **`client/src/i18n/translations.ts`** — Add label/description keys to all 5 language blocks.
+1. **`shared/types.ts`** — add the field to `UserSettings`.
+2. **`shared/constants.ts`** — add its default to `DEFAULT_SETTINGS` (the `satisfies PersistedSettings` check fails to compile if you forget).
+3. Build UI in `components/settings/` calling `update({ myField })` or a dedicated action.
+4. **`i18n/translations.ts`** — labels in both `en`/`ru` if the UI needs them.
 
 ### New Translation Keys
 
-Add the key to all 5 language blocks in `i18n/translations.ts` (en, zh, es, pt, ru). `TranslationKey` is auto-derived as `keyof typeof en` — no manual type updates needed. Use `t('my.key')` via `useTranslation()` hook.
+Add to both `en` and `ru` blocks in `i18n/translations.ts`. `TranslationKey` is derived from `en`; `ru`'s `Record<TranslationKey, string>` annotation makes a missing key a type error.
 
-## API Endpoints
+## Deep Documentation (historical — pre-refactor)
 
-```
-GET  /api/health                      → { status, timestamp }
-GET  /api/sync/changes?since=ISO8601  → SyncResponse (pull)
-POST /api/sync/changes                → { status, serverTime } (push)
-     Header: X-API-Key (optional)
-     Body: SyncPayload (activities[], timeEntries[], settings, lastSyncedAt)
-```
-
-Server LWW uses `INSERT ... ON CONFLICT(id) DO UPDATE` with per-field `CASE WHEN excluded.updatedAt > table.updatedAt` logic.
-
-## Deep Documentation (.planning/research/)
-
-For detailed information beyond this overview, see these research docs (4,000+ lines total):
-
-| Document | Lines | What It Covers |
-|----------|-------|----------------|
-| [FEATURE_INTERACTIONS.md](.planning/research/FEATURE_INTERACTIONS.md) | 971 | 25 cross-feature connections, cascade chains, shared state matrix, timer store contention |
-| [DATA_FLOWS.md](.planning/research/DATA_FLOWS.md) | 1,519 | All 21 hooks (inputs/outputs/side effects), all 6 stores, 12 feature flow traces, gamification system, sync flow, worker protocols |
-| [COMPONENT_CATALOG.md](.planning/research/COMPONENT_CATALOG.md) | 1,024 | All 88 components with props interfaces, shadow tokens, animations, hooks consumed, page composition, dependency graph |
-| [DEPENDENCIES_AND_PITFALLS.md](.planning/research/DEPENDENCIES_AND_PITFALLS.md) | 461 | Table→hook map, settings impact map, 16 pitfalls, modification checklists, cascade chains, CLAUDE.md accuracy report |
-| [SUMMARY.md](.planning/research/SUMMARY.md) | 80 | Executive synthesis, discrepancy list, open questions |
-
-**When to consult these docs:**
-- Adding a new feature → check FEATURE_INTERACTIONS for what connects to what
-- Creating/modifying a hook → check DATA_FLOWS for the standard pattern and side effects
-- Building UI → check COMPONENT_CATALOG for existing components, props, shadow conventions
-- Modifying settings/themes/nav/tables → check DEPENDENCIES_AND_PITFALLS for the full change checklist
+`.planning/research/*.md` (FEATURE_INTERACTIONS, DATA_FLOWS, COMPONENT_CATALOG, DEPENDENCIES_AND_PITFALLS, SUMMARY) describe the codebase **before** the 2026-07-21 trim refactor. They are useful for historical "why did this exist" context but actively wrong about current routes, tables, stores, and features — do not trust them for present-tense facts. For what changed and why, read `docs/superpowers/plans/2026-07-21-refactor-trim-and-restructure.md`.
