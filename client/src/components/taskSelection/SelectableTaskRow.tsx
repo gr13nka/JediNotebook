@@ -2,12 +2,21 @@ import React, { useMemo, useState, useCallback } from 'react';
 import type { ProjectTask, TimeBox } from '@shared/types';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import type { TranslationKey } from '../../i18n/translations';
 import { ContextMenu } from '../ui/ContextMenu';
 import { InlineTextEdit } from '../ui/InlineTextEdit';
 
+/** Canonical box order; each row offers the two entries that aren't its current box. */
+const MOVE_TARGETS: TimeBox[] = ['today', 'week', 'later'];
+const MOVE_LABEL_KEYS: Record<TimeBox, TranslationKey> = {
+  today: 'taskSelection.toToday',
+  week: 'taskSelection.toWeek',
+  later: 'taskSelection.toLater',
+};
+
 interface SelectableTaskRowProps {
   task: ProjectTask;
-  /** Moves the task to `target` — the row derives which target to offer from `task.timeBox` itself. */
+  /** Moves the task to any box; the row offers the two boxes it is not currently in. */
   onMoveToBox: (taskId: string, target: TimeBox) => void;
   onToggleComplete: () => void;
   onDelete: () => void;
@@ -170,18 +179,19 @@ export function SelectableTaskRow({
             </span>
           )}
 
-          {/* Contextual move button: promote out of today, or into it */}
+          {/* Quick-move buttons: the two boxes this task is not currently in */}
           {!isCompleted && (
-            <button
-              onClick={() => onMoveToBox(task.id, isInToday ? 'week' : 'today')}
-              className={`flex-shrink-0 flex items-center justify-center h-6 px-2 rounded-full text-[11px] font-medium whitespace-nowrap transition-colors ${
-                isInToday
-                  ? 'bg-accent text-white'
-                  : 'text-text-muted hover:text-accent hover:bg-accent/10'
-              }`}
-            >
-              {isInToday ? t('taskSelection.toWeek') : t('taskSelection.toToday')}
-            </button>
+            <div className="flex-shrink-0 flex items-center gap-1">
+              {MOVE_TARGETS.filter((target) => target !== task.timeBox).map((target) => (
+                <button
+                  key={target}
+                  onClick={() => onMoveToBox(task.id, target)}
+                  className="flex items-center justify-center h-6 px-2 rounded-full text-[11px] font-medium whitespace-nowrap text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
+                >
+                  {t(MOVE_LABEL_KEYS[target])}
+                </button>
+              ))}
+            </div>
           )}
         </div>
         {isDragOver === 'below' && (

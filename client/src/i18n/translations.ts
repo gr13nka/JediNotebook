@@ -134,6 +134,7 @@ const en = {
   'taskSelection.boxAll': 'All',
   'taskSelection.toToday': '→ Today',
   'taskSelection.toWeek': '→ Week',
+  'taskSelection.toLater': '→ Later',
 
   // Today
   'today.title': 'Today',
@@ -428,6 +429,7 @@ const ru: Record<TranslationKey, string> = {
   'taskSelection.boxAll': 'Все',
   'taskSelection.toToday': '→ Сегодня',
   'taskSelection.toWeek': '→ Неделя',
+  'taskSelection.toLater': '→ Позже',
   'today.title': 'Сегодня',
   'today.allDone': 'Всё готово!',
   'today.allDoneDesc': 'Вы выполнили все задачи на сегодня.',
