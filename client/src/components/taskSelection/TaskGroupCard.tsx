@@ -14,6 +14,16 @@ interface TaskGroupCardProps {
   completedTasks: ProjectTask[];
   onMoveToBox: (taskId: string, target: TimeBox) => void;
   sortMode: TaskSortMode;
+  /**
+   * External gate ANDed with `sortMode === 'custom'` below to get the actual
+   * drag-enabled state. `TaskSelectionView` passes `false` whenever a
+   * non-'all' box tab is filtering the visible task/project list — dragging
+   * a filtered subset would renumber it over the global `sortOrder`/
+   * `timeBoxOrder`, interleaving oddly with the hidden rows once the filter
+   * is lifted. Defaults to `true` so callers that never filter don't have to
+   * pass it.
+   */
+  dragEnabled?: boolean;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   draggableProject?: boolean;
@@ -36,6 +46,7 @@ export function TaskGroupCard({
   completedTasks,
   onMoveToBox,
   sortMode,
+  dragEnabled = true,
   isCollapsed = false,
   onToggleCollapse,
   draggableProject,
@@ -50,7 +61,7 @@ export function TaskGroupCard({
 
   const sortedTasks = useMemo(() => sortTasks(tasks, sortMode), [tasks, sortMode]);
 
-  const isDragEnabled = sortMode === 'custom';
+  const isDragEnabled = sortMode === 'custom' && dragEnabled;
 
   // stopPropagation: this card's task rows sit inside a project row that is
   // itself draggable (for reordering projects) — without it, a task-row drag

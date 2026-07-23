@@ -19,19 +19,49 @@ import type { ProjectTask, RecurrenceRule, TimeBox } from '@shared/types';
  */
 
 /**
- * Count of active (non-deleted) tasks currently in `timeBox`, across all
- * projects. Used to append new/moved tasks to the end of a box's manual
- * order (`timeBoxOrder`) — by `createProjectTask`/`spawnNextOccurrence`
- * below, and by `useTaskRollover` for the box moves it applies.
+ * One past the highest `timeBoxOrder` among `orders` (assumed to be every
+ * active task's order in some box), or `0` if `orders` is empty. Pure —
+ * split out of `nextBoxOrder` below purely so this arithmetic can be unit
+ * tested without a Dexie test double (no fake-indexeddb in this project's
+ * test setup; see `taskOps.test.ts`).
  */
-export async function countActiveInBox(timeBox: TimeBox): Promise<number> {
-  return db.projectTasks.filter((t) => !t.deletedAt && t.timeBox === timeBox).count();
+export function nextOrderAfter(orders: number[]): number {
+  return orders.length === 0 ? 0 : Math.max(...orders) + 1;
+}
+
+/**
+ * Append position for a new/moved task at the end of `timeBox`'s manual
+ * order, across all projects. Used by `createProjectTask`/
+ * `spawnNextOccurrence` below, by `useTaskBox.moveTaskToBox`, and by
+ * `useTaskRollover` for the box moves it applies.
+ *
+ * Deliberately `max(timeBoxOrder) + 1`, NOT a count of active tasks: a count
+ * collides as soon as it no longer equals one-past-the-max, which happens
+ * two ways —
+ *  (a) a task moves OUT of the box, leaving a gap (e.g. orders [0, 1, 2],
+ *      the order-1 task moves elsewhere → [0, 2]; the active count is now 2,
+ *      which lands a new append ON the existing order-2 task instead of
+ *      after it), and
+ *  (b) soft-deleted rows: the v10 migration stamps a `timeBoxOrder` on
+ *      every row, deleted or not, so a box's count of *active* rows can sit
+ *      below its true max the moment anything in it has ever been deleted.
+ * `max + 1` over active rows only is immune to both, since it reads the
+ * actual high-water mark instead of inferring it from a count.
+ */
+export async function nextBoxOrder(timeBox: TimeBox): Promise<number> {
+  const orders: number[] = [];
+  await db.projectTasks
+    .where('timeBox')
+    .equals(timeBox)
+    .filter((t) => !t.deletedAt)
+    .each((t) => orders.push(t.timeBoxOrder));
+  return nextOrderAfter(orders);
 }
 
 /**
  * Appends a new task to `projectId`'s active task list (sortOrder = current
  * active count) and to the end of the `'later'` box (every new task starts
- * unboxed in `'later'`; `timeBoxOrder` = current active count in that box).
+ * unboxed in `'later'`; `timeBoxOrder` = `nextBoxOrder('later')`).
  */
 export async function createProjectTask(
   projectId: string,
@@ -39,7 +69,7 @@ export async function createProjectTask(
   recurrenceRule?: RecurrenceRule | null,
 ): Promise<ProjectTask> {
   const all = notDeleted(await db.projectTasks.where('projectId').equals(projectId).toArray());
-  const timeBoxOrder = await countActiveInBox('later');
+  const timeBoxOrder = await nextBoxOrder('later');
   const task = newRecord({
     projectId,
     title,
@@ -110,7 +140,7 @@ export async function spawnNextOccurrence(task: ProjectTask): Promise<void> {
   const all = notDeleted(
     await db.projectTasks.where('projectId').equals(task.projectId).toArray(),
   );
-  const timeBoxOrder = await countActiveInBox(task.timeBox);
+  const timeBoxOrder = await nextBoxOrder(task.timeBox);
   await db.projectTasks.add(newRecord({
     projectId: task.projectId,
     title: task.title,

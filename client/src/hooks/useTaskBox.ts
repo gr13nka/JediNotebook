@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { isActive, notDeleted, updateRecord } from '../db/repository';
-import { countActiveInBox, toggleProjectTask } from '../db/taskOps';
+import { nextBoxOrder, toggleProjectTask } from '../db/taskOps';
 import type { ProjectTask, TimeBox } from '@shared/types';
 
 /** A box task joined with the project fields the box views render inline. */
@@ -24,7 +24,7 @@ export interface EnrichedBoxTask extends ProjectTask {
  * isn't forced to mount a box's live query just to reach it.
  */
 export async function moveTaskToBox(taskId: string, target: TimeBox): Promise<void> {
-  const timeBoxOrder = await countActiveInBox(target);
+  const timeBoxOrder = await nextBoxOrder(target);
   await updateRecord(db.projectTasks, taskId, {
     timeBox: target,
     timeBoxOrder,

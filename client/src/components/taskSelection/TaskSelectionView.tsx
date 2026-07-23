@@ -213,6 +213,14 @@ export function TaskSelectionView() {
 
   const hasFolders = folderGroups.some((fg) => fg.folder !== null);
 
+  // Grouped-mode drag (project rows here, and TaskGroupCard's internal task
+  // rows) is only meaningful when the FULL task set is on screen — under a
+  // filtered box tab, a drag would renumber just the visible subset over the
+  // global sortOrder/timeBoxOrder, interleaving oddly with the hidden rows
+  // once the filter is lifted. ANDed with `sortMode === 'custom'` at each use
+  // site (project-row drag below, and inside TaskGroupCard for task drag).
+  const groupDragEnabled = boxTab === 'all';
+
   // Quick add task
   const handleAddTask = async () => {
     const title = newTaskTitle.trim();
@@ -516,6 +524,7 @@ export function TaskSelectionView() {
                         completedTasks={group.completedTasks}
                         onMoveToBox={moveTaskToBox}
                         sortMode={groupedSortMode}
+                        dragEnabled={groupDragEnabled}
                         isCollapsed={collapsedProjects.has(group.project.id)}
                         onToggleCollapse={() => toggleProject(group.project.id)}
                       />
@@ -531,8 +540,8 @@ export function TaskSelectionView() {
                 <motion.div
                   key={group.project.id}
                   variants={item}
-                  onDragOver={groupedSortMode === 'custom' ? rowProps.onDragOver : undefined}
-                  onDrop={groupedSortMode === 'custom' ? rowProps.onDrop : undefined}
+                  onDragOver={groupedSortMode === 'custom' && groupDragEnabled ? rowProps.onDragOver : undefined}
+                  onDrop={groupedSortMode === 'custom' && groupDragEnabled ? rowProps.onDrop : undefined}
                 >
                   <TaskGroupCard
                     project={group.project}
@@ -540,6 +549,7 @@ export function TaskSelectionView() {
                     completedTasks={group.completedTasks}
                     onMoveToBox={moveTaskToBox}
                     sortMode={groupedSortMode}
+                    dragEnabled={groupDragEnabled}
                     isCollapsed={collapsedProjects.has(group.project.id)}
                     onToggleCollapse={() => toggleProject(group.project.id)}
                     draggableProject={groupedSortMode === 'custom'}
