@@ -13,7 +13,7 @@ import { TaskGroupCard, type TaskSortMode } from './TaskGroupCard';
 import { FolderGroupSection } from './FolderGroupSection';
 import { SelectableTaskRow } from './SelectableTaskRow';
 import { db } from '../../db';
-import { createProjectTask, deleteProjectTaskCascade, toggleProjectTask } from '../../db/taskOps';
+import { createProjectTask, deleteProjectTask, toggleProjectTask } from '../../db/taskOps';
 import type { ProjectTask, TimeBox } from '@shared/types';
 
 const container = {
@@ -420,7 +420,7 @@ export function TaskSelectionView() {
                   task={task}
                   onMoveToBox={moveTaskToBox}
                   onToggleComplete={() => toggleProjectTask(task.id)}
-                  onDelete={() => deleteProjectTaskCascade(task.id)}
+                  onDelete={() => deleteProjectTask(task.id)}
                   onRename={async (title) => {
                     await db.projectTasks.update(task.id, {
                       title,
@@ -471,7 +471,7 @@ export function TaskSelectionView() {
                         task={task}
                         onMoveToBox={moveTaskToBox}
                         onToggleComplete={() => toggleProjectTask(task.id)}
-                        onDelete={() => deleteProjectTaskCascade(task.id)}
+                        onDelete={() => deleteProjectTask(task.id)}
                         onRename={async (title) => {
                           await db.projectTasks.update(task.id, {
                             title,

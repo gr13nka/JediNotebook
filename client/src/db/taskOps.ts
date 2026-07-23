@@ -6,7 +6,7 @@ import type { ProjectTask, RecurrenceRule, TimeBox } from '@shared/types';
 
 /**
  * ProjectTask writes that need to live outside a single project's context.
- * `createProjectTask`/`deleteProjectTaskCascade`: Inbox sorting and the
+ * `createProjectTask`/`deleteProjectTask`: Inbox sorting and the
  * cross-project Task Selection view both create/delete tasks in whichever
  * project the user picks, so they can't scope a `useProjectTasks(projectId)`
  * hook (that would mean instantiating one per task in a loop).
@@ -15,7 +15,7 @@ import type { ProjectTask, RecurrenceRule, TimeBox } from '@shared/types';
  * shared by every place a task's completion is flipped outside a scoped
  * `useProjectTasks` — same cross-project constraint as create/delete above.
  * `useProjectTasks` calls all four, so each rule (append-sortOrder,
- * delete-cascade, spawn gating, completion flip) lives in exactly one place.
+ * soft-delete, spawn gating, completion flip) lives in exactly one place.
  */
 
 /**
@@ -56,19 +56,9 @@ export async function createProjectTask(
   return task;
 }
 
-/** Soft-deletes a task and every today-task pointing at it, atomically. */
-export async function deleteProjectTaskCascade(taskId: string): Promise<void> {
-  await db.transaction('rw', [db.projectTasks, db.todayTasks], async () => {
-    await softDelete(db.projectTasks, taskId);
-    const todayTasks = await db.todayTasks
-      .where('projectTaskId')
-      .equals(taskId)
-      .filter((t) => !t.deletedAt)
-      .toArray();
-    for (const tt of todayTasks) {
-      await softDelete(db.todayTasks, tt.id);
-    }
-  });
+/** Soft-deletes a task. */
+export async function deleteProjectTask(taskId: string): Promise<void> {
+  await softDelete(db.projectTasks, taskId);
 }
 
 /**

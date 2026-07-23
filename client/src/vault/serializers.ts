@@ -108,9 +108,11 @@ export function serializeProjectTasksFile(
     })),
   };
 
-  // Human-readable checklist body
+  // Human-readable checklist body. Presentation only — deserializeProjectTasks
+  // reads the `tasks` frontmatter array above, never this text, so the
+  // `scheduledDate` suffix here is cosmetic and carries no round-trip risk.
   const checklist = activeTasks
-    .map(t => `- [${t.isCompleted ? 'x' : ' '}] ${t.title}`)
+    .map(t => `- [${t.isCompleted ? 'x' : ' '}] ${t.title}${t.scheduledDate ? ` 📅 ${t.scheduledDate}` : ''}`)
     .join('\n');
 
   return {

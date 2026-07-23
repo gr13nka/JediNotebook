@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { notDeleted, updateRecord } from '../db/repository';
-import { createProjectTask, deleteProjectTaskCascade, toggleProjectTask } from '../db/taskOps';
+import { createProjectTask, deleteProjectTask, toggleProjectTask } from '../db/taskOps';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 // Per-project query with recurrence-spawn logic on completion — doesn't fit
@@ -36,8 +36,7 @@ export function useProjectTasks(projectId: string | null) {
   const updateRecurrence = (id: string, recurrenceRule: RecurrenceRule | null) =>
     updateRecord(db.projectTasks, id, { recurrenceRule });
 
-  // Cascade: soft-delete the task, then any today-tasks pointing at it.
-  const deleteTask = (id: string) => deleteProjectTaskCascade(id);
+  const deleteTask = (id: string) => deleteProjectTask(id);
 
   const reorderTasks = async (orderedIds: string[]) => {
     for (let i = 0; i < orderedIds.length; i++) {
