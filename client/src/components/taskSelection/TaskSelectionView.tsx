@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAllProjectTasks } from '../../hooks/useAllProjectTasks';
-import { useTodayTasks } from '../../hooks/useTodayTasks';
+import { useTaskBox } from '../../hooks/useTaskBox';
 import { useProjects } from '../../hooks/useProjects';
 import { useReorderList } from '../../hooks/useReorderList';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -39,7 +39,11 @@ function getStalenessScore(createdAt: string): number {
 export function TaskSelectionView() {
   const { t } = useTranslation();
   const { groups, folderGroups } = useAllProjectTasks();
-  const { todayTasks, toggleToday } = useTodayTasks();
+  // 5E replaces this: the box-tabs UI (plan 5.10) retires the today
+  // pill/toggle entirely. Until then, this borrows useTaskBox('today') for
+  // today-membership + its moveToBox op rather than re-deriving the
+  // promote-clears-pin rule (see useTaskBox's doc comment) a second time here.
+  const { tasks: todayTasks, moveToBox } = useTaskBox('today');
   const { projects, reorderProjects } = useProjects();
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
@@ -62,9 +66,15 @@ export function TaskSelectionView() {
   const [flatCompletedCollapsed, setFlatCompletedCollapsed] = useState(true);
 
   const todayTaskIds = useMemo(
-    () => new Set(todayTasks.map((t) => t.projectTaskId)),
+    () => new Set(todayTasks.map((t) => t.id)),
     [todayTasks],
   );
+
+  // in-today → move to 'week' (demote back off the pill), not-in-today →
+  // move to 'today' (the one-tap promote this view offers pre-5.10).
+  const toggleToday = useCallback((taskId: string, _projectId: string) => {
+    moveToBox(taskId, todayTaskIds.has(taskId) ? 'week' : 'today');
+  }, [todayTaskIds, moveToBox]);
 
   // Build project lookup for flat view
   const projectMap = useMemo(() => {

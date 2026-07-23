@@ -2,7 +2,9 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TimerDisplay } from '../components/timer/TimerDisplay';
 import { TodayTaskCard } from '../components/today/TodayTaskCard';
-import { useTodayTasks } from '../hooks/useTodayTasks';
+import { useTaskBox } from '../hooks/useTaskBox';
+import { db } from '../db';
+import { updateRecord } from '../db/repository';
 import { useTranslation } from '../i18n/useTranslation';
 import { NEU } from '../utils/shadows';
 
@@ -42,7 +44,12 @@ const ExpandIcon = () => (
 
 export function TodayPage() {
   const { t } = useTranslation();
-  const { todayTasks, completeTask, reorderTodayTasks, updateTaskTitle } = useTodayTasks();
+  const { tasks: todayTasks, toggleComplete, reorderBox } = useTaskBox('today');
+  // Title editing isn't part of useTaskBox's contract (it's a plain field
+  // edit, not a box operation) — same inline-repository pattern Task
+  // Selection's row rename already uses.
+  const updateTaskTitle = (taskId: string, title: string) =>
+    updateRecord(db.projectTasks, taskId, { title });
   const [hideCompleted, setHideCompleted] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
 
@@ -69,8 +76,8 @@ export function TodayPage() {
     [ids[idx - 1], ids[idx]] = [ids[idx], ids[idx - 1]];
     // Append completed task ids to preserve their order
     const completedIds = completedTasks.map((t) => t.id);
-    reorderTodayTasks([...ids, ...completedIds]);
-  }, [incompleteTasks, completedTasks, reorderTodayTasks]);
+    reorderBox([...ids, ...completedIds]);
+  }, [incompleteTasks, completedTasks, reorderBox]);
 
   const handleMoveDown = useCallback((taskId: string) => {
     const idx = incompleteTasks.findIndex((t) => t.id === taskId);
@@ -78,12 +85,12 @@ export function TodayPage() {
     const ids = incompleteTasks.map((t) => t.id);
     [ids[idx], ids[idx + 1]] = [ids[idx + 1], ids[idx]];
     const completedIds = completedTasks.map((t) => t.id);
-    reorderTodayTasks([...ids, ...completedIds]);
-  }, [incompleteTasks, completedTasks, reorderTodayTasks]);
+    reorderBox([...ids, ...completedIds]);
+  }, [incompleteTasks, completedTasks, reorderBox]);
 
   const handleComplete = useCallback((taskId: string) => {
-    completeTask(taskId);
-  }, [completeTask]);
+    toggleComplete(taskId);
+  }, [toggleComplete]);
 
   const renderTaskCard = (task: typeof todayTasks[0], i: number, list: typeof todayTasks) => (
     <TodayTaskCard

@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
-import type { EnrichedTodayTask } from '../../hooks/useTodayTasks';
+import type { EnrichedBoxTask } from '../../hooks/useTaskBox';
 
 interface TodayTaskCardProps {
-  task: EnrichedTodayTask;
+  task: EnrichedBoxTask;
   onComplete: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
@@ -28,12 +28,12 @@ export function TodayTaskCard({
   task, onComplete, onMoveUp, onMoveDown, onEditTitle, isFirst,
 }: TodayTaskCardProps) {
   const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState(task.taskTitle);
+  const [editValue, setEditValue] = useState(task.title);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setEditValue(task.taskTitle);
-  }, [task.taskTitle]);
+    setEditValue(task.title);
+  }, [task.title]);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -46,10 +46,10 @@ export function TodayTaskCard({
   const handleSave = () => {
     setEditing(false);
     const trimmed = editValue.trim();
-    if (trimmed && trimmed !== task.taskTitle) {
+    if (trimmed && trimmed !== task.title) {
       onEditTitle(trimmed);
     } else {
-      setEditValue(task.taskTitle);
+      setEditValue(task.title);
     }
   };
 
@@ -59,7 +59,7 @@ export function TodayTaskCard({
       handleSave();
     } else if (e.key === 'Escape') {
       setEditing(false);
-      setEditValue(task.taskTitle);
+      setEditValue(task.title);
     }
   };
 
@@ -82,14 +82,10 @@ export function TodayTaskCard({
     >
       {/* Top row: project info + reorder + complete */}
       <div className="flex items-center gap-2 mb-1.5">
-        {task.projectIcon && !task.isCompleted ? (
-          <span className="text-[12px] shrink-0 leading-none">{task.projectIcon}</span>
-        ) : (
-          <div
-            className="w-2.5 h-2.5 rounded-full shrink-0"
-            style={{ backgroundColor: task.isCompleted ? '#27AE60' : task.projectColor }}
-          />
-        )}
+        <div
+          className="w-2.5 h-2.5 rounded-full shrink-0"
+          style={{ backgroundColor: task.isCompleted ? '#27AE60' : task.projectColor }}
+        />
         <span className={`text-xs truncate ${task.isCompleted ? 'text-green' : 'text-text-muted'}`}>
           {task.projectName}
         </span>
@@ -138,7 +134,7 @@ export function TodayTaskCard({
               }`}
               style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
             >
-              {task.taskTitle}
+              {task.title}
             </span>
           </div>
         )}
