@@ -82,10 +82,14 @@ export function TodayTaskCard({
     >
       {/* Top row: project info + reorder + complete */}
       <div className="flex items-center gap-2 mb-1.5">
-        <div
-          className="w-2.5 h-2.5 rounded-full shrink-0"
-          style={{ backgroundColor: task.isCompleted ? '#27AE60' : task.projectColor }}
-        />
+        {task.projectIcon && !task.isCompleted ? (
+          <span className="text-[12px] shrink-0 leading-none">{task.projectIcon}</span>
+        ) : (
+          <div
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ backgroundColor: task.isCompleted ? '#27AE60' : task.projectColor }}
+          />
+        )}
         <span className={`text-xs truncate ${task.isCompleted ? 'text-green' : 'text-text-muted'}`}>
           {task.projectName}
         </span>

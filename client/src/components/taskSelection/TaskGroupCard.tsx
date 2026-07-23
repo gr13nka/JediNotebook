@@ -4,7 +4,7 @@ import { SelectableTaskRow } from './SelectableTaskRow';
 import { useProjectTasks } from '../../hooks/useProjectTasks';
 import { useReorderList } from '../../hooks/useReorderList';
 import { useTranslation } from '../../i18n/useTranslation';
-import type { Project, ProjectTask } from '@shared/types';
+import type { Project, ProjectTask, TimeBox } from '@shared/types';
 
 export type TaskSortMode = 'custom' | 'created' | 'points' | 'created-asc' | 'created-desc';
 
@@ -12,8 +12,7 @@ interface TaskGroupCardProps {
   project: Project;
   tasks: ProjectTask[];
   completedTasks: ProjectTask[];
-  onToggleToday: (projectTaskId: string, projectId: string) => void;
-  todayTaskIds: Set<string>;
+  onMoveToBox: (taskId: string, target: TimeBox) => void;
   sortMode: TaskSortMode;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -35,8 +34,7 @@ export function TaskGroupCard({
   project,
   tasks,
   completedTasks,
-  onToggleToday,
-  todayTaskIds,
+  onMoveToBox,
   sortMode,
   isCollapsed = false,
   onToggleCollapse,
@@ -64,7 +62,7 @@ export function TaskGroupCard({
     stopPropagation: true,
   });
 
-  const selectedCount = tasks.filter((t) => todayTaskIds.has(t.id)).length;
+  const selectedCount = tasks.filter((t) => t.timeBox === 'today').length;
 
   return (
     <div className="relative">
@@ -127,11 +125,10 @@ export function TaskGroupCard({
                   <SelectableTaskRow
                     key={task.id}
                     task={task}
-                    onToggleToday={() => onToggleToday(task.id, project.id)}
+                    onMoveToBox={onMoveToBox}
                     onToggleComplete={() => toggleTask(task.id)}
                     onDelete={() => deleteTask(task.id)}
                     onRename={(title) => updateTask(task.id, { title })}
-                    isInToday={todayTaskIds.has(task.id)}
                     draggable={isDragEnabled}
                     onDragStart={isDragEnabled ? rowProps.onDragStart : undefined}
                     onDragOver={isDragEnabled ? rowProps.onDragOver : undefined}
@@ -172,11 +169,10 @@ export function TaskGroupCard({
                           <SelectableTaskRow
                             key={task.id}
                             task={task}
-                            onToggleToday={() => onToggleToday(task.id, project.id)}
+                            onMoveToBox={onMoveToBox}
                             onToggleComplete={() => toggleTask(task.id)}
                             onDelete={() => deleteTask(task.id)}
                             onRename={(title) => updateTask(task.id, { title })}
-                            isInToday={todayTaskIds.has(task.id)}
                             draggable={false}
                           />
                         ))}

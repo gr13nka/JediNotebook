@@ -8,6 +8,28 @@ import type { ProjectTask, TimeBox } from '@shared/types';
 export interface EnrichedBoxTask extends ProjectTask {
   projectName: string;
   projectColor: string;
+  projectIcon: string;
+}
+
+/**
+ * Moves `taskId` into `target`, appending it to the end of that box's
+ * manual order. Moving INTO 'today' clears `scheduledDate` — a manual
+ * promote consumes the pin, same reasoning as rollover's auto-promote
+ * (see `computeRollover`): leaving the pin set would just re-fire on the
+ * next rollover even though the user already acted on it.
+ *
+ * Exported standalone (not just via `useTaskBox`'s return value) so a caller
+ * that only needs the move op — e.g. Task Selection's per-row promote
+ * button, which reads `task.timeBox` straight off the tasks it already has —
+ * isn't forced to mount a box's live query just to reach it.
+ */
+export async function moveTaskToBox(taskId: string, target: TimeBox): Promise<void> {
+  const timeBoxOrder = await countActiveInBox(target);
+  await updateRecord(db.projectTasks, taskId, {
+    timeBox: target,
+    timeBoxOrder,
+    ...(target === 'today' ? { scheduledDate: null } : {}),
+  });
 }
 
 /**
@@ -26,27 +48,16 @@ export function useTaskBox(box: TimeBox) {
     for (const task of rows) {
       const project = await db.projects.get(task.projectId);
       if (project && isActive(project)) {
-        enriched.push({ ...task, projectName: project.name, projectColor: project.color });
+        enriched.push({
+          ...task,
+          projectName: project.name,
+          projectColor: project.color,
+          projectIcon: project.icon ?? '',
+        });
       }
     }
     return enriched.sort((a, b) => a.timeBoxOrder - b.timeBoxOrder);
   }, [box]);
-
-  /**
-   * Moves `taskId` into `target`, appending it to the end of that box's
-   * manual order. Moving INTO 'today' clears `scheduledDate` — a manual
-   * promote consumes the pin, same reasoning as rollover's auto-promote
-   * (see `computeRollover`): leaving the pin set would just re-fire on the
-   * next rollover even though the user already acted on it.
-   */
-  const moveToBox = async (taskId: string, target: TimeBox) => {
-    const timeBoxOrder = await countActiveInBox(target);
-    await updateRecord(db.projectTasks, taskId, {
-      timeBox: target,
-      timeBoxOrder,
-      ...(target === 'today' ? { scheduledDate: null } : {}),
-    });
-  };
 
   /** Rewrites `timeBoxOrder` sequentially to match `orderedIds` — mirrors `useProjectTasks.reorderTasks`. */
   const reorderBox = async (orderedIds: string[]) => {
@@ -58,5 +69,5 @@ export function useTaskBox(box: TimeBox) {
   // Completion flip + recurrence-spawn gating live in toggleProjectTask so
   // every box consumer gets the same semantics instead of reimplementing them
   // (same reasoning as useProjectTasks.toggleTask).
-  return { tasks: tasks ?? [], moveToBox, reorderBox, toggleComplete: toggleProjectTask };
+  return { tasks: tasks ?? [], moveToBox: moveTaskToBox, reorderBox, toggleComplete: toggleProjectTask };
 }

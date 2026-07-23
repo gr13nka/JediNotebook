@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import type { ProjectTask } from '@shared/types';
+import type { ProjectTask, TimeBox } from '@shared/types';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ContextMenu } from '../ui/ContextMenu';
@@ -7,11 +7,11 @@ import { InlineTextEdit } from '../ui/InlineTextEdit';
 
 interface SelectableTaskRowProps {
   task: ProjectTask;
-  onToggleToday: () => void;
+  /** Moves the task to `target` — the row derives which target to offer from `task.timeBox` itself. */
+  onMoveToBox: (taskId: string, target: TimeBox) => void;
   onToggleComplete: () => void;
   onDelete: () => void;
   onRename?: (title: string) => void;
-  isInToday: boolean;
   draggable: boolean;
   onDragStart?: (e: React.DragEvent) => void;
   onDragOver?: (e: React.DragEvent) => void;
@@ -46,11 +46,10 @@ function getStalenessColor(score: number, fixed: boolean): string {
 
 export function SelectableTaskRow({
   task,
-  onToggleToday,
+  onMoveToBox,
   onToggleComplete,
   onDelete,
   onRename,
-  isInToday,
   draggable,
   onDragStart,
   onDragOver,
@@ -59,6 +58,7 @@ export function SelectableTaskRow({
   projectInfo,
 }: SelectableTaskRowProps) {
   const isCompleted = task.isCompleted;
+  const isInToday = task.timeBox === 'today';
   const stalenessVisible = useSettingsStore((s) => s.pointsCounterVisible);
   const colorFixed = useSettingsStore((s) => s.pointsColorFixed);
   const { t } = useTranslation();
@@ -170,26 +170,17 @@ export function SelectableTaskRow({
             </span>
           )}
 
-          {/* Add to today button */}
+          {/* Contextual move button: promote out of today, or into it */}
           {!isCompleted && (
             <button
-              onClick={onToggleToday}
-              className={`flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full transition-colors ${
+              onClick={() => onMoveToBox(task.id, isInToday ? 'week' : 'today')}
+              className={`flex-shrink-0 flex items-center justify-center h-6 px-2 rounded-full text-[11px] font-medium whitespace-nowrap transition-colors ${
                 isInToday
                   ? 'bg-accent text-white'
                   : 'text-text-muted hover:text-accent hover:bg-accent/10'
               }`}
             >
-              {isInToday ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              )}
+              {isInToday ? t('taskSelection.toWeek') : t('taskSelection.toToday')}
             </button>
           )}
         </div>

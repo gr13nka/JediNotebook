@@ -1,10 +1,11 @@
 import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useAllProjectTasks } from '../../hooks/useAllProjectTasks';
-import { useTaskBox } from '../../hooks/useTaskBox';
+import { useAllProjectTasks, type TaskGroup } from '../../hooks/useAllProjectTasks';
+import { moveTaskToBox } from '../../hooks/useTaskBox';
 import { useProjects } from '../../hooks/useProjects';
 import { useReorderList } from '../../hooks/useReorderList';
 import { useTranslation } from '../../i18n/useTranslation';
+import type { TranslationKey } from '../../i18n/translations';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { InfoTooltip } from '../ui/InfoTooltip';
 import { StalenessCounter } from './StalenessCounter';
@@ -13,7 +14,7 @@ import { FolderGroupSection } from './FolderGroupSection';
 import { SelectableTaskRow } from './SelectableTaskRow';
 import { db } from '../../db';
 import { createProjectTask, deleteProjectTaskCascade, toggleProjectTask } from '../../db/taskOps';
-import type { ProjectTask } from '@shared/types';
+import type { ProjectTask, TimeBox } from '@shared/types';
 
 const container = {
   hidden: { opacity: 0 },
@@ -30,25 +31,49 @@ const item = {
 
 type ViewMode = 'grouped' | 'flat';
 
+/** Which time-box the list is scoped to — 'all' turns the filter off entirely. */
+type BoxTab = TimeBox | 'all';
+
+const BOX_TABS: BoxTab[] = ['today', 'week', 'later', 'all'];
+
+const BOX_TAB_LABEL_KEYS: Record<BoxTab, TranslationKey> = {
+  today: 'taskSelection.boxToday',
+  week: 'taskSelection.boxWeek',
+  later: 'taskSelection.boxLater',
+  all: 'taskSelection.boxAll',
+};
+
 function getStalenessScore(createdAt: string): number {
   const ageMs = Date.now() - new Date(createdAt).getTime();
   const ageDays = ageMs / 86400000;
   return Math.round(ageDays * ageDays);
 }
 
+/**
+ * Filters one project's task lists down to `boxTab` ('all' is a no-op).
+ * Shared by the folder-grouped and flat-grouped render paths so the box-tab
+ * rule (filter incomplete + completed by `timeBox`) is stated once.
+ */
+function filterGroupByBox(group: TaskGroup, boxTab: BoxTab): TaskGroup {
+  if (boxTab === 'all') return group;
+  return {
+    project: group.project,
+    incompleteTasks: group.incompleteTasks.filter((t) => t.timeBox === boxTab),
+    completedTasks: group.completedTasks.filter((t) => t.timeBox === boxTab),
+  };
+}
+
 export function TaskSelectionView() {
   const { t } = useTranslation();
   const { groups, folderGroups } = useAllProjectTasks();
-  // 5E replaces this: the box-tabs UI (plan 5.10) retires the today
-  // pill/toggle entirely. Until then, this borrows useTaskBox('today') for
-  // today-membership + its moveToBox op rather than re-deriving the
-  // promote-clears-pin rule (see useTaskBox's doc comment) a second time here.
-  const { tasks: todayTasks, moveToBox } = useTaskBox('today');
   const { projects, reorderProjects } = useProjects();
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [sortMode, setSortMode] = useState<TaskSortMode>('custom');
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
+  // Default 'week': the daily flip-through-and-promote habit this view
+  // exists for — /today already owns the today-only view.
+  const [boxTab, setBoxTab] = useState<BoxTab>('week');
 
   // Quick add task state
   const [addingTask, setAddingTask] = useState(false);
@@ -65,16 +90,14 @@ export function TaskSelectionView() {
   // Flat view completed section
   const [flatCompletedCollapsed, setFlatCompletedCollapsed] = useState(true);
 
-  const todayTaskIds = useMemo(
-    () => new Set(todayTasks.map((t) => t.id)),
-    [todayTasks],
-  );
-
-  // in-today → move to 'week' (demote back off the pill), not-in-today →
-  // move to 'today' (the one-tap promote this view offers pre-5.10).
-  const toggleToday = useCallback((taskId: string, _projectId: string) => {
-    moveToBox(taskId, todayTaskIds.has(taskId) ? 'week' : 'today');
-  }, [todayTaskIds, moveToBox]);
+  // Switching box tab drops any in-progress custom flat order — the same
+  // reasoning as `handleSortMode` below: a manual order captured against one
+  // tab's visible rows doesn't carry meaning once a different set of rows is
+  // showing.
+  const handleBoxTab = useCallback((tab: BoxTab) => {
+    setBoxTab(tab);
+    setFlatOrder(null);
+  }, []);
 
   // Build project lookup for flat view
   const projectMap = useMemo(() => {
@@ -85,23 +108,43 @@ export function TaskSelectionView() {
     return map;
   }, [groups]);
 
-  // All incomplete tasks for flat view
+  // All incomplete tasks for flat view, filtered to the active box tab ('all' = no filter)
   const allIncompleteTasks = useMemo(() => {
     const tasks: ProjectTask[] = [];
     for (const g of groups) {
       tasks.push(...g.incompleteTasks);
     }
-    return tasks;
-  }, [groups]);
+    return boxTab === 'all' ? tasks : tasks.filter((t) => t.timeBox === boxTab);
+  }, [groups, boxTab]);
 
-  // All completed tasks for flat view
+  // All completed tasks for flat view, same box filter
   const allCompletedTasks = useMemo(() => {
     const tasks: ProjectTask[] = [];
     for (const g of groups) {
       tasks.push(...g.completedTasks);
     }
-    return tasks;
-  }, [groups]);
+    return boxTab === 'all' ? tasks : tasks.filter((t) => t.timeBox === boxTab);
+  }, [groups, boxTab]);
+
+  // Grouped view: same box filter applied per-project, then drop projects
+  // left with no matching incomplete tasks (their completed tasks, if any,
+  // go with them — a project section that's entirely inactive for this box
+  // isn't worth showing on it).
+  const boxFilteredGroups = useMemo(() => {
+    const filtered = groups.map((g) => filterGroupByBox(g, boxTab));
+    return boxTab === 'all' ? filtered : filtered.filter((g) => g.incompleteTasks.length > 0);
+  }, [groups, boxTab]);
+
+  const boxFilteredFolderGroups = useMemo(() => {
+    return folderGroups
+      .map((fg) => ({
+        folder: fg.folder,
+        projects: fg.projects
+          .map((g) => filterGroupByBox(g, boxTab))
+          .filter((g) => boxTab === 'all' || g.incompleteTasks.length > 0),
+      }))
+      .filter((fg) => fg.projects.length > 0);
+  }, [folderGroups, boxTab]);
 
   // Sorted flat tasks
   const sortedFlatTasks = useMemo(() => {
@@ -143,9 +186,13 @@ export function TaskSelectionView() {
     });
   }, []);
 
-  // Project drag/drop (grouped mode, no folders)
+  // Project drag/drop (grouped mode, no folders). Sourced from
+  // `boxFilteredGroups`, not raw `groups` — drag is only enabled in 'custom'
+  // sort (below), and in that mode `sortedGroups` is exactly
+  // `boxFilteredGroups`, so row indices this hook computes line up with what
+  // the box tab actually has on screen.
   const projectReorder = useReorderList({
-    items: groups,
+    items: boxFilteredGroups,
     getId: (g) => g.project.id,
     onReorder: reorderProjects,
   });
@@ -159,10 +206,10 @@ export function TaskSelectionView() {
 
   const sortedGroups = useMemo(() => {
     if (sortMode === 'created') {
-      return [...groups].sort((a, b) => a.project.createdAt.localeCompare(b.project.createdAt));
+      return [...boxFilteredGroups].sort((a, b) => a.project.createdAt.localeCompare(b.project.createdAt));
     }
-    return groups;
-  }, [groups, sortMode]);
+    return boxFilteredGroups;
+  }, [boxFilteredGroups, sortMode]);
 
   const hasFolders = folderGroups.some((fg) => fg.folder !== null);
 
@@ -236,6 +283,23 @@ export function TaskSelectionView() {
           text={t('taskSelection.tooltip')}
         />
         <StalenessCounter />
+      </div>
+
+      {/* Box tab row: which time-box to show, layered above the view/sort controls */}
+      <div className="flex items-center gap-0.5 mb-2">
+        {BOX_TABS.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => handleBoxTab(tab)}
+            className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+              boxTab === tab
+                ? 'bg-accent/15 text-accent'
+                : 'text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            {t(BOX_TAB_LABEL_KEYS[tab])}
+          </button>
+        ))}
       </div>
 
       {/* Controls row: view toggle + sort dropdown */}
@@ -339,12 +403,6 @@ export function TaskSelectionView() {
         </div>
       )}
 
-      {todayTasks.length > 0 && (
-        <div className="mb-4 px-3 py-2 rounded-xl bg-accent/10 text-accent text-xs font-medium">
-          {todayTasks.filter((tk) => !tk.isCompleted).length} {todayTasks.filter((tk) => !tk.isCompleted).length !== 1 ? t('taskSelection.tasks') : t('taskSelection.task')} {t('taskSelection.selectedForToday')}
-        </div>
-      )}
-
       {viewMode === 'flat' ? (
         /* ---- FLAT VIEW ---- */
         <motion.div
@@ -360,7 +418,7 @@ export function TaskSelectionView() {
               <motion.div key={task.id} variants={item}>
                 <SelectableTaskRow
                   task={task}
-                  onToggleToday={() => toggleToday(task.id, task.projectId)}
+                  onMoveToBox={moveTaskToBox}
                   onToggleComplete={() => toggleProjectTask(task.id)}
                   onDelete={() => deleteProjectTaskCascade(task.id)}
                   onRename={async (title) => {
@@ -369,7 +427,6 @@ export function TaskSelectionView() {
                       updatedAt: new Date().toISOString(),
                     });
                   }}
-                  isInToday={todayTaskIds.has(task.id)}
                   draggable={sortMode === 'custom'}
                   onDragStart={sortMode === 'custom' ? rowProps.onDragStart : undefined}
                   onDragOver={sortMode === 'custom' ? rowProps.onDragOver : undefined}
@@ -412,7 +469,7 @@ export function TaskSelectionView() {
                       <SelectableTaskRow
                         key={task.id}
                         task={task}
-                        onToggleToday={() => toggleToday(task.id, task.projectId)}
+                        onMoveToBox={moveTaskToBox}
                         onToggleComplete={() => toggleProjectTask(task.id)}
                         onDelete={() => deleteProjectTaskCascade(task.id)}
                         onRename={async (title) => {
@@ -421,7 +478,6 @@ export function TaskSelectionView() {
                             updatedAt: new Date().toISOString(),
                           });
                         }}
-                        isInToday={todayTaskIds.has(task.id)}
                         draggable={false}
                         projectInfo={projectMap.get(task.projectId)}
                       />
@@ -442,7 +498,7 @@ export function TaskSelectionView() {
           onDragEnd={projectReorder.handleDragEnd}
         >
           {hasFolders ? (
-            folderGroups.map((folderGroup) => {
+            boxFilteredFolderGroups.map((folderGroup) => {
               const folderId = folderGroup.folder?.id ?? '__unfiled__';
               return (
                 <motion.div key={folderId} variants={item}>
@@ -458,8 +514,7 @@ export function TaskSelectionView() {
                         project={group.project}
                         tasks={group.incompleteTasks}
                         completedTasks={group.completedTasks}
-                        onToggleToday={toggleToday}
-                        todayTaskIds={todayTaskIds}
+                        onMoveToBox={moveTaskToBox}
                         sortMode={groupedSortMode}
                         isCollapsed={collapsedProjects.has(group.project.id)}
                         onToggleCollapse={() => toggleProject(group.project.id)}
@@ -483,8 +538,7 @@ export function TaskSelectionView() {
                     project={group.project}
                     tasks={group.incompleteTasks}
                     completedTasks={group.completedTasks}
-                    onToggleToday={toggleToday}
-                    todayTaskIds={todayTaskIds}
+                    onMoveToBox={moveTaskToBox}
                     sortMode={groupedSortMode}
                     isCollapsed={collapsedProjects.has(group.project.id)}
                     onToggleCollapse={() => toggleProject(group.project.id)}
