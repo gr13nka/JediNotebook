@@ -8,6 +8,7 @@ import { NEU } from '../../utils/shadows';
 import { AddProjectModal } from './AddProjectModal';
 import { AddFolderModal } from './AddFolderModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { InlineTextEdit } from '../ui/InlineTextEdit';
 import { useProjectTypography } from '../settings/ProjectTypographySettings';
 import type { ProjectFolder, Project } from '@shared/types';
 
@@ -31,7 +32,7 @@ const DRAG_THRESHOLD = 5;
 
 export function FileTree() {
   const { t } = useTranslation();
-  const { folders, createFolder, deleteFolder, toggleExpanded } = useFolders();
+  const { folders, createFolder, updateFolder, deleteFolder, toggleExpanded } = useFolders();
   const { projects, createProject, deleteProject, moveProject, updateProject } = useProjects();
   const { projectListFontPx } = useProjectTypography();
   const openTab = useProjectUIStore((s) => s.openTab);
@@ -45,6 +46,7 @@ export function FileTree() {
   const [dragOverRoot, setDragOverRoot] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<Project | null>(null);
   const [confirmDeleteFolderId, setConfirmDeleteFolderId] = useState<string | null>(null);
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
@@ -70,6 +72,11 @@ export function FileTree() {
 
   const handleDeleteFolder = (id: string) => {
     setConfirmDeleteFolderId(id);
+  };
+
+  const handleRenameFolder = (id: string, name: string) => {
+    updateFolder(id, { name });
+    setRenamingFolderId(null);
   };
 
   const handleAddProject = async (data: { name: string; color: string; icon?: string }) => {
@@ -263,6 +270,11 @@ export function FileTree() {
             onToggle={() => toggleExpanded(folder.id)}
             onProjectClick={openTab}
             onDelete={() => handleDeleteFolder(folder.id)}
+            renaming={renamingFolderId === folder.id}
+            renameLabel={t('common.rename')}
+            onStartRename={() => setRenamingFolderId(folder.id)}
+            onRename={(name) => handleRenameFolder(folder.id, name)}
+            onCancelRename={() => setRenamingFolderId(null)}
             onContextMenu={handleContextMenu}
             onProjectMouseDown={handleProjectMouseDown}
             isDragOver={dragOverFolderId === folder.id}
@@ -402,6 +414,11 @@ function FolderRow({
   onToggle,
   onProjectClick,
   onDelete,
+  renaming,
+  renameLabel,
+  onStartRename,
+  onRename,
+  onCancelRename,
   onContextMenu,
   onProjectMouseDown,
   isDragOver,
@@ -414,6 +431,11 @@ function FolderRow({
   onToggle: () => void;
   onProjectClick: (id: string) => void;
   onDelete: () => void;
+  renaming: boolean;
+  renameLabel: string;
+  onStartRename: () => void;
+  onRename: (name: string) => void;
+  onCancelRename: () => void;
   onContextMenu: (e: React.MouseEvent, project: Project) => void;
   onProjectMouseDown: (project: Project) => (e: React.MouseEvent) => void;
   isDragOver: boolean;
@@ -439,12 +461,37 @@ function FolderRow({
           className="w-2.5 h-2.5 rounded-sm shrink-0"
           style={{ backgroundColor: folder.color }}
         />
-        <span className="flex-1 text-text-primary truncate" style={{ fontSize: `${fontPx}px` }}>
-          {folder.name}
-        </span>
+        {renaming ? (
+          <InlineTextEdit
+            value={folder.name}
+            editing={renaming}
+            onCommit={onRename}
+            onCancel={onCancelRename}
+            className="min-w-0 flex-1 text-text-primary truncate"
+            style={{ fontSize: `${fontPx}px` }}
+          />
+        ) : (
+          <span className="flex-1 text-text-primary truncate" style={{ fontSize: `${fontPx}px` }}>
+            {folder.name}
+          </span>
+        )}
         <span className="text-[10px] text-text-muted/60 tabular-nums">
           {projects.length}
         </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onStartRename();
+          }}
+          className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-text-secondary text-[10px] ml-0.5 transition-opacity"
+          title={renameLabel}
+          aria-label={renameLabel}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+            <path d="m15 5 4 4" />
+          </svg>
+        </button>
         <button
           onClick={(e) => {
             e.stopPropagation();

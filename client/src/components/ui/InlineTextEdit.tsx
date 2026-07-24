@@ -6,6 +6,7 @@ interface InlineTextEditProps {
   onCommit: (value: string) => void;
   onCancel: () => void;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 /**
@@ -16,7 +17,7 @@ interface InlineTextEditProps {
  * the `editing` flag so it can decide what opens the editor (double-click, a
  * context-menu entry, a pencil button).
  */
-export function InlineTextEdit({ value, editing, onCommit, onCancel, className = '' }: InlineTextEditProps) {
+export function InlineTextEdit({ value, editing, onCommit, onCancel, className = '', style }: InlineTextEditProps) {
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -64,6 +65,7 @@ export function InlineTextEdit({ value, editing, onCommit, onCancel, className =
       onKeyDown={handleKeyDown}
       onClick={(e) => e.stopPropagation()}
       className={`w-full bg-transparent focus:outline-none ${className}`}
+      style={style}
     />
   );
 }
