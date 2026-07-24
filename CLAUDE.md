@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Client-only productivity app: activity time tracking, projects/tasks with folders and time-boxing (today/week/later), inbox quick-capture, analytics, a staleness counter. Offline-first — Dexie (IndexedDB) is the only database. There is no backend server: the pre-refactor Express/REST-sync stack was deleted (`server/` and `client/src/sync/` no longer exist). The only sync mechanism left is Vault sync (Tauri-only, Obsidian-style file sync).
 
-**Tech Stack**: React 19, TypeScript 5.7, Vite 6, Tailwind CSS 4, Zustand 5, Dexie 4 (IndexedDB), Motion (animations), Recharts, React Router 7 | Tauri v2 (desktop + Android) | Vitest (116 tests) | Shared types in `/shared/`
+**Tech Stack**: React 19, TypeScript 5.7, Vite 6, Tailwind CSS 4, Zustand 5, Dexie 4 (IndexedDB), Motion (animations), Recharts, React Router 7 | Tauri v2 (desktop + Android) | Vitest (144 tests) | Shared types in `/shared/`
 
 > **History**: `.planning/research/*.md` describe the codebase **before** the 2026-07 trim refactor — they still document habits, mind maps, Pomodoro, task timer, notes, PDF documents, fatigue check, review page, REST sync, gamification/XP, and 11 themes, all of which are now deleted. Treat them as historical background only, never as current fact. The refactor plan (what was cut and why) is at `docs/superpowers/plans/2026-07-21-refactor-trim-and-restructure.md`.
 
@@ -73,7 +73,7 @@ client/src/
 │   ├── today/                # TodayTaskCard
 │   └── ui/                   # Button, Card, Input, Modal, ConfirmModal, ConfirmDialog, BottomSheet, ContextMenu, InfoTooltip, RotaryDial, EmojiPicker, FolderBrowserModal, InlineTextEdit, VaultSetupModal, Toggle
 ├── db/
-│   ├── index.ts              # Dexie schema (v10) + clearAllTables/snapshotAllTables/restoreFromSnapshot (vault-switch only)
+│   ├── index.ts              # Dexie schema (v14) + clearAllTables/snapshotAllTables/restoreFromSnapshot (vault-switch only)
 │   ├── repository.ts         # Single owner of the record envelope + soft delete (newRecord/updateRecord/softDelete/notDeleted)
 │   ├── taskOps.ts            # Cross-project ProjectTask ops: create/delete/toggle, box-order bookkeeping, recurrence spawn
 │   ├── rollover.ts           # computeRollover — pure box-move rules, no I/O
@@ -84,7 +84,7 @@ client/src/
 ├── pages/                    # HomePage, ProjectsPage, TaskSelectionPage, TodayPage, InboxPage, SettingsPage — one per route
 ├── stores/                   # timerStore, settingsStore, projectUIStore (+ inline useSidebarStore in Sidebar.tsx)
 ├── theme/                    # themes.ts (PREBUILT_THEMES data), applyTheme.ts
-├── vault/                    # vaultStore, vaultSync, vaultLayout.ts, vaultKinds.ts, serializers.ts, tauriBackend/memoryBackend/platform, writeQueue/writeGuard/pollingWatcher/fileIndex (Tauri-only file sync)
+├── vault/                    # vaultStore, vaultSync, vaultLayout.ts, vaultKinds.ts, serializers.ts, conflictResolver/threeWayMerge/vaultBase, tauriBackend/memoryBackend/platform, writeQueue/writeGuard/pollingWatcher/fileIndex (Tauri-only file sync)
 ├── utils/                    # uuid, time, colors, shadows, recurrence, markdown, taskDnd
 └── workers/                  # timer.worker.ts (only worker left — no Pomodoro worker)
 shared/
@@ -101,6 +101,10 @@ There is no `server/` directory and no root `package.json` — this is a client-
   - `vault/vaultLayout.ts` — the only place that knows an entity kind's directory, filename shape, and Dexie table. Four shapes (`perEntityFile`, `perEntityDir`, `perDateFile`, `singleton`) cover all 8 synced kinds: activities, projects, projectTasks, timeEntries (time-log), todayTasks, inbox, settings, folders.
   - `vault/vaultKinds.ts` — one `VaultKind` object per layout entry, giving `collectFiles`/`discoverPaths`/`parseFile`/`mergeRow`/`gatherWriteSet` uniformly so `vaultSync.ts`'s four fan-outs (export/import/write/external-change) stay generic loops instead of per-kind switches. **Adding a vault-synced entity kind = one `vaultLayout.ts` entry + one `vaultKinds.ts` object.**
   - Note: `todayTasks` is still round-tripped by vault sync (for backward compatibility with pre-refactor vault files) but the app itself never creates new rows in it — `/today` is now driven entirely by `ProjectTask.timeBox` (see Time-boxing below).
+- **Conflict resolution** (`vault/conflictResolver.ts` + `vault/threeWayMerge.ts` + `vault/vaultBase.ts`): a file-syncing peer such as Syncthing cannot merge — when two devices edit one file while disconnected it keeps the loser as `<stem>.sync-conflict-<date>-<time>-<device><ext>` and the app, reading only the main file, never sees those edits again. `resolveConflicts()` runs before each import (from `vaultStore.enable`/`syncNow`, against the **real** backend — the memory scan used for import is read-only and cannot delete the copies), merges each copy into its target, and removes it.
+  - Merging is **three-way**, against the base recorded in `vaultBase` on every accepted read and every write. A base is required to tell "the other device deleted this" from "I added this"; with no base recorded the merge unions both sides instead, which over-keeps rather than loses.
+  - Structured rows merge by `id` + `updatedAt` (the same LWW rule `mergeEntity` applies, so a conflict copy can never resolve differently than a clean sync would). A kind that sets `textField` also merges that field paragraph-wise — `PROJECTS_KIND.textField = 'description'`, because two devices appending to a project note produce two equally valid bodies and LWW would discard one wholesale. A kind that can lose individual rows while its file survives (`PROJECT_TASKS_KIND`) supplies `softDeleteRow`.
+  - **Never stamp `Date.now()` into serialized output.** `serializeProjectTasksFile` used to, which made `tasks.md` differ byte-for-byte on every export, bumped its mtime, and had the sync layer propagate a change that never happened — manufacturing conflicts in which the *stale* side won because its re-export carried the *fresher* mtime. `TauriVaultBackend.writeFile` now also skips writes whose content already matches on disk, for the same reason.
 - **Data layer single owners**:
   - `db/repository.ts` — the record envelope (`id`/`createdAt`/`updatedAt`/`deletedAt`/`deviceId`) and soft-delete convention, used by every table.
   - `hooks/useEntity.ts` — generic reactive CRUD for a flat table with the standard envelope (not-deleted filter + sort + create/update/remove wired through the repository). Bespoke hooks (`useProjectTasks`, `useTaskBox`, etc.) exist only where per-parent queries or cascades don't fit this shape.
@@ -133,9 +137,10 @@ There is no `server/` directory and no root `package.json` — this is a client-
 
 ## Database
 
-**Dexie (client-only) — schema version 10.** 14 tables are still *declared*, but several are retired-legacy:
+**Dexie (client-only) — schema version 14.** 16 tables are declared, but several are retired-legacy:
 
 - **Active**: `activities`, `timeEntries`, `settings`, `projects`, `projectTasks`, `projectFolders`, `inboxItems`.
+- **Device-local (never vault-synced)**: `deviceSettings` (vault paths, appearance, language, navigation) and `vaultBase` (v14 — the last-agreed content of each vault file, keyed by path; the common ancestor for conflict merging). Neither has a `vaultLayout` entry, which is what keeps them off the vault.
 - **Legacy — declared for data-safety only, no code anywhere reads or writes them**: `habits`, `habitEntries`, `notes`, `pomodoroPresets`, `mindMaps`, `pdfDocuments`. Any pre-existing rows sit untouched in IndexedDB; nothing creates new ones.
 - **`todayTasks`**: no longer written by the app's own UI (superseded by `timeBox` on `projectTasks`), but still declared and still round-tripped by vault sync for backward compatibility with vaults written by older builds.
 

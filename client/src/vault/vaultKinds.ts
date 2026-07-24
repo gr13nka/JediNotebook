@@ -2,6 +2,7 @@ import type {
   Activity, Project, ProjectTask, TimeEntry, TodayTask, InboxItem, UserSettings, ProjectFolder,
 } from '@shared/types';
 import { db } from '../db';
+import { softDelete } from '../db/repository';
 import type { VaultBackend } from './vaultBackend';
 import { fileIndex } from './fileIndex';
 import {
@@ -104,6 +105,24 @@ export interface VaultKind {
    * entity/its directory going away entirely).
    */
   gatherWriteSet(backend: VaultBackend, entityId: string): Promise<{ writes: VaultFile[]; deletes: string[] }>;
+
+  /**
+   * Name of the row field holding free-form user prose, if this kind has one.
+   *
+   * Conflict resolution merges such a field paragraph-wise instead of letting
+   * last-write-wins pick a whole row: two devices appending to the same note
+   * produce two equally valid bodies, and discarding either loses writing the
+   * user cannot get back. Kinds whose rows are entirely structured (a task
+   * list, a time log) omit this — LWW per row is already correct for them.
+   */
+  textField?: string;
+
+  /**
+   * Soft-delete one row, used when a three-way merge proves the other device
+   * deleted it. Optional: kinds whose files are never partially deleted (a
+   * singleton, a per-entity file that vanishes as a whole) don't need it.
+   */
+  softDeleteRow?(id: string): Promise<void>;
 }
 
 /**
@@ -204,6 +223,10 @@ const ACTIVITIES_KIND: VaultKind = {
 const PROJECTS_KIND: VaultKind = {
   layout: PROJECTS,
 
+  // project.md's body is the project's free-text note — the one field here
+  // that two devices can both legitimately extend while offline.
+  textField: 'description',
+
   collectFiles(ctx) {
     return ctx.projects.filter(p => !p.deletedAt).map(p => {
       const { path, content } = serializeProjectFile(p);
@@ -278,6 +301,13 @@ const PROJECT_TASKS_KIND: VaultKind = {
 
   async mergeRow(row) {
     await mergeEntity(db.projectTasks, row);
+  },
+
+  // tasks.md lists a whole project's tasks, so one task can vanish from the
+  // file while the file itself stays — the one case where a merge has to
+  // delete a row rather than infer deletion from a missing file.
+  async softDeleteRow(id) {
+    await softDelete(db.projectTasks, id);
   },
 
   /**

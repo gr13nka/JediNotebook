@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Activity, DeviceSettings, TimeEntry, UserSettings, Habit, HabitEntry, Note, PomodoroPreset, Project, ProjectTask, TodayTask, ProjectFolder, InboxItem, MindMap, PdfDocument, TimeBox } from '@shared/types';
+import type { Activity, DeviceSettings, TimeEntry, UserSettings, Habit, HabitEntry, Note, PomodoroPreset, Project, ProjectTask, TodayTask, ProjectFolder, InboxItem, MindMap, PdfDocument, TimeBox, VaultBaseEntry } from '@shared/types';
 import { DEFAULT_DEVICE_SETTINGS, DEFAULT_SETTINGS } from '@shared/constants';
 import { classifyTimeBoxForMigration } from './migrations';
 import { getLogicalDate } from '../utils/time';
@@ -20,6 +20,7 @@ const db = new Dexie('TimeTrackerDB') as Dexie & {
   inboxItems: EntityTable<InboxItem, 'id'>;
   mindMaps: EntityTable<MindMap, 'id'>;
   pdfDocuments: EntityTable<PdfDocument, 'id'>;
+  vaultBase: EntityTable<VaultBaseEntry, 'path'>;
 };
 
 db.version(1).stores({
@@ -274,6 +275,29 @@ db.version(13).stores({
   }
   await tx.table('deviceSettings').put(device);
   await tx.table('settings').put(settings);
+});
+
+// Record what each vault file looked like at the last agreed sync, so a
+// Syncthing conflict copy can be merged three-way instead of one side
+// winning wholesale. Starts empty: with no base recorded, the first merge
+// after this upgrade unions both sides rather than inferring deletions.
+db.version(14).stores({
+  activities: 'id, name, sortOrder, deletedAt, updatedAt',
+  timeEntries: 'id, activityId, date, startedAt, endedAt, deletedAt, updatedAt',
+  settings: 'id',
+  deviceSettings: 'id',
+  habits: 'id, name, sortOrder, deletedAt, updatedAt',
+  habitEntries: 'id, habitId, date, deletedAt, updatedAt, [habitId+date]',
+  notes: 'id, isPinned, deletedAt, updatedAt',
+  pomodoroPresets: 'id, name, sortOrder, deletedAt, updatedAt',
+  projects: 'id, name, folderId, sortOrder, isArchived, deletedAt, updatedAt',
+  projectTasks: 'id, projectId, sortOrder, isCompleted, deletedAt, updatedAt, timeBox, scheduledDate',
+  todayTasks: 'id, projectTaskId, projectId, date, isCompleted, deletedAt, updatedAt',
+  projectFolders: 'id, name, parentFolderId, sortOrder, deletedAt, updatedAt',
+  inboxItems: 'id, deletedAt, updatedAt',
+  mindMaps: 'id, deletedAt, updatedAt',
+  pdfDocuments: 'id, isPinned, deletedAt, updatedAt',
+  vaultBase: 'path',
 });
 
 /**

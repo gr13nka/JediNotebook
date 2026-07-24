@@ -3,6 +3,7 @@ import type { VaultBackend } from './vaultBackend';
 import { fileIndex } from './fileIndex';
 import { VAULT_KINDS, KIND_BY_TABLE, type VaultExportContext } from './vaultKinds';
 import { vaultDirs, tableFromPath } from './vaultLayout';
+import { recordBase, forgetBase, pruneBases } from './vaultBase';
 
 const VAULT_VERSION = 1;
 
@@ -40,12 +41,18 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
 
   const ctx = await loadExportContext();
 
+  const written: string[] = [];
   for (const kind of VAULT_KINDS) {
     for (const file of kind.collectFiles(ctx)) {
       await backend.writeFile(file.path, file.content);
+      // What we just wrote is, by definition, the state this device and the
+      // vault agree on — the ancestor a later conflict merges against.
+      await recordBase(file.path, file.content);
+      written.push(file.path);
       if (file.entityId) fileIndex.set(file.entityId, file.path);
     }
   }
+  await pruneBases(written);
 }
 
 // ─── Import all data from disk ────────────────────────────────────
@@ -54,6 +61,7 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
   fileIndex.clear();
   const counts: Record<string, number> = {};
   const errors: string[] = [];
+  const seen: string[] = [];
 
   for (const kind of VAULT_KINDS) {
     const label = kind.layout.table;
@@ -66,6 +74,9 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
         for (const row of parsed.rows) {
           await kind.mergeRow(row, 'reconcile');
         }
+        // Accepting a file's content makes it the agreed state for this path.
+        await recordBase(path, content);
+        seen.push(path);
         if (parsed.entityId) fileIndex.set(parsed.entityId, path);
         n++;
       }
@@ -74,6 +85,8 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
       errors.push(`${label}: ${err}`);
     }
   }
+
+  await pruneBases(seen);
 
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   if (errors.length > 0) {
@@ -101,10 +114,12 @@ export async function writeEntityToDisk(
 
   for (const path of deletes) {
     await backend.deleteFile(path);
+    await forgetBase(path);
     fileIndex.removePath(path);
   }
   for (const file of writes) {
     await backend.writeFile(file.path, file.content);
+    await recordBase(file.path, file.content);
     if (file.entityId) fileIndex.set(file.entityId, file.path);
   }
 }
@@ -129,6 +144,7 @@ export async function handleExternalChange(
       }
       fileIndex.removePath(filePath);
     }
+    await forgetBase(filePath);
     return;
   }
 
@@ -141,5 +157,6 @@ export async function handleExternalChange(
   for (const row of parsed.rows) {
     await kind.mergeRow(row, 'external');
   }
+  await recordBase(filePath, content);
   if (parsed.entityId) fileIndex.set(parsed.entityId, filePath);
 }

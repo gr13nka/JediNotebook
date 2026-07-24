@@ -59,6 +59,24 @@ export interface UserSettings {
 export type PersistedSettings = Omit<UserSettings, 'id' | 'updatedAt' | 'deviceId'>;
 
 /**
+ * The content of one vault file as this device last agreed on it — written
+ * after every accepted read and every successful write. It is the common
+ * ancestor that lets `vault/threeWayMerge.ts` reconcile a Syncthing conflict
+ * copy without resurrecting deleted text: absent a base, "deleted there" and
+ * "added here" are the same observation.
+ *
+ * Device-local on purpose, and deliberately absent from `vaultLayout` — a
+ * synced base would be rewritten by the very peer it is meant to be compared
+ * against, which is exactly the ancestor a three-way merge cannot use.
+ */
+export interface VaultBaseEntry {
+  /** Vault-relative path, e.g. `projects/Name (019ab)/project.md`. */
+  path: string;
+  content: string;
+  recordedAt: string;
+}
+
+/**
  * Preferences tied to this installation rather than the shared vault. These
  * are stored in Dexie's `deviceSettings` table, so Syncthing can never move a
  * vault path or overwrite a device's presentation/navigation choices.

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { VaultBackend } from './vaultBackend';
 import { getPlatform } from './platform';
 import { importAllFromDisk, handleExternalChange } from './vaultSync';
+import { resolveConflicts } from './conflictResolver';
 import { writeQueue } from './writeQueue';
 import { writeGuard } from './writeGuard';
 import { registerVaultMiddleware } from './dexieHooks';
@@ -132,6 +133,11 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     let importCount = 0;
     try {
       set({ isSyncing: true });
+      // Fold in any Syncthing conflict copies first, against the real backend
+      // (the memory scan below is a read-only snapshot and cannot delete the
+      // copies), so the import that follows sees one merged file per entity.
+      await resolveConflicts(backend).catch(err =>
+        console.error('[vault] conflict resolution failed (non-fatal):', err));
       const readBackend = await scanToMemoryBackend(vaultPath);
       const result = await importAllFromDisk(readBackend);
       importCount = result.total;
@@ -218,6 +224,8 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     try {
       set({ isSyncing: true, error: null });
       await writeQueue.flush();
+      await resolveConflicts(backend).catch(err =>
+        console.error('[vault] conflict resolution failed (non-fatal):', err));
       const readBackend = await scanToMemoryBackend(vaultPath);
       const result = await importAllFromDisk(readBackend);
       if (result.errors.length > 0) {

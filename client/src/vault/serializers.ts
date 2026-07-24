@@ -89,9 +89,20 @@ export function serializeProjectTasksFile(
     .filter(t => !t.deletedAt)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
+  // Derived from the data, never `Date.now()`: a wall-clock stamp made this
+  // file's bytes differ on every export even when no task had changed, so each
+  // export bumped its mtime and Syncthing saw a modification to propagate. Two
+  // devices doing that concurrently manufactured conflicts out of identical
+  // data — and because the re-export carried a *fresh* mtime over *stale*
+  // content, the stale side won. Keep this a pure function of the tasks.
+  const updatedAt = activeTasks.reduce(
+    (latest, t) => (t.updatedAt > latest ? t.updatedAt : latest),
+    p.updatedAt,
+  );
+
   const tasksMeta: Record<string, unknown> = {
     projectId: p.id,
-    updatedAt: new Date().toISOString(),
+    updatedAt,
     tasks: activeTasks.map(t => ({
       id: t.id,
       title: t.title,

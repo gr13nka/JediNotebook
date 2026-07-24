@@ -17,14 +17,33 @@ export class TauriVaultBackend implements VaultBackend {
     return readTextFile(this.resolve(path));
   }
 
+  /**
+   * Writes `content` to `path`, skipping the write entirely when the file
+   * already holds exactly that.
+   *
+   * Rewriting identical bytes still updates mtime, and a file-syncing peer
+   * reads that as a modification worth propagating. A full export therefore
+   * announced every file in the vault as changed; when two devices did so
+   * while disconnected, the result was a conflict copy per file with no
+   * edit behind it. Comparing first keeps an unchanged file untouched, so
+   * only real edits ever reach the sync layer.
+   */
   async writeFile(path: string, content: string): Promise<void> {
-    const { writeTextFile, mkdir } = await import('@tauri-apps/plugin-fs');
+    const { writeTextFile, mkdir, readTextFile, exists } = await import('@tauri-apps/plugin-fs');
+    const full = this.resolve(path);
+
+    try {
+      if (await exists(full) && await readTextFile(full) === content) return;
+    } catch {
+      // Unreadable or racing with another writer — fall through and write.
+    }
+
     // Ensure parent directory exists
     const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;
     if (dir) {
       await mkdir(this.resolve(dir), { recursive: true }).catch(() => {});
     }
-    await writeTextFile(this.resolve(path), content);
+    await writeTextFile(full, content);
   }
 
   async deleteFile(path: string): Promise<void> {
