@@ -30,12 +30,9 @@ export type NavPosition = 'left' | 'bottom' | 'dropdown';
 export type AppFont = 'source-serif-4' | 'ibm-plex-sans' | 'nunito-sans' | 'departure-mono';
 
 /**
- * THE settings roster: every field the app persists to Dexie's `settings`
- * table and mirrors to the vault's `settings.json` (see `vault/serializers.ts`
- * `serializeSettings`/`deserializeSettings`). This is the single place the
- * roster is declared — `DEFAULT_SETTINGS` (`shared/constants.ts`) is checked
- * against it with `satisfies`, and `SettingsState` (`stores/settingsStore.ts`)
- * extends it, so adding/removing a field only ever happens here.
+ * Shared settings: every field the app persists to Dexie's `settings` table
+ * and mirrors to the vault's `settings.json`. Device-specific preferences
+ * deliberately live in `DeviceSettings` below and are never exported.
  *
  * `id`/`updatedAt`/`deviceId` are the Dexie row envelope for this singleton
  * row — see `PersistedSettings` for the roster without them. Unlike every
@@ -48,20 +45,34 @@ export interface UserSettings {
   dayStartHour: number;
   dayEndHour: number;
   timezone: string;
-  barStyle: BarStyle;
-  darkMode: boolean; // legacy — always mirrors `theme`, never independently trusted (see settingsStore.load())
-  theme: ThemeMode;
-  language: Language;
   maxTasksPerProject: number;
-  navPosition: NavPosition;
   pointsCounterVisible: boolean;
-  accentColor: string;
-  /** Typeface applied across the interface and project text. */
-  fontFamily: AppFont;
-  uiZoom: number;
   /** Whether the time-tracking UI is available. Existing time data is preserved. */
   timeTrackingVisible: boolean;
-  /** Explicit project typography overrides. `null` follows the global UI zoom. */
+  /** Logical date (YYYY-MM-DD) the box-rollover last ran; `null` before the v10 migration or first rollover. Guards `useTaskRollover()` idempotency. */
+  lastRolloverDate: string | null;
+  updatedAt: string;
+  deviceId: string;
+}
+
+/** The settings roster minus the Dexie row envelope — what `DEFAULT_SETTINGS` supplies and `SettingsState` persists. */
+export type PersistedSettings = Omit<UserSettings, 'id' | 'updatedAt' | 'deviceId'>;
+
+/**
+ * Preferences tied to this installation rather than the shared vault. These
+ * are stored in Dexie's `deviceSettings` table, so Syncthing can never move a
+ * vault path or overwrite a device's presentation/navigation choices.
+ */
+export interface DeviceSettings {
+  id: string;
+  barStyle: BarStyle;
+  darkMode: boolean; // legacy mirror of `theme`, never set independently
+  theme: ThemeMode;
+  language: Language;
+  navPosition: NavPosition;
+  accentColor: string;
+  fontFamily: AppFont;
+  uiZoom: number;
   projectListFontOverridePx: number | null;
   projectNoteFontOverridePx: number | null;
   pointsColorFixed: boolean;
@@ -77,19 +88,15 @@ export interface UserSettings {
   bottomNavScrollable: boolean;
   bottomNavPages: string[][];
   mobileProjectGrid: boolean;
-  /** Logical date (YYYY-MM-DD) the box-rollover last ran; `null` before the v10 migration or first rollover. Guards `useTaskRollover()` idempotency. */
-  lastRolloverDate: string | null;
-  updatedAt: string;
-  deviceId: string;
 }
 
-/** The settings roster minus the Dexie row envelope — what `DEFAULT_SETTINGS` supplies and `SettingsState` persists. */
-export type PersistedSettings = Omit<UserSettings, 'id' | 'updatedAt' | 'deviceId'>;
+export type PersistedDeviceSettings = Omit<DeviceSettings, 'id'>;
 
 export type BarStyle = 'thick-linear' | 'segmented' | 'circular';
 
 export type ThemeMode =
   | 'light'
+  | 'wax-light' | 'wax-dark'
   | 'gruvbox-dark' | 'gruvbox-light'
   | 'everforest-dark' | 'everforest-light'
   | 'catppuccin-mocha' | 'catppuccin-latte'

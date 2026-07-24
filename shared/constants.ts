@@ -1,4 +1,4 @@
-import type { PersistedSettings } from './types';
+import type { PersistedDeviceSettings, PersistedSettings } from './types';
 
 export const ACTIVITY_COLORS = [
   '#E04848', // coral red
@@ -34,17 +34,23 @@ export const DEFAULT_SETTINGS = {
   dayStartHour: 6,
   dayEndHour: 2,
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  maxTasksPerProject: 5,
+  pointsCounterVisible: true,
+  timeTrackingVisible: true,
+  lastRolloverDate: null as string | null,
+} satisfies PersistedSettings;
+
+// Device-only preferences are intentionally separate from DEFAULT_SETTINGS:
+// the latter is exactly what can appear in a vault's settings.json.
+export const DEFAULT_DEVICE_SETTINGS = {
   barStyle: 'thick-linear' as const,
   darkMode: false,
   theme: 'light' as const,
   language: 'en' as const,
-  maxTasksPerProject: 5,
   navPosition: 'left' as const,
-  pointsCounterVisible: true,
   accentColor: '',
   fontFamily: 'source-serif-4' as const,
   uiZoom: 110,
-  timeTrackingVisible: true,
   projectListFontOverridePx: null as number | null,
   projectNoteFontOverridePx: null as number | null,
   pointsColorFixed: false,
@@ -63,8 +69,7 @@ export const DEFAULT_SETTINGS = {
     ['/tasks', '/settings'],
   ] as string[][],
   mobileProjectGrid: false,
-  lastRolloverDate: null as string | null,
-} satisfies PersistedSettings;
+} satisfies PersistedDeviceSettings;
 
 export const BREAK_ACTIVITY = {
   name: 'Break',

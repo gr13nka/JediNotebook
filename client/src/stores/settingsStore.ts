@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { AppFont, CustomThemeColors, Language, NavPosition, PersistedSettings, ThemeMode } from '@shared/types';
-import { DEFAULT_SETTINGS } from '@shared/constants';
+import type { AppFont, CustomThemeColors, Language, NavPosition, PersistedDeviceSettings, PersistedSettings, ThemeMode } from '@shared/types';
+import { DEFAULT_DEVICE_SETTINGS, DEFAULT_SETTINGS } from '@shared/constants';
 import { db } from '../db';
 import { applyAccentColor, applyFont, applyTheme, applyZoom } from '../theme/applyTheme';
 import { getPrebuiltTheme, isPrebuiltThemeId } from '../theme/themes';
@@ -31,7 +31,7 @@ type SettingsAction =
  * (`setTheme`, `setAccentColor`, `setZoom`, `hideTab`/`showTab`/`reorderTabs`,
  * `setNavPosition`); each of those calls `update()` internally.
  */
-interface SettingsState extends PersistedSettings {
+interface SettingsState extends PersistedSettings, PersistedDeviceSettings {
   loaded: boolean;
   load: () => Promise<void>;
   update: (patch: Partial<Omit<SettingsState, SettingsAction>>) => Promise<void>;
@@ -52,6 +52,7 @@ interface SettingsState extends PersistedSettings {
 
 /** Keys of the persisted settings roster, derived once from the schema's own default values. */
 const SETTINGS_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof PersistedSettings)[];
+const DEVICE_SETTINGS_KEYS = Object.keys(DEFAULT_DEVICE_SETTINGS) as (keyof PersistedDeviceSettings)[];
 
 /**
  * Keeps only the fields the current schema still declares. A saved row can
@@ -64,11 +65,12 @@ const SETTINGS_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof PersistedSettings)
  * `raw.field ?? DEFAULT_SETTINGS.field` fallback this replaces: a `null` or
  * `undefined` stored value still falls through to the default below.
  */
-function pickKnownSettings(raw: Record<string, unknown>): Partial<PersistedSettings> {
-  const picked: Partial<PersistedSettings> = {};
-  for (const key of SETTINGS_KEYS) {
-    if (raw[key] != null) {
-      (picked as Record<string, unknown>)[key] = raw[key];
+function pickKnownSettings<T extends object>(raw: Record<string, unknown>, keys: readonly (keyof T)[]): Partial<T> {
+  const picked: Partial<T> = {};
+  for (const key of keys) {
+    const stringKey = key as string;
+    if (raw[stringKey] != null) {
+      (picked as Record<string, unknown>)[stringKey] = raw[stringKey];
     }
   }
   return picked;
@@ -76,63 +78,62 @@ function pickKnownSettings(raw: Record<string, unknown>): Partial<PersistedSetti
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   ...DEFAULT_SETTINGS,
+  ...DEFAULT_DEVICE_SETTINGS,
   loaded: false,
 
   load: async () => {
-    const settings = await db.settings.get('default');
-    if (settings) {
-      // Loosely typed on purpose: a row saved by an older build can carry
-      // fields the current schema no longer declares (e.g. deleted
-      // gamification fields), which `pickKnownSettings` below is what drops.
-      const raw = settings as unknown as Record<string, unknown>;
+    const [settings, deviceSettings] = await Promise.all([
+      db.settings.get('default'),
+      db.deviceSettings.get('default'),
+    ]);
+    const rawSettings = (settings ?? {}) as Record<string, unknown>;
+    const rawDeviceSettings = (deviceSettings ?? {}) as Record<string, unknown>;
+    const merged: PersistedSettings & PersistedDeviceSettings = {
+      ...DEFAULT_SETTINGS,
+      ...pickKnownSettings<PersistedSettings>(rawSettings, SETTINGS_KEYS),
+      ...DEFAULT_DEVICE_SETTINGS,
+      ...pickKnownSettings<PersistedDeviceSettings>(rawDeviceSettings, DEVICE_SETTINGS_KEYS),
+    };
 
-      // 1. Known fields from the saved row win over the default; everything
-      //    else (missing, or a stale/removed key) falls back to DEFAULT_SETTINGS.
-      const merged: PersistedSettings = { ...DEFAULT_SETTINGS, ...pickKnownSettings(raw) };
+    // Explicit migrations only, applied on top of the merged defaults.
 
-      // 2. Explicit migrations only, applied on top of the merged defaults.
-
-      // Legacy `darkMode` boolean -> `theme`, for rows saved before `theme` existed.
-      if (raw.theme == null && raw.darkMode != null) {
-        merged.theme = raw.darkMode ? 'gruvbox-dark' : 'light';
-      }
-      // Legacy palette identifiers are normalised once at load time.
-      if ((merged.theme as string) === 'dark') merged.theme = 'gruvbox-dark';
-      if ((merged.theme as string) === 'notion' || (merged.theme as string) === 'neu-light') merged.theme = 'light';
-      if (!isPrebuiltThemeId(merged.theme) && merged.theme !== 'custom') merged.theme = 'light';
-      merged.fontFamily = resolveAppFont(raw.fontFamily);
-      // `darkMode` always mirrors the fully-resolved theme — never trusted from the row directly.
-      merged.darkMode = merged.theme === 'custom' ? Boolean(raw.darkMode) : getPrebuiltTheme(merged.theme).dark;
-
-      // Rows saved before `language` existed fall back to browser detection, not the static default.
-      if (raw.language == null) {
-        merged.language = detectBrowserLanguage();
-      }
-      // Removed languages (language set trimmed to en/ru) -> 'en'.
-      if (merged.language !== 'en' && merged.language !== 'ru') {
-        merged.language = 'en';
-      }
-
-      set({ ...merged, loaded: true });
-      applyTheme(merged.theme, merged.customThemeColors);
-      applyAccentColor(merged.accentColor);
-      applyFont(merged.fontFamily);
-      applyZoom(merged.uiZoom);
-    } else {
-      applyFont(DEFAULT_SETTINGS.fontFamily);
-      applyZoom(DEFAULT_SETTINGS.uiZoom);
-      set({ language: detectBrowserLanguage(), loaded: true });
+    // Legacy `darkMode` boolean -> `theme`, for rows saved before `theme` existed.
+    if (rawDeviceSettings.theme == null && rawDeviceSettings.darkMode != null) {
+      merged.theme = rawDeviceSettings.darkMode ? 'gruvbox-dark' : 'light';
     }
+    if ((merged.theme as string) === 'dark') merged.theme = 'gruvbox-dark';
+    if ((merged.theme as string) === 'notion' || (merged.theme as string) === 'neu-light') merged.theme = 'light';
+    if (!isPrebuiltThemeId(merged.theme) && merged.theme !== 'custom') merged.theme = 'light';
+    merged.fontFamily = resolveAppFont(rawDeviceSettings.fontFamily);
+    merged.darkMode = merged.theme === 'custom' ? Boolean(rawDeviceSettings.darkMode) : getPrebuiltTheme(merged.theme).dark;
+
+    if (rawDeviceSettings.language == null) merged.language = detectBrowserLanguage();
+    if (merged.language !== 'en' && merged.language !== 'ru') merged.language = 'en';
+
+    set({ ...merged, loaded: true });
+    applyTheme(merged.theme, merged.customThemeColors);
+    applyAccentColor(merged.accentColor);
+    applyFont(merged.fontFamily);
+    applyZoom(merged.uiZoom);
   },
 
   update: async (patch) => {
     // Copy — callers must not see their patch object mutated.
     const next = { ...patch };
     set(next);
-    await db.settings.update('default', {
-      ...next,
-      updatedAt: new Date().toISOString(),
-    });
+    const sharedPatch: Record<string, unknown> = {};
+    const devicePatch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(next)) {
+      if ((DEVICE_SETTINGS_KEYS as string[]).includes(key)) devicePatch[key] = value;
+      else if ((SETTINGS_KEYS as string[]).includes(key)) sharedPatch[key] = value;
+    }
+    if (Object.keys(sharedPatch).length) {
+      await db.settings.update('default', { ...sharedPatch, updatedAt: new Date().toISOString() });
+    }
+    if (Object.keys(devicePatch).length) {
+      const updated = await db.deviceSettings.update('default', devicePatch as any);
+      if (!updated) await db.deviceSettings.put({ id: 'default', ...DEFAULT_DEVICE_SETTINGS, ...devicePatch } as any);
+    }
   },
 
   addRecentVault: async (path: string, name: string) => {
@@ -140,17 +141,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const entry = { path, name, lastOpened: new Date().toISOString() };
     const filtered = current.filter((v) => v.path !== path);
     const updated = [entry, ...filtered].slice(0, 10);
-    set({ recentVaults: updated });
-    await db.settings.update('default', {
-      recentVaults: updated as any,
-      updatedAt: new Date().toISOString(),
-    });
+    await get().update({ recentVaults: updated });
   },
 
   setTheme: async (theme) => {
     applyTheme(theme, get().customThemeColors);
     applyAccentColor(get().accentColor);
-    // `darkMode` is a legacy mirror of `theme`, kept for vault LWW compatibility — never set independently.
+    // `darkMode` is a local legacy mirror of `theme`, never set independently.
     await get().update({
       theme,
       darkMode: theme === 'custom' ? get().darkMode : getPrebuiltTheme(theme).dark,

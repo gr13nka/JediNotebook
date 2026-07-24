@@ -48,6 +48,7 @@ export interface PrebuiltTheme {
   id: PrebuiltThemeId;
   labelKey: TranslationKey;
   dark: boolean;
+  texture?: 'wax-pencil';
   colors: ThemeColors;
 }
 
@@ -77,6 +78,46 @@ export const PREBUILT_THEMES: PrebuiltTheme[] = [
       red: '#C62828',
       barTrack: '#E7E7E5',
       border: '#D9D9D7',
+    },
+  },
+  {
+    id: 'wax-light',
+    labelKey: 'settings.themeWaxLight',
+    dark: false,
+    texture: 'wax-pencil',
+    colors: {
+      bgPrimary: '#F5EBDD',
+      bgCard: '#FFF7E8',
+      bgElevated: '#EBD7C1',
+      textPrimary: '#3A2921',
+      textSecondary: '#6F4B39',
+      textMuted: '#8C6D5B',
+      accent: '#B84A27',
+      accentFg: '#FFF7E8',
+      green: '#3C6B45',
+      red: '#A9442A',
+      barTrack: '#E4CDB8',
+      border: '#D8B99E',
+    },
+  },
+  {
+    id: 'wax-dark',
+    labelKey: 'settings.themeWaxDark',
+    dark: true,
+    texture: 'wax-pencil',
+    colors: {
+      bgPrimary: '#2B201C',
+      bgCard: '#362720',
+      bgElevated: '#4A3328',
+      textPrimary: '#F6E7D0',
+      textSecondary: '#E2C6A7',
+      textMuted: '#C7A182',
+      accent: '#E26C3D',
+      accentFg: '#2B201C',
+      green: '#A6B36A',
+      red: '#E37B63',
+      barTrack: '#4B342A',
+      border: '#654739',
     },
   },
   {

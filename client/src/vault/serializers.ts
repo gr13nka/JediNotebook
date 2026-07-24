@@ -3,6 +3,7 @@ import type {
   Project, ProjectTask, TodayTask,
   ProjectFolder, InboxItem,
 } from '@shared/types';
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { parseFrontmatter, stringifyFrontmatter } from './frontmatter';
 import {
   ACTIVITIES, PROJECTS, PROJECT_TASKS, TIME_LOG, TODAY, INBOX, SETTINGS, FOLDERS,
@@ -356,7 +357,13 @@ export function deserializeInbox(content: string): Omit<InboxItem, 'deletedAt'>[
 // ─── Settings (JSON, not frontmatter) ─────────────────────────────
 
 export function serializeSettings(s: UserSettings): { path: string; content: string } {
-  const { id: _, deletedAt: _d, ...rest } = s as any;
+  const rest: Record<string, unknown> = {
+    updatedAt: s.updatedAt,
+    deviceId: s.deviceId,
+  };
+  for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof typeof DEFAULT_SETTINGS)[]) {
+    rest[key] = s[key];
+  }
   return {
     path: SETTINGS.path,
     content: JSON.stringify(rest, null, 2) + '\n',
@@ -364,7 +371,14 @@ export function serializeSettings(s: UserSettings): { path: string; content: str
 }
 
 export function deserializeSettings(content: string): Partial<UserSettings> {
-  return JSON.parse(content);
+  const raw = JSON.parse(content) as Record<string, unknown>;
+  const settings: Record<string, unknown> = {};
+  for (const key of Object.keys(DEFAULT_SETTINGS)) {
+    if (key in raw) settings[key] = raw[key];
+  }
+  if (raw.updatedAt != null) settings.updatedAt = raw.updatedAt;
+  if (raw.deviceId != null) settings.deviceId = raw.deviceId;
+  return settings as Partial<UserSettings>;
 }
 
 // ─── Project Folders (JSON) ───────────────────────────────────────

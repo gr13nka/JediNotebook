@@ -3,6 +3,14 @@ import { contrastRatio } from './contrast';
 import { PREBUILT_THEMES } from './themes';
 
 describe('prebuilt theme contrast', () => {
+  it('registers the wax-pencil pair with matching texture and mode metadata', () => {
+    const waxLight = PREBUILT_THEMES.find((theme) => theme.id === 'wax-light');
+    const waxDark = PREBUILT_THEMES.find((theme) => theme.id === 'wax-dark');
+
+    expect(waxLight).toMatchObject({ dark: false, texture: 'wax-pencil' });
+    expect(waxDark).toMatchObject({ dark: true, texture: 'wax-pencil' });
+  });
+
   it('keeps primary and secondary text readable on every surface', () => {
     for (const theme of PREBUILT_THEMES) {
       const surfaces = [theme.colors.bgPrimary, theme.colors.bgCard, theme.colors.bgElevated];

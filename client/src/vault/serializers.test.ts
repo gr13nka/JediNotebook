@@ -134,48 +134,9 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
     dayStartHour: 6,
     dayEndHour: 2,
     timezone: 'Europe/Athens',
-    barStyle: 'thick-linear',
-    darkMode: false,
-    theme: 'gruvbox-dark',
-    language: 'en',
     maxTasksPerProject: 5,
-    navPosition: 'left',
     pointsCounterVisible: true,
-    accentColor: '#4C8BF5',
-    fontFamily: 'source-serif-4',
-    uiZoom: 110,
     timeTrackingVisible: true,
-    projectListFontOverridePx: null,
-    projectNoteFontOverridePx: null,
-    pointsColorFixed: false,
-    hiddenNavTabs: ['/mindmap'],
-    navTabOrder: ['/', '/today', '/projects'],
-    dropdownFabCorner: 'bottom-right',
-    customThemeColors: {
-      bgPrimary: '#1a1a2e',
-      bgCard: '#16213e',
-      bgElevated: '#1a3a5c',
-      textPrimary: '#eaeaea',
-      textSecondary: '#a0a0b0',
-      textMuted: '#5a5a6e',
-      accent: '#e94560',
-      accentFg: '#ffffff',
-      green: '#27ae60',
-      red: '#e74c3c',
-      barTrack: '#1a3a5c',
-      border: '#1a3a5c',
-    },
-    vaultEnabled: true,
-    vaultPath: '/Users/me/MyVault',
-    vaultSetupDone: true,
-    recentVaults: [{ path: '/Users/me/MyVault', name: 'MyVault', lastOpened: '2026-07-20T00:00:00.000Z' }],
-    bottomNavTabs: ['/inbox', '/projects', '/tasks', '/today', '/settings'],
-    bottomNavScrollable: false,
-    bottomNavPages: [
-      ['/', '/today', '/projects', '/inbox'],
-      ['/tasks', '/settings'],
-    ],
-    mobileProjectGrid: false,
     lastRolloverDate: null,
     updatedAt: '2026-07-21T08:00:00.000Z',
     deviceId: 'device-abc',
@@ -506,15 +467,25 @@ describe('Settings serialization', () => {
     },
   );
 
-  it('round-trips the recentVaults array structure', () => {
-    const s = makeSettings({
-      recentVaults: [
-        { path: '/a', name: 'A', lastOpened: '2026-07-01T00:00:00.000Z' },
-        { path: '/b', name: 'B', lastOpened: '2026-07-02T00:00:00.000Z' },
-      ],
+  it('excludes device-local fields from legacy settings files', () => {
+    const legacyContent = JSON.stringify({
+      ...makeSettings(),
+      vaultEnabled: true,
+      vaultPath: '/Users/me/MyVault',
+      recentVaults: [{ path: '/Users/me/MyVault', name: 'MyVault', lastOpened: '2026-07-20T00:00:00.000Z' }],
+      theme: 'gruvbox-dark',
     });
-    const back = deserializeSettings(serializeSettings(s).content);
-    expect(back.recentVaults).toEqual(s.recentVaults);
+
+    const back = deserializeSettings(legacyContent) as Record<string, unknown>;
+    expect(back.vaultEnabled).toBeUndefined();
+    expect(back.vaultPath).toBeUndefined();
+    expect(back.recentVaults).toBeUndefined();
+    expect(back.theme).toBeUndefined();
+
+    const exported = JSON.parse(serializeSettings(makeSettings()).content) as Record<string, unknown>;
+    expect(exported.vaultPath).toBeUndefined();
+    expect(exported.theme).toBeUndefined();
+    expect(exported.bottomNavTabs).toBeUndefined();
   });
 });
 

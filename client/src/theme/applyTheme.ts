@@ -13,22 +13,30 @@ function setColorVars(colors: ThemeColors | CustomThemeColors) {
 /**
  * The single place that puts a theme on the page. Sets the 12 color tokens
  * as inline custom properties on `<html>` — the mechanism every theme
- * (prebuilt or custom) renders through — and toggles the `dark`/`custom`
- * marker classes that index.css's shadow blocks still select on (shadows
- * stay class-based; colors don't need to be, since every theme's colors are
- * already known as data).
+ * (prebuilt or custom) renders through — and toggles the marker classes that
+ * index.css uses for dark shadows and the wax-pencil surface treatment.
  */
+function setBrowserThemeColor(color: string): void {
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content', color);
+}
+
 export function applyTheme(theme: ThemeMode, customColors: CustomThemeColors): void {
   const cl = document.documentElement.classList;
-  cl.remove('dark', 'custom');
+  const root = document.documentElement;
+  cl.remove('dark', 'custom', 'wax-pencil');
 
   if (theme === 'custom') {
     cl.add('custom');
     setColorVars(customColors);
+    root.style.colorScheme = contrastingText(customColors.bgPrimary) === '#FFFFFF' ? 'dark' : 'light';
+    setBrowserThemeColor(customColors.bgPrimary);
   } else if (isPrebuiltThemeId(theme)) {
     const preset = getPrebuiltTheme(theme);
     if (preset.dark) cl.add('dark');
+    if (preset.texture === 'wax-pencil') cl.add('wax-pencil');
     setColorVars(preset.colors);
+    root.style.colorScheme = preset.dark ? 'dark' : 'light';
+    setBrowserThemeColor(preset.colors.bgPrimary);
   }
 }
 

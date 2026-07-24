@@ -7,6 +7,7 @@ This guide describes the appearance and time-tracking controls currently availab
 The default theme is a clean, high-contrast white-and-black palette inspired by Notion-style interfaces. The following built-in themes are available in Settings:
 
 - Clean Light (default)
+- Wax Light and Wax Dark — warm cream/orange paper surfaces with a static wax-pencil texture
 - Gruvbox Dark and Gruvbox Light
 - Everforest Dark and Everforest Light
 - Catppuccin Mocha and Catppuccin Latte

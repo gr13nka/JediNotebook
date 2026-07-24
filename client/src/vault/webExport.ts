@@ -3,11 +3,11 @@ import { MemoryBackend } from './memoryBackend';
 import { exportAllToDisk, importAllFromDisk } from './vaultSync';
 import { db } from '../db';
 
-/** Clear all data tables except settings (used before import to prevent duplicates) */
+/** Clear vault-synced tables only; device preferences must survive an import. */
 async function clearDataTables(): Promise<void> {
   const tableNames = db.tables
     .map(t => t.name)
-    .filter(name => name !== 'settings');
+    .filter(name => name !== 'deviceSettings');
   await db.transaction('rw', db.tables, async () => {
     for (const name of tableNames) {
       await db.table(name).clear();

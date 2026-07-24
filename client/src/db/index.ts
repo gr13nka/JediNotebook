@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Activity, TimeEntry, UserSettings, Habit, HabitEntry, Note, PomodoroPreset, Project, ProjectTask, TodayTask, ProjectFolder, InboxItem, MindMap, PdfDocument, TimeBox } from '@shared/types';
-import { DEFAULT_SETTINGS } from '@shared/constants';
+import type { Activity, DeviceSettings, TimeEntry, UserSettings, Habit, HabitEntry, Note, PomodoroPreset, Project, ProjectTask, TodayTask, ProjectFolder, InboxItem, MindMap, PdfDocument, TimeBox } from '@shared/types';
+import { DEFAULT_DEVICE_SETTINGS, DEFAULT_SETTINGS } from '@shared/constants';
 import { classifyTimeBoxForMigration } from './migrations';
 import { getLogicalDate } from '../utils/time';
 
@@ -8,6 +8,7 @@ const db = new Dexie('TimeTrackerDB') as Dexie & {
   activities: EntityTable<Activity, 'id'>;
   timeEntries: EntityTable<TimeEntry, 'id'>;
   settings: EntityTable<UserSettings, 'id'>;
+  deviceSettings: EntityTable<DeviceSettings, 'id'>;
   habits: EntityTable<Habit, 'id'>;
   habitEntries: EntityTable<HabitEntry, 'id'>;
   notes: EntityTable<Note, 'id'>;
@@ -239,12 +240,44 @@ db.version(12).stores({
   const settings = await tx.table('settings').get('default');
   if (!settings) return;
   await tx.table('settings').update('default', {
-    fontFamily: DEFAULT_SETTINGS.fontFamily,
+    fontFamily: DEFAULT_DEVICE_SETTINGS.fontFamily,
   });
 });
 
+// Split preferences that describe this installation from settings that belong
+// to the shared vault. Existing values are retained locally, while future
+// vault imports can no longer overwrite paths, appearance, or navigation.
+db.version(13).stores({
+  activities: 'id, name, sortOrder, deletedAt, updatedAt',
+  timeEntries: 'id, activityId, date, startedAt, endedAt, deletedAt, updatedAt',
+  settings: 'id',
+  deviceSettings: 'id',
+  habits: 'id, name, sortOrder, deletedAt, updatedAt',
+  habitEntries: 'id, habitId, date, deletedAt, updatedAt, [habitId+date]',
+  notes: 'id, isPinned, deletedAt, updatedAt',
+  pomodoroPresets: 'id, name, sortOrder, deletedAt, updatedAt',
+  projects: 'id, name, folderId, sortOrder, isArchived, deletedAt, updatedAt',
+  projectTasks: 'id, projectId, sortOrder, isCompleted, deletedAt, updatedAt, timeBox, scheduledDate',
+  todayTasks: 'id, projectTaskId, projectId, date, isCompleted, deletedAt, updatedAt',
+  projectFolders: 'id, name, parentFolderId, sortOrder, deletedAt, updatedAt',
+  inboxItems: 'id, deletedAt, updatedAt',
+  mindMaps: 'id, deletedAt, updatedAt',
+  pdfDocuments: 'id, isPinned, deletedAt, updatedAt',
+}).upgrade(async tx => {
+  const settings = await tx.table('settings').get('default') as Record<string, unknown> | undefined;
+  if (!settings) return;
+
+  const device: Record<string, unknown> = { id: 'default', ...DEFAULT_DEVICE_SETTINGS };
+  for (const key of Object.keys(DEFAULT_DEVICE_SETTINGS)) {
+    if (settings[key] != null) device[key] = settings[key];
+    delete settings[key];
+  }
+  await tx.table('deviceSettings').put(device);
+  await tx.table('settings').put(settings);
+});
+
 /**
- * Hard-deletes every row in every table — the app's only sanctioned
+ * Hard-deletes every vault-synced row — the app's only sanctioned
  * exception to the no-hard-deletes/`deletedAt` rule. Irreversible on its
  * own; only ever called from `vaultStore.switchVault`, immediately after
  * `snapshotAllTables()`, so the caller can `restoreFromSnapshot` if the
@@ -254,6 +287,7 @@ db.version(12).stores({
 export async function clearAllTables() {
   await db.transaction('rw', db.tables, async () => {
     for (const table of db.tables) {
+      if (table.name === 'deviceSettings') continue;
       await table.clear();
     }
   });
@@ -262,6 +296,7 @@ export async function clearAllTables() {
 export async function snapshotAllTables(): Promise<Map<string, any[]>> {
   const snapshot = new Map<string, any[]>();
   for (const table of db.tables) {
+    if (table.name === 'deviceSettings') continue;
     snapshot.set(table.name, await table.toArray());
   }
   return snapshot;
@@ -277,9 +312,11 @@ export async function snapshotAllTables(): Promise<Map<string, any[]>> {
 export async function restoreFromSnapshot(snapshot: Map<string, any[]>): Promise<void> {
   await db.transaction('rw', db.tables, async () => {
     for (const table of db.tables) {
+      if (table.name === 'deviceSettings') continue;
       await table.clear();
     }
     for (const table of db.tables) {
+      if (table.name === 'deviceSettings') continue;
       const rows = snapshot.get(table.name);
       if (rows?.length) await table.bulkPut(rows);
     }

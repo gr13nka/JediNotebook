@@ -500,7 +500,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
       </div>
 
       <div
-        className="flex gap-2 items-end rounded-xl bg-bg-card p-2"
+        className="flex w-full items-center gap-2 rounded-2xl bg-bg-card p-2.5"
         style={{ boxShadow: NEU.pressed }}
       >
         <textarea
@@ -513,12 +513,12 @@ export function InboxView({ embedded = false }: InboxViewProps) {
           onKeyDown={handleKeyDown}
           placeholder={t('inbox.placeholder')}
           rows={1}
-          className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none px-2 resize-none overflow-hidden leading-6"
+          className="min-h-10 flex-1 resize-none overflow-hidden bg-transparent px-2.5 py-2 text-sm leading-5 text-text-primary outline-none placeholder:text-text-muted"
         />
         <button
           onClick={handleAdd}
           disabled={!inputText.trim()}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium text-accent disabled:opacity-40 transition-opacity shrink-0"
+          className="flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl px-0 text-base font-medium text-accent transition-opacity disabled:opacity-40"
           style={{ boxShadow: NEU.raisedSm }}
         >
           +

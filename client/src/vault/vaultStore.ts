@@ -139,6 +139,9 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         set({ error: `Import completed with ${result.errors.length} error(s): ${result.errors.slice(0, 2).join('; ')}` });
       }
       set({ lastSyncAt: new Date().toISOString(), isSyncing: false });
+      // A legacy vault may still contain device-only fields. Rewriting through
+      // the filtered serializer removes them without changing shared values.
+      writeQueue.enqueue('settings', 'default');
     } catch (err) {
       set({ error: String(err), isSyncing: false });
       throw err;
@@ -240,14 +243,11 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     // Disable current vault (flushes pending writes to disk first)
     await state.disable();
 
-    // Preserve recentVaults before clearing DB
-    const recentVaults = useSettingsStore.getState().recentVaults;
-
     // Snapshot all data before clearing — allows restore on failure
     const snapshot = await snapshotAllTables();
 
     try {
-    // Clear all Dexie tables
+    // Clear synced data only — device settings stay with this installation.
     await clearAllTables();
 
     // Seed only settings (needed for LWW backdate trick)
@@ -286,13 +286,11 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       }
     }
 
-    // Update settings with vault fields (must always run, even if export failed)
-    await db.settings.update('default', {
+    // Update this device's vault configuration (never written to settings.json).
+    await useSettingsStore.getState().update({
       vaultEnabled: true,
       vaultPath: newPath,
       vaultSetupDone: true,
-      recentVaults: recentVaults as any,
-      updatedAt: new Date().toISOString(),
     });
 
     // Reload settings store from DB (picks up imported settings + vault fields)

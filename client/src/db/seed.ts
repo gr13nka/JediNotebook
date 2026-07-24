@@ -1,5 +1,5 @@
 import { db } from './index';
-import { BREAK_ACTIVITY, DEFAULT_SETTINGS, ACTIVITY_COLORS } from '@shared/constants';
+import { BREAK_ACTIVITY, DEFAULT_DEVICE_SETTINGS, DEFAULT_SETTINGS, ACTIVITY_COLORS } from '@shared/constants';
 import { newRecord } from './repository';
 
 export async function seedDatabase() {
@@ -29,5 +29,10 @@ export async function seedDatabase() {
       updatedAt,
       deviceId,
     });
+  }
+
+  const existingDeviceSettings = await db.deviceSettings.get('default');
+  if (!existingDeviceSettings) {
+    await db.deviceSettings.add({ id: 'default', ...DEFAULT_DEVICE_SETTINGS });
   }
 }
