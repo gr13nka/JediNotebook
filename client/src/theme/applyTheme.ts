@@ -1,6 +1,7 @@
 import type { CustomThemeColors, ThemeMode } from '@shared/types';
 import { THEME_COLOR_CSS_VARS, getPrebuiltTheme, isPrebuiltThemeId, type ThemeColors } from './themes';
 import { contrastingText } from './contrast';
+export { applyFont } from './fonts';
 
 function setColorVars(colors: ThemeColors | CustomThemeColors) {
   const el = document.documentElement;

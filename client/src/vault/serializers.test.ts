@@ -142,6 +142,7 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
     navPosition: 'left',
     pointsCounterVisible: true,
     accentColor: '#4C8BF5',
+    fontFamily: 'source-serif-4',
     uiZoom: 110,
     timeTrackingVisible: true,
     projectListFontOverridePx: null,

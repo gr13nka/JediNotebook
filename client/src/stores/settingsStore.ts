@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import type { CustomThemeColors, Language, NavPosition, PersistedSettings, ThemeMode } from '@shared/types';
+import type { AppFont, CustomThemeColors, Language, NavPosition, PersistedSettings, ThemeMode } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { db } from '../db';
-import { applyAccentColor, applyTheme, applyZoom } from '../theme/applyTheme';
+import { applyAccentColor, applyFont, applyTheme, applyZoom } from '../theme/applyTheme';
 import { getPrebuiltTheme, isPrebuiltThemeId } from '../theme/themes';
+import { resolveAppFont } from '../theme/fonts';
 
 function detectBrowserLanguage(): Language {
   const browserLang = navigator.language?.slice(0, 2).toLowerCase();
@@ -14,6 +15,7 @@ function detectBrowserLanguage(): Language {
 type SettingsAction =
   | 'loaded' | 'load' | 'update' | 'addRecentVault'
   | 'setTheme' | 'setCustomColors' | 'setAccentColor' | 'setZoom'
+  | 'setFontFamily'
   | 'setTimeTrackingVisible' | 'setProjectListFontOverride' | 'setProjectNoteFontOverride'
   | 'hideTab' | 'showTab' | 'reorderTabs' | 'setNavPosition';
 
@@ -37,6 +39,7 @@ interface SettingsState extends PersistedSettings {
   setTheme: (theme: ThemeMode) => Promise<void>;
   setCustomColors: (colors: CustomThemeColors) => Promise<void>;
   setAccentColor: (color: string) => Promise<void>;
+  setFontFamily: (fontFamily: AppFont) => Promise<void>;
   setZoom: (zoom: number) => Promise<void>;
   setTimeTrackingVisible: (visible: boolean) => Promise<void>;
   setProjectListFontOverride: (px: number | null) => Promise<void>;
@@ -97,6 +100,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if ((merged.theme as string) === 'dark') merged.theme = 'gruvbox-dark';
       if ((merged.theme as string) === 'notion' || (merged.theme as string) === 'neu-light') merged.theme = 'light';
       if (!isPrebuiltThemeId(merged.theme) && merged.theme !== 'custom') merged.theme = 'light';
+      merged.fontFamily = resolveAppFont(raw.fontFamily);
       // `darkMode` always mirrors the fully-resolved theme — never trusted from the row directly.
       merged.darkMode = merged.theme === 'custom' ? Boolean(raw.darkMode) : getPrebuiltTheme(merged.theme).dark;
 
@@ -112,8 +116,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({ ...merged, loaded: true });
       applyTheme(merged.theme, merged.customThemeColors);
       applyAccentColor(merged.accentColor);
+      applyFont(merged.fontFamily);
       applyZoom(merged.uiZoom);
     } else {
+      applyFont(DEFAULT_SETTINGS.fontFamily);
       applyZoom(DEFAULT_SETTINGS.uiZoom);
       set({ language: detectBrowserLanguage(), loaded: true });
     }
@@ -164,6 +170,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     await get().update({ accentColor: color });
   },
 
+  setFontFamily: async (fontFamily) => {
+    const resolved = resolveAppFont(fontFamily);
+    applyFont(resolved);
+    await get().update({ fontFamily: resolved });
+  },
 
   setZoom: async (zoom) => {
     const normalized = Math.max(25, Math.round(zoom));

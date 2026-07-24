@@ -30,8 +30,10 @@ cd client && npm run test:watch
 cd client && npm run tauri:dev
 cd client && npm run tauri:build
 
-# Android: build, install debug APK, launch on connected device
+# Android: one-time local SDK/NDK setup, then build/install a debug APK
+./setup-android-build-tools.sh
 ./build-android.sh
+# Contributor guide: docs/android-build-and-install.md
 
 # Linux: build, install for the current user, and launch
 ./build-linux.sh

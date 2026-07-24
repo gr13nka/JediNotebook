@@ -61,7 +61,7 @@ export interface UserSettings {
   uiZoom: number;
   /** Whether the time-tracking UI is available. Existing time data is preserved. */
   timeTrackingVisible: boolean;
-  /** Explicit project typography overrides. null follows the global UI zoom. */
+  /** Explicit project typography overrides. `null` follows the global UI zoom. */
   projectListFontOverridePx: number | null;
   projectNoteFontOverridePx: number | null;
   pointsColorFixed: boolean;

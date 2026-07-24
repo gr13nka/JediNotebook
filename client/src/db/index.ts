@@ -239,6 +239,7 @@ db.version(12).stores({
   const settings = await tx.table('settings').get('default');
   if (!settings) return;
   await tx.table('settings').update('default', {
+    fontFamily: DEFAULT_SETTINGS.fontFamily,
   });
 });
 
