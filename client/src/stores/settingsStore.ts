@@ -112,7 +112,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
     set({ ...merged, loaded: true });
     applyTheme(merged.theme, merged.customThemeColors);
-    applyAccentColor(merged.accentColor);
+    applyAccentColor(merged.theme, merged.customThemeColors, merged.accentColor);
     applyFont(merged.fontFamily);
     applyZoom(merged.uiZoom);
   },
@@ -146,7 +146,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setTheme: async (theme) => {
     applyTheme(theme, get().customThemeColors);
-    applyAccentColor(get().accentColor);
+    applyAccentColor(theme, get().customThemeColors, get().accentColor);
     // `darkMode` is a local legacy mirror of `theme`, never set independently.
     await get().update({
       theme,
@@ -157,13 +157,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setCustomColors: async (colors) => {
     if (get().theme === 'custom') {
       applyTheme('custom', colors);
-      applyAccentColor(get().accentColor);
+      applyAccentColor('custom', colors, get().accentColor);
     }
     await get().update({ customThemeColors: colors });
   },
 
   setAccentColor: async (color) => {
-    applyAccentColor(color);
+    // Clearing the override (`''`, the picker's "Default" swatch) resolves
+    // straight back to the active theme's own accent — no reload needed.
+    applyAccentColor(get().theme, get().customThemeColors, color);
     await get().update({ accentColor: color });
   },
 

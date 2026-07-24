@@ -40,16 +40,38 @@ export function applyTheme(theme: ThemeMode, customColors: CustomThemeColors): v
   }
 }
 
-/** Accent override applied on top of whatever `applyTheme` just set — always re-applied after a theme switch. */
-export function applyAccentColor(color: string): void {
+/**
+ * The accent pair actually in force: the user's override when they set one,
+ * otherwise the active theme's own accent.
+ *
+ * Pure, and the single answer to "what is the accent right now" — so no
+ * caller has to depend on `applyTheme` having run first. That dependency is
+ * what this replaces: clearing the override used to `removeProperty` both
+ * vars, which stripped the values `setColorVars` had just written and let
+ * every theme fall back to index.css's `@theme` defaults (slate `#1F2937` on
+ * white). Unreadable on dark themes, and near-invisible on light ones
+ * because the fallback is a hair from the `light` theme's real accent.
+ *
+ * With no override the theme's hand-picked `accentFg` is returned rather
+ * than a computed one — that pairing is already contrast-tested in
+ * `contrast.test.ts`.
+ */
+export function resolveAccent(
+  theme: ThemeMode,
+  customColors: CustomThemeColors,
+  accentColor: string,
+): { accent: string; accentFg: string } {
+  if (accentColor) return { accent: accentColor, accentFg: contrastingText(accentColor) };
+  const colors = theme === 'custom' ? customColors : getPrebuiltTheme(theme).colors;
+  return { accent: colors.accent, accentFg: colors.accentFg };
+}
+
+/** Writes the resolved accent onto `<html>`. Always sets both vars — never removes them. */
+export function applyAccentColor(theme: ThemeMode, customColors: CustomThemeColors, accentColor: string): void {
+  const { accent, accentFg } = resolveAccent(theme, customColors, accentColor);
   const el = document.documentElement;
-  if (color) {
-    el.style.setProperty('--color-accent', color);
-    el.style.setProperty('--color-accent-fg', contrastingText(color));
-  } else {
-    el.style.removeProperty('--color-accent');
-    el.style.removeProperty('--color-accent-fg');
-  }
+  el.style.setProperty('--color-accent', accent);
+  el.style.setProperty('--color-accent-fg', accentFg);
 }
 
 export function applyZoom(zoom: number): void {
