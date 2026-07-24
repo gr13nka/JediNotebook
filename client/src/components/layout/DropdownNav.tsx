@@ -93,6 +93,7 @@ export function DropdownNav() {
   const hideTab = useSettingsStore((s) => s.hideTab);
   const showTab = useSettingsStore((s) => s.showTab);
   const reorderTabs = useSettingsStore((s) => s.reorderTabs);
+  const timeTrackingVisible = useSettingsStore((s) => s.timeTrackingVisible);
 
   const [open, setOpen] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tab: string } | null>(null);
@@ -107,13 +108,13 @@ export function DropdownNav() {
   const fabStartPointer = useRef({ x: 0, y: 0 });
 
   const allNavItems = useMemo(() => [
-    { to: '/', label: t('nav.tracking'), icon: ClockIcon },
+    ...(timeTrackingVisible ? [{ to: '/', label: t('nav.tracking'), icon: ClockIcon }] : []),
     { to: '/projects', label: t('nav.projects'), icon: FolderIcon },
     { to: '/tasks', label: t('nav.taskSelection'), icon: ListIcon },
     { to: '/today', label: t('nav.today'), icon: SunIcon },
     { to: '/inbox', label: t('nav.inbox'), icon: InboxIcon },
     { to: '/settings', label: t('nav.settings'), icon: GearIcon },
-  ], [t]);
+  ], [t, timeTrackingVisible]);
 
   const visibleNavItems = useMemo(() => {
     const filtered = allNavItems.filter((item) => !hiddenNavTabs.includes(item.to));
@@ -320,7 +321,7 @@ export function DropdownNav() {
                     draggable={false}
                     onClick={() => setOpen(false)}
                     className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition-colors ${
-                      isActive ? 'text-accent font-medium' : 'text-text-secondary hover:text-text-primary'
+                      isActive ? 'text-text-primary font-medium' : 'text-text-secondary hover:text-text-primary'
                     }`}
                     style={isActive ? { boxShadow: NEU.pressedSm } : undefined}
                     onContextMenu={(e) => handleContextMenu(e, item.to)}

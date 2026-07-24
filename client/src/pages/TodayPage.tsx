@@ -7,6 +7,7 @@ import { db } from '../db';
 import { updateRecord } from '../db/repository';
 import { useTranslation } from '../i18n/useTranslation';
 import { NEU } from '../utils/shadows';
+import { useSettingsStore } from '../stores/settingsStore';
 
 const EyeIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -44,6 +45,7 @@ const ExpandIcon = () => (
 
 export function TodayPage() {
   const { t } = useTranslation();
+  const timeTrackingVisible = useSettingsStore((s) => s.timeTrackingVisible);
   const { tasks: todayTasks, toggleComplete, reorderBox } = useTaskBox('today');
   // Title editing isn't part of useTaskBox's contract (it's a plain field
   // edit, not a box operation) — same inline-repository pattern Task
@@ -179,7 +181,7 @@ export function TodayPage() {
           </button>
         </div>
 
-        <TimerDisplay />
+        {timeTrackingVisible && <TimerDisplay />}
 
         {/* All done celebration */}
         <AnimatePresence>

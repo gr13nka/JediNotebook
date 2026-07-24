@@ -7,7 +7,9 @@ export function useThemeMode(): ThemeMode {
 }
 
 export function useIsDark(): boolean {
-  return useThemeMode() !== 'light';
+  const theme = useThemeMode();
+  const customDark = useSettingsStore((s) => s.darkMode);
+  return theme === 'custom' ? customDark : getPrebuiltTheme(theme).dark;
 }
 
 export function useThemeColors() {

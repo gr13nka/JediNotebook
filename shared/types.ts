@@ -59,6 +59,11 @@ export interface UserSettings {
   /** Typeface applied across the interface and project text. */
   fontFamily: AppFont;
   uiZoom: number;
+  /** Whether the time-tracking UI is available. Existing time data is preserved. */
+  timeTrackingVisible: boolean;
+  /** Explicit project typography overrides. null follows the global UI zoom. */
+  projectListFontOverridePx: number | null;
+  projectNoteFontOverridePx: number | null;
   pointsColorFixed: boolean;
   hiddenNavTabs: string[];
   navTabOrder: string[];
@@ -83,7 +88,15 @@ export type PersistedSettings = Omit<UserSettings, 'id' | 'updatedAt' | 'deviceI
 
 export type BarStyle = 'thick-linear' | 'segmented' | 'circular';
 
-export type ThemeMode = 'light' | 'dark' | 'custom';
+export type ThemeMode =
+  | 'light'
+  | 'gruvbox-dark' | 'gruvbox-light'
+  | 'everforest-dark' | 'everforest-light'
+  | 'catppuccin-mocha' | 'catppuccin-latte'
+  | 'nord'
+  | 'solarized-dark' | 'solarized-light'
+  | 'dracula'
+  | 'custom';
 
 export interface CustomThemeColors {
   bgPrimary: string;

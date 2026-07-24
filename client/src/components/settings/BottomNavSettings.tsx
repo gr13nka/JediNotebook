@@ -53,32 +53,37 @@ export function BottomNavSettings() {
   const bottomNavScrollable = useSettingsStore((s) => s.bottomNavScrollable);
   const bottomNavPages = useSettingsStore((s) => s.bottomNavPages);
   const update = useSettingsStore((s) => s.update);
+  const timeTrackingVisible = useSettingsStore((s) => s.timeTrackingVisible);
+  const availableNavItems = useMemo(
+    () => ALL_NAV_ITEMS.filter((item) => timeTrackingVisible || item.to !== '/'),
+    [timeTrackingVisible],
+  );
 
   // Classic mode data
   const pinnedItems = useMemo(() => {
     return bottomNavTabs
       .map((path) => NAV_ITEM_MAP.get(path))
-      .filter((item): item is NavItem => !!item);
-  }, [bottomNavTabs]);
+      .filter((item): item is NavItem => !!item && (timeTrackingVisible || item.to !== '/'));
+  }, [bottomNavTabs, timeTrackingVisible]);
 
   const moreItems = useMemo(() => {
     const pinnedSet = new Set(bottomNavTabs);
-    return ALL_NAV_ITEMS.filter((item) => !pinnedSet.has(item.to));
-  }, [bottomNavTabs]);
+    return availableNavItems.filter((item) => !pinnedSet.has(item.to));
+  }, [availableNavItems, bottomNavTabs]);
 
   // Scrollable mode data
   const resolvedPages = useMemo(() => {
     return bottomNavPages.map((pagePaths) =>
       pagePaths
         .map((path) => NAV_ITEM_MAP.get(path))
-        .filter((item): item is NavItem => !!item)
+        .filter((item): item is NavItem => !!item && (timeTrackingVisible || item.to !== '/'))
     );
-  }, [bottomNavPages]);
+  }, [bottomNavPages, timeTrackingVisible]);
 
   const availableItems = useMemo(() => {
     const assigned = new Set(bottomNavPages.flat());
-    return ALL_NAV_ITEMS.filter((item) => !assigned.has(item.to));
-  }, [bottomNavPages]);
+    return availableNavItems.filter((item) => !assigned.has(item.to));
+  }, [availableNavItems, bottomNavPages]);
 
   if (navPosition === 'dropdown') return null;
 

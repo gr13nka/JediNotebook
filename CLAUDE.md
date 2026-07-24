@@ -33,11 +33,19 @@ cd client && npm run tauri:build
 # Android: build, install debug APK, launch on connected device
 ./build-android.sh
 
+# Linux: build, install for the current user, and launch
+./build-linux.sh
+# Contributor guide: docs/linux-build-and-install.md
+
 # macOS: build .app and install to /Applications
 ./build-macos.sh
 ```
 
 No linter is configured. `client/tsconfig.json` has `noUnusedLocals`/`noUnusedParameters` off, so deleting a feature's call sites does not surface newly-dead code via typecheck — grep for it manually (see Tooling notes).
+
+## Iteration completion
+
+At the end of each completed implementation iteration, present the verification result and ask the user whether they want a commit and a push. Do not create either by default. A direct request to commit and/or push for the current iteration is explicit authorization and does not need to be asked again.
 
 ## Tooling notes
 

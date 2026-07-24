@@ -18,6 +18,7 @@ import { ProjectTaskList } from './ProjectTaskList';
 import { AddProjectModal } from './AddProjectModal';
 import { AddFolderModal } from './AddFolderModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { useProjectTypography } from '../settings/ProjectTypographySettings';
 
 const MIN_SIDEBAR = 160;
 const MAX_SIDEBAR = 400;
@@ -31,6 +32,8 @@ export function ProjectsView() {
   const navigate = useNavigate();
   const { projects, createProject, updateProject, deleteProject } = useProjects();
   const { activities } = useActivities();
+  const timeTrackingVisible = useSettingsStore((s) => s.timeTrackingVisible);
+  const { projectListFontPx } = useProjectTypography();
   const { folders, createFolder } = useFolders();
   const inboxCount = useLiveQuery(
     () => db.inboxItems.filter((i) => !i.deletedAt).count(),
@@ -413,7 +416,7 @@ export function ProjectsView() {
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
               </button>
-              <span className="flex-1 text-sm text-text-primary font-medium truncate">
+              <span className="flex-1 text-text-primary font-medium truncate" style={{ fontSize: `${projectListFontPx}px` }}>
                 {(activeProject as any).icon ? `${(activeProject as any).icon} ` : ''}{activeProject.name}
               </span>
               <button
@@ -478,8 +481,8 @@ export function ProjectsView() {
                 <select
                   value={activeTabId ?? ''}
                   onChange={(e) => setActiveTab(e.target.value)}
-                  className="flex-1 min-w-0 bg-bg-primary text-text-primary text-sm rounded-lg px-2 py-1 border border-border appearance-none truncate"
-                  style={{ boxShadow: NEU.pressedSm }}
+                  className="flex-1 min-w-0 bg-bg-primary text-text-primary rounded-lg px-2 py-1 border border-border appearance-none truncate"
+                  style={{ boxShadow: NEU.pressedSm, fontSize: `${projectListFontPx}px` }}
                 >
                   {openProjects.map((p) => (
                     <option key={p.id} value={p.id}>{(p as any).icon ? `${(p as any).icon} ${p.name}` : p.name}</option>
@@ -596,9 +599,11 @@ export function ProjectsView() {
                   icon={(activeProject as any).icon ?? ''}
                   onSaveProject={(data) => updateProject(activeProject.id, data)}
                   onSave={(description) => updateProject(activeProject.id, { description })}
-                  linkedActivityId={(activeProject as any).linkedActivityId ?? null}
-                  onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
-                  activities={activities}
+                  {...(timeTrackingVisible ? {
+                    linkedActivityId: (activeProject as any).linkedActivityId ?? null,
+                    onLinkActivity: (activityId: string | null) => updateProject(activeProject.id, { linkedActivityId: activityId }),
+                    activities,
+                  } : {})}
                   onConsumeTask={deleteProjectTask}
                   onRegisterCut={registerCut}
                 />
@@ -646,9 +651,11 @@ export function ProjectsView() {
                   icon={(activeProject as any).icon ?? ''}
                   onSaveProject={(data) => updateProject(activeProject.id, data)}
                   onSave={(description) => updateProject(activeProject.id, { description })}
-                  linkedActivityId={(activeProject as any).linkedActivityId ?? null}
-                  onLinkActivity={(activityId) => updateProject(activeProject.id, { linkedActivityId: activityId })}
-                  activities={activities}
+                  {...(timeTrackingVisible ? {
+                    linkedActivityId: (activeProject as any).linkedActivityId ?? null,
+                    onLinkActivity: (activityId: string | null) => updateProject(activeProject.id, { linkedActivityId: activityId }),
+                    activities,
+                  } : {})}
                   onConsumeTask={deleteProjectTask}
                   onRegisterCut={registerCut}
                 />
@@ -746,7 +753,7 @@ export function ProjectsView() {
                             ) : (
                               <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
                             )}
-                            <span className="text-sm font-medium text-text-primary truncate">{p.name}</span>
+                            <span className="font-medium text-text-primary truncate" style={{ fontSize: `${projectListFontPx}px` }}>{p.name}</span>
                           </div>
                           {counts && (
                             <span className="text-[11px] text-text-muted tabular-nums">

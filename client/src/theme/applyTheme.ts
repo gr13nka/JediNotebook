@@ -1,6 +1,6 @@
 import type { CustomThemeColors, ThemeMode } from '@shared/types';
-import { THEME_COLOR_CSS_VARS, getPrebuiltTheme, type ThemeColors } from './themes';
-export { applyFont } from './fonts';
+import { THEME_COLOR_CSS_VARS, getPrebuiltTheme, isPrebuiltThemeId, type ThemeColors } from './themes';
+import { contrastingText } from './contrast';
 
 function setColorVars(colors: ThemeColors | CustomThemeColors) {
   const el = document.documentElement;
@@ -24,9 +24,10 @@ export function applyTheme(theme: ThemeMode, customColors: CustomThemeColors): v
   if (theme === 'custom') {
     cl.add('custom');
     setColorVars(customColors);
-  } else {
-    if (theme === 'dark') cl.add('dark');
-    setColorVars(getPrebuiltTheme(theme).colors);
+  } else if (isPrebuiltThemeId(theme)) {
+    const preset = getPrebuiltTheme(theme);
+    if (preset.dark) cl.add('dark');
+    setColorVars(preset.colors);
   }
 }
 
@@ -35,8 +36,10 @@ export function applyAccentColor(color: string): void {
   const el = document.documentElement;
   if (color) {
     el.style.setProperty('--color-accent', color);
+    el.style.setProperty('--color-accent-fg', contrastingText(color));
   } else {
     el.style.removeProperty('--color-accent');
+    el.style.removeProperty('--color-accent-fg');
   }
 }
 

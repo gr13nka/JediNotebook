@@ -8,6 +8,7 @@ import { NEU } from '../../utils/shadows';
 import { AddProjectModal } from './AddProjectModal';
 import { AddFolderModal } from './AddFolderModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { useProjectTypography } from '../settings/ProjectTypographySettings';
 import type { ProjectFolder, Project } from '@shared/types';
 
 interface ContextMenuState {
@@ -32,6 +33,7 @@ export function FileTree() {
   const { t } = useTranslation();
   const { folders, createFolder, deleteFolder, toggleExpanded } = useFolders();
   const { projects, createProject, deleteProject, moveProject, updateProject } = useProjects();
+  const { projectListFontPx } = useProjectTypography();
   const openTab = useProjectUIStore((s) => s.openTab);
   const closeTab = useProjectUIStore((s) => s.closeTab);
   const activeTabId = useProjectUIStore((s) => s.activeTabId);
@@ -256,6 +258,7 @@ export function FileTree() {
             key={folder.id}
             folder={folder}
             projects={projectsByFolder(folder.id)}
+            fontPx={projectListFontPx}
             activeTabId={activeTabId}
             onToggle={() => toggleExpanded(folder.id)}
             onProjectClick={openTab}
@@ -281,6 +284,7 @@ export function FileTree() {
           <ProjectRow
             key={project.id}
             project={project}
+            fontPx={projectListFontPx}
             isActive={project.id === activeTabId}
             onClick={() => {
               if (!isDragging) openTab(project.id);
@@ -393,6 +397,7 @@ export function FileTree() {
 function FolderRow({
   folder,
   projects,
+  fontPx,
   activeTabId,
   onToggle,
   onProjectClick,
@@ -404,6 +409,7 @@ function FolderRow({
 }: {
   folder: ProjectFolder;
   projects: Project[];
+  fontPx: number;
   activeTabId: string | null;
   onToggle: () => void;
   onProjectClick: (id: string) => void;
@@ -433,7 +439,7 @@ function FolderRow({
           className="w-2.5 h-2.5 rounded-sm shrink-0"
           style={{ backgroundColor: folder.color }}
         />
-        <span className="flex-1 text-[13px] text-text-primary truncate">
+        <span className="flex-1 text-text-primary truncate" style={{ fontSize: `${fontPx}px` }}>
           {folder.name}
         </span>
         <span className="text-[10px] text-text-muted/60 tabular-nums">
@@ -464,6 +470,7 @@ function FolderRow({
                 <ProjectRow
                   key={project.id}
                   project={project}
+                  fontPx={fontPx}
                   isActive={project.id === activeTabId}
                   onClick={() => {
                     if (!isDragging) onProjectClick(project.id);
@@ -482,12 +489,14 @@ function FolderRow({
 
 function ProjectRow({
   project,
+  fontPx,
   isActive,
   onClick,
   onContextMenu,
   onMouseDown,
 }: {
   project: Project;
+  fontPx: number;
   isActive: boolean;
   onClick: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -510,7 +519,7 @@ function ProjectRow({
           style={{ backgroundColor: project.color }}
         />
       )}
-      <span className="text-[13px] truncate">{project.name}</span>
+      <span className="truncate" style={{ fontSize: `${fontPx}px` }}>{project.name}</span>
     </button>
   );
 }

@@ -102,6 +102,7 @@ export function Sidebar() {
   const hideTab = useSettingsStore((s) => s.hideTab);
   const showTab = useSettingsStore((s) => s.showTab);
   const reorderTabs = useSettingsStore((s) => s.reorderTabs);
+  const timeTrackingVisible = useSettingsStore((s) => s.timeTrackingVisible);
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tab: string } | null>(null);
   const [showHidden, setShowHidden] = useState(false);
@@ -109,13 +110,13 @@ export function Sidebar() {
   const [dropTarget, setDropTarget] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
 
   const allNavItems = useMemo(() => [
-    { to: '/', label: t('nav.tracking'), icon: ClockIcon },
+    ...(timeTrackingVisible ? [{ to: '/', label: t('nav.tracking'), icon: ClockIcon }] : []),
     { to: '/projects', label: t('nav.projects'), icon: FolderIcon },
     { to: '/tasks', label: t('nav.taskSelection'), icon: ListIcon },
     { to: '/today', label: t('nav.today'), icon: SunIcon },
     { to: '/inbox', label: t('nav.inbox'), icon: InboxIcon },
     { to: '/settings', label: t('nav.settings'), icon: GearIcon },
-  ], [t]);
+  ], [t, timeTrackingVisible]);
 
   const visibleNavItems = useMemo(() => {
     const filtered = allNavItems.filter((item) => !hiddenNavTabs.includes(item.to));
@@ -191,7 +192,7 @@ export function Sidebar() {
         <AnimatePresence>
           {!collapsed && (
             <motion.h1
-              className="text-lg font-bold text-accent whitespace-nowrap overflow-hidden"
+              className="text-lg font-bold text-text-primary whitespace-nowrap overflow-hidden"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -257,7 +258,7 @@ export function Sidebar() {
                   collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'
                 } ${
                   isActive
-                    ? 'bg-bg-primary text-accent'
+                    ? 'bg-bg-primary text-text-primary'
                     : 'text-text-secondary hover:text-text-primary'
                 }`
               }

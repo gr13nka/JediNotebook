@@ -190,8 +190,8 @@ db.version(10).stores({
   }
 });
 
-// Settings-only migration: switch the existing install base to the new
-// editorial default and make the preference explicit for vault sync.
+// Settings-only migration: no new indexes, but existing vaults need explicit
+// values so a later sync exports the new appearance and tracking preferences.
 db.version(11).stores({
   activities: 'id, name, sortOrder, deletedAt, updatedAt',
   timeEntries: 'id, activityId, date, startedAt, endedAt, deletedAt, updatedAt',
@@ -211,7 +211,34 @@ db.version(11).stores({
   const settings = await tx.table('settings').get('default');
   if (!settings) return;
   await tx.table('settings').update('default', {
-    fontFamily: DEFAULT_SETTINGS.fontFamily,
+    timeTrackingVisible: settings.timeTrackingVisible ?? DEFAULT_SETTINGS.timeTrackingVisible,
+    projectListFontOverridePx: settings.projectListFontOverridePx ?? null,
+    projectNoteFontOverridePx: settings.projectNoteFontOverridePx ?? null,
+    theme: settings.theme === 'dark' ? 'gruvbox-dark' : (settings.theme === 'notion' || settings.theme === 'neu-light' ? 'light' : settings.theme),
+  });
+});
+
+// Settings-only migration: switch the existing install base to the new
+// editorial default and make the preference explicit for vault sync.
+db.version(12).stores({
+  activities: 'id, name, sortOrder, deletedAt, updatedAt',
+  timeEntries: 'id, activityId, date, startedAt, endedAt, deletedAt, updatedAt',
+  settings: 'id',
+  habits: 'id, name, sortOrder, deletedAt, updatedAt',
+  habitEntries: 'id, habitId, date, deletedAt, updatedAt, [habitId+date]',
+  notes: 'id, isPinned, deletedAt, updatedAt',
+  pomodoroPresets: 'id, name, sortOrder, deletedAt, updatedAt',
+  projects: 'id, name, folderId, sortOrder, isArchived, deletedAt, updatedAt',
+  projectTasks: 'id, projectId, sortOrder, isCompleted, deletedAt, updatedAt, timeBox, scheduledDate',
+  todayTasks: 'id, projectTaskId, projectId, date, isCompleted, deletedAt, updatedAt',
+  projectFolders: 'id, name, parentFolderId, sortOrder, deletedAt, updatedAt',
+  inboxItems: 'id, deletedAt, updatedAt',
+  mindMaps: 'id, deletedAt, updatedAt',
+  pdfDocuments: 'id, isPinned, deletedAt, updatedAt',
+}).upgrade(async tx => {
+  const settings = await tx.table('settings').get('default');
+  if (!settings) return;
+  await tx.table('settings').update('default', {
   });
 });
 

@@ -91,11 +91,11 @@ function NavTab({ item, isActive, label, indicatorId }: { item: NavItem; isActiv
       <motion.div
         animate={{ scale: isActive ? 1.1 : 1 }}
         transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-        className={isActive ? 'text-accent' : 'text-text-muted'}
+        className={isActive ? 'text-text-primary' : 'text-text-muted'}
       >
         <item.icon />
       </motion.div>
-      <span className={`truncate max-w-full text-center leading-tight ${isActive ? 'text-accent font-medium' : 'text-text-muted'}`}>
+      <span className={`truncate max-w-full text-center leading-tight ${isActive ? 'text-text-primary font-medium' : 'text-text-muted'}`}>
         {label}
       </span>
       {isActive && (
@@ -115,6 +115,7 @@ function ScrollableBottomNav() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const bottomNavPages = useSettingsStore((s) => s.bottomNavPages);
+  const timeTrackingVisible = useSettingsStore((s) => s.timeTrackingVisible);
 
   // Resolve route paths to NavItem objects, filtering out any unknown routes
   const pages = useMemo(() => {
@@ -122,10 +123,10 @@ function ScrollableBottomNav() {
       .map((pagePaths) =>
         pagePaths
           .map((path) => NAV_ITEM_MAP.get(path))
-          .filter((item): item is NavItem => !!item)
+          .filter((item): item is NavItem => !!item && (timeTrackingVisible || item.to !== '/'))
       )
       .filter((page) => page.length > 0);
-  }, [bottomNavPages]);
+  }, [bottomNavPages, timeTrackingVisible]);
 
   const isRouteActive = useCallback((to: string) => {
     return to === '/' ? location.pathname === '/' : location.pathname.startsWith(to);
@@ -199,17 +200,18 @@ function ClassicBottomNav() {
   const [showMore, setShowMore] = useState(false);
   const { t } = useTranslation();
   const bottomNavTabs = useSettingsStore((s) => s.bottomNavTabs);
+  const timeTrackingVisible = useSettingsStore((s) => s.timeTrackingVisible);
 
   const mainNavItems = useMemo(() => {
     return bottomNavTabs
       .map((path) => NAV_ITEM_MAP.get(path))
-      .filter((item): item is NavItem => !!item);
-  }, [bottomNavTabs]);
+      .filter((item): item is NavItem => !!item && (timeTrackingVisible || item.to !== '/'));
+  }, [bottomNavTabs, timeTrackingVisible]);
 
   const moreNavItems = useMemo(() => {
     const pinnedSet = new Set(bottomNavTabs);
-    return ALL_NAV_ITEMS.filter((item) => !pinnedSet.has(item.to));
-  }, [bottomNavTabs]);
+    return ALL_NAV_ITEMS.filter((item) => !pinnedSet.has(item.to) && (timeTrackingVisible || item.to !== '/'));
+  }, [bottomNavTabs, timeTrackingVisible]);
 
   const moreRoutes = useMemo(
     () => moreNavItems.map((item) => item.to),
@@ -236,8 +238,8 @@ function ClassicBottomNav() {
               key={item.to}
               to={item.to}
               onClick={() => setShowMore(false)}
-              className={`flex items-center gap-4 px-4 min-h-[48px] rounded-xl text-sm transition-colors ${
-                isActive ? 'text-accent font-medium' : 'text-text-secondary'
+          className={`flex items-center gap-4 px-4 min-h-[48px] rounded-xl text-sm transition-colors ${
+                isActive ? 'text-text-primary font-medium' : 'text-text-secondary'
               }`}
               style={isActive ? { boxShadow: NEU.pressedSm } : undefined}
             >
@@ -281,11 +283,11 @@ function ClassicBottomNav() {
             <motion.div
               animate={{ scale: isMoreActive ? 1.1 : 1 }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-              className={isMoreActive ? 'text-accent' : 'text-text-muted'}
+              className={isMoreActive ? 'text-text-primary' : 'text-text-muted'}
             >
               <MoreIcon />
             </motion.div>
-            <span className={`truncate max-w-full text-center leading-tight ${isMoreActive ? 'text-accent font-medium' : 'text-text-muted'}`}>
+            <span className={`truncate max-w-full text-center leading-tight ${isMoreActive ? 'text-text-primary font-medium' : 'text-text-muted'}`}>
               {t('nav.more')}
             </span>
             {isMoreActive && (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ThemeToggle } from '../components/settings/ThemeToggle';
 import { BarStylePicker } from '../components/settings/BarStylePicker';
@@ -10,7 +10,8 @@ import { NavPositionPicker } from '../components/settings/NavPositionPicker';
 import { BottomNavSettings } from '../components/settings/BottomNavSettings';
 import { AccentColorPicker } from '../components/settings/AccentColorPicker';
 import { ZoomSettings } from '../components/settings/ZoomSettings';
-import { FontPicker } from '../components/settings/FontPicker';
+import { ProjectTypographySettings } from '../components/settings/ProjectTypographySettings';
+import { TimeTrackingSettings } from '../components/settings/TimeTrackingSettings';
 import { VaultSettings } from '../components/settings/VaultSettings';
 import { MobileProjectSettings } from '../components/settings/MobileProjectSettings';
 import { Card } from '../components/ui/Card';
@@ -20,6 +21,7 @@ import { DailyView } from '../components/analytics/DailyView';
 import { WeeklyView } from '../components/analytics/WeeklyView';
 import { MonthlyView } from '../components/analytics/MonthlyView';
 import { StreaksView } from '../components/analytics/StreaksView';
+import { useSettingsStore } from '../stores/settingsStore';
 
 type TopTab = 'settings' | 'analytics';
 type AnalyticsTab = 'daily' | 'weekly' | 'monthly' | 'streaks';
@@ -41,9 +43,10 @@ function AppearanceSection() {
     <>
       <BarStylePicker />
       <Divider />
-      <FontPicker />
       <Divider />
       <ZoomSettings />
+      <Divider />
+      <ProjectTypographySettings />
     </>
   );
 }
@@ -66,6 +69,8 @@ function TimeSection() {
       <DayBoundarySettings />
       <Divider />
       <TimezoneSettings />
+      <Divider />
+      <TimeTrackingSettings />
     </>
   );
 }
@@ -95,13 +100,18 @@ const item = {
 
 export function SettingsPage() {
   const { t } = useTranslation();
+  const timeTrackingVisible = useSettingsStore((s) => s.timeTrackingVisible);
   const [topTab, setTopTab] = useState<TopTab>('settings');
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>('daily');
 
   const topTabs: { value: TopTab; label: string }[] = [
     { value: 'settings', label: t('settings.tabSettings') },
-    { value: 'analytics', label: t('settings.tabAnalytics') },
+    ...(timeTrackingVisible ? [{ value: 'analytics' as const, label: t('settings.tabAnalytics') }] : []),
   ];
+
+  useEffect(() => {
+    if (!timeTrackingVisible && topTab === 'analytics') setTopTab('settings');
+  }, [timeTrackingVisible, topTab]);
 
   const analyticsTabs: { value: AnalyticsTab; label: string }[] = [
     { value: 'daily', label: t('analytics.daily') },
@@ -169,7 +179,7 @@ export function SettingsPage() {
               ))}
             </motion.div>
           </motion.div>
-        ) : (
+        ) : timeTrackingVisible && (
           <motion.div
             key="analytics"
             initial={{ opacity: 0, x: 8 }}

@@ -266,6 +266,11 @@ body {
   color: var(--color-text-primary);
 }
 
+/* Project notes own their type scale, independently of the global UI zoom. */
+.project-note .markdown-preview h1 { font-size: 1.25em; }
+.project-note .markdown-preview h2 { font-size: 1.1em; }
+.project-note .markdown-preview h3 { font-size: 1em; }
+
 .markdown-preview h2 {
   font-size: 1.1rem;
   font-weight: 600;

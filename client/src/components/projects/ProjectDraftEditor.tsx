@@ -3,6 +3,7 @@ import { NEU } from '../../utils/shadows';
 import { renderLineMd } from '../../utils/markdown';
 import { useTranslation } from '../../i18n/useTranslation';
 import { EditProjectModal } from './EditProjectModal';
+import { useProjectTypography } from '../settings/ProjectTypographySettings';
 import {
   setTextPayload,
   readPayload,
@@ -34,7 +35,7 @@ interface ProjectDraftEditorProps {
 
 // Shared typography for the description box. The preview and the textarea must
 // resolve to identical line boxes, otherwise text shifts when they swap.
-const EDITOR_TEXT = 'text-sm leading-relaxed';
+const EDITOR_TEXT = 'project-note leading-relaxed';
 
 export function ProjectDraftEditor({ title, description, color, icon, onSaveProject, onSave, linkedActivityId, onLinkActivity, activities, onConsumeTask, onRegisterCut }: ProjectDraftEditorProps) {
   const [localDesc, setLocalDesc] = useState(description);
@@ -43,6 +44,7 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
+  const { projectNoteFontPx } = useProjectTypography();
 
   useEffect(() => {
     setLocalDesc(description);
@@ -278,7 +280,7 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
         >
           <div
             onDragStart={handlePreviewDragStart}
-            style={{ gridArea: '1 / 1' }}
+            style={{ gridArea: '1 / 1', fontSize: `${projectNoteFontPx}px` }}
             className={`${EDITOR_TEXT} min-w-0 ${isEditing ? 'invisible' : ''}`}
           >
             {hasContent ? (
@@ -298,7 +300,7 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
             // draggable="true" makes mousedown-drag start a drag instead of a
             // selection — which would make the description unselectable.
             onDragStart={handleTextDragStart}
-            style={{ gridArea: '1 / 1' }}
+            style={{ gridArea: '1 / 1', fontSize: `${projectNoteFontPx}px` }}
             className={`${EDITOR_TEXT} w-full min-w-0 bg-transparent text-text-primary focus:outline-none border-none resize-none overflow-hidden whitespace-pre-wrap selection:bg-accent/30 selection:text-text-primary ${
               isEditing ? '' : 'invisible pointer-events-none'
             }`}

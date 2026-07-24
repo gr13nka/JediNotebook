@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { AppShell } from './components/layout/AppShell';
 import { HomePage } from './pages/HomePage';
@@ -23,6 +23,7 @@ export default function App() {
   const vaultEnabled = useSettingsStore((s) => s.vaultEnabled);
   const vaultPath = useSettingsStore((s) => s.vaultPath);
   const vaultSetupDone = useSettingsStore((s) => s.vaultSetupDone);
+  const timeTrackingVisible = useSettingsStore((s) => s.timeTrackingVisible);
   const location = useLocation();
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export default function App() {
           transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
         >
           <Routes location={location}>
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={timeTrackingVisible ? <HomePage /> : <Navigate to="/today" replace />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/tasks" element={<TaskSelectionPage />} />
             <Route path="/today" element={<TodayPage />} />

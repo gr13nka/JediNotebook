@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import type { AppFont, CustomThemeColors, Language, NavPosition, PersistedSettings, ThemeMode } from '@shared/types';
+import type { CustomThemeColors, Language, NavPosition, PersistedSettings, ThemeMode } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { db } from '../db';
-import { applyAccentColor, applyFont, applyTheme, applyZoom } from '../theme/applyTheme';
-import { resolveAppFont } from '../theme/fonts';
+import { applyAccentColor, applyTheme, applyZoom } from '../theme/applyTheme';
+import { getPrebuiltTheme, isPrebuiltThemeId } from '../theme/themes';
 
 function detectBrowserLanguage(): Language {
   const browserLang = navigator.language?.slice(0, 2).toLowerCase();
@@ -14,7 +14,7 @@ function detectBrowserLanguage(): Language {
 type SettingsAction =
   | 'loaded' | 'load' | 'update' | 'addRecentVault'
   | 'setTheme' | 'setCustomColors' | 'setAccentColor' | 'setZoom'
-  | 'setFontFamily'
+  | 'setTimeTrackingVisible' | 'setProjectListFontOverride' | 'setProjectNoteFontOverride'
   | 'hideTab' | 'showTab' | 'reorderTabs' | 'setNavPosition';
 
 /**
@@ -37,8 +37,10 @@ interface SettingsState extends PersistedSettings {
   setTheme: (theme: ThemeMode) => Promise<void>;
   setCustomColors: (colors: CustomThemeColors) => Promise<void>;
   setAccentColor: (color: string) => Promise<void>;
-  setFontFamily: (fontFamily: AppFont) => Promise<void>;
   setZoom: (zoom: number) => Promise<void>;
+  setTimeTrackingVisible: (visible: boolean) => Promise<void>;
+  setProjectListFontOverride: (px: number | null) => Promise<void>;
+  setProjectNoteFontOverride: (px: number | null) => Promise<void>;
   hideTab: (tab: string) => Promise<void>;
   showTab: (tab: string) => Promise<void>;
   reorderTabs: (order: string[]) => Promise<void>;
@@ -89,19 +91,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
       // Legacy `darkMode` boolean -> `theme`, for rows saved before `theme` existed.
       if (raw.theme == null && raw.darkMode != null) {
-        merged.theme = raw.darkMode ? 'dark' : 'light';
+        merged.theme = raw.darkMode ? 'gruvbox-dark' : 'light';
       }
-      // Legacy 'notion' theme -> 'dark'.
-      if ((merged.theme as string) === 'notion') {
-        merged.theme = 'dark';
-      }
-      // Removed prebuilt themes (palette trimmed to light/dark/custom) -> light/dark.
-      if (merged.theme !== 'light' && merged.theme !== 'dark' && merged.theme !== 'custom') {
-        merged.theme = (merged.theme as string) === 'neu-light' ? 'light' : 'dark';
-      }
-      merged.fontFamily = resolveAppFont(raw.fontFamily);
+      // Legacy palette identifiers are normalised once at load time.
+      if ((merged.theme as string) === 'dark') merged.theme = 'gruvbox-dark';
+      if ((merged.theme as string) === 'notion' || (merged.theme as string) === 'neu-light') merged.theme = 'light';
+      if (!isPrebuiltThemeId(merged.theme) && merged.theme !== 'custom') merged.theme = 'light';
       // `darkMode` always mirrors the fully-resolved theme — never trusted from the row directly.
-      merged.darkMode = merged.theme !== 'light';
+      merged.darkMode = merged.theme === 'custom' ? Boolean(raw.darkMode) : getPrebuiltTheme(merged.theme).dark;
 
       // Rows saved before `language` existed fall back to browser detection, not the static default.
       if (raw.language == null) {
@@ -115,10 +112,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({ ...merged, loaded: true });
       applyTheme(merged.theme, merged.customThemeColors);
       applyAccentColor(merged.accentColor);
-      applyFont(merged.fontFamily);
       applyZoom(merged.uiZoom);
     } else {
-      applyFont(DEFAULT_SETTINGS.fontFamily);
       applyZoom(DEFAULT_SETTINGS.uiZoom);
       set({ language: detectBrowserLanguage(), loaded: true });
     }
@@ -150,7 +145,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     applyTheme(theme, get().customThemeColors);
     applyAccentColor(get().accentColor);
     // `darkMode` is a legacy mirror of `theme`, kept for vault LWW compatibility — never set independently.
-    await get().update({ theme, darkMode: theme !== 'light' });
+    await get().update({
+      theme,
+      darkMode: theme === 'custom' ? get().darkMode : getPrebuiltTheme(theme).dark,
+    });
   },
 
   setCustomColors: async (colors) => {
@@ -166,16 +164,31 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     await get().update({ accentColor: color });
   },
 
-  setFontFamily: async (fontFamily) => {
-    const resolved = resolveAppFont(fontFamily);
-    applyFont(resolved);
-    await get().update({ fontFamily: resolved });
-  },
 
   setZoom: async (zoom) => {
-    applyZoom(zoom);
-    await get().update({ uiZoom: zoom });
+    const normalized = Math.max(25, Math.round(zoom));
+    applyZoom(normalized);
+    // A global zoom change intentionally returns project text to its default ratio.
+    await get().update({
+      uiZoom: normalized,
+      projectListFontOverridePx: null,
+      projectNoteFontOverridePx: null,
+    });
   },
+
+  setTimeTrackingVisible: async (visible) => {
+    if (!visible) {
+      const { useTimerStore } = await import('./timerStore');
+      if (useTimerStore.getState().isRunning) await useTimerStore.getState().stop();
+    }
+    await get().update({ timeTrackingVisible: visible });
+  },
+
+  setProjectListFontOverride: async (px) =>
+    get().update({ projectListFontOverridePx: px === null ? null : Math.max(10, Math.round(px)) }),
+
+  setProjectNoteFontOverride: async (px) =>
+    get().update({ projectNoteFontOverridePx: px === null ? null : Math.max(10, Math.round(px)) }),
 
   hideTab: async (tab) => {
     const current = get().hiddenNavTabs;
