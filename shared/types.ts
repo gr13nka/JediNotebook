@@ -27,6 +27,8 @@ export interface TimeEntry {
 
 export type NavPosition = 'left' | 'bottom' | 'dropdown';
 
+export type AppFont = 'source-serif-4' | 'ibm-plex-sans' | 'nunito-sans' | 'departure-mono';
+
 /**
  * THE settings roster: every field the app persists to Dexie's `settings`
  * table and mirrors to the vault's `settings.json` (see `vault/serializers.ts`
@@ -54,6 +56,8 @@ export interface UserSettings {
   navPosition: NavPosition;
   pointsCounterVisible: boolean;
   accentColor: string;
+  /** Typeface applied across the interface and project text. */
+  fontFamily: AppFont;
   uiZoom: number;
   pointsColorFixed: boolean;
   hiddenNavTabs: string[];

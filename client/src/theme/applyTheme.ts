@@ -1,5 +1,6 @@
 import type { CustomThemeColors, ThemeMode } from '@shared/types';
 import { THEME_COLOR_CSS_VARS, getPrebuiltTheme, type ThemeColors } from './themes';
+export { applyFont } from './fonts';
 
 function setColorVars(colors: ThemeColors | CustomThemeColors) {
   const el = document.documentElement;

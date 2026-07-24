@@ -10,6 +10,7 @@ import { NavPositionPicker } from '../components/settings/NavPositionPicker';
 import { BottomNavSettings } from '../components/settings/BottomNavSettings';
 import { AccentColorPicker } from '../components/settings/AccentColorPicker';
 import { ZoomSettings } from '../components/settings/ZoomSettings';
+import { FontPicker } from '../components/settings/FontPicker';
 import { VaultSettings } from '../components/settings/VaultSettings';
 import { MobileProjectSettings } from '../components/settings/MobileProjectSettings';
 import { Card } from '../components/ui/Card';
@@ -39,6 +40,8 @@ function AppearanceSection() {
   return (
     <>
       <BarStylePicker />
+      <Divider />
+      <FontPicker />
       <Divider />
       <ZoomSettings />
     </>

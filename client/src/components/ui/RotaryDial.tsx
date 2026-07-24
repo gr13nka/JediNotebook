@@ -252,7 +252,7 @@ export function RotaryDial({ value, onChange }: RotaryDialProps) {
                 textAnchor="middle"
                 fill={isSelected ? colors.accent : `${colors.accent}60`}
                 fontSize="9"
-                fontFamily="'Inter', system-ui, sans-serif"
+                fontFamily="var(--font-sans)"
                 fontWeight={isSelected ? 600 : 400}
               >
                 {LABELS[i]}
@@ -278,7 +278,7 @@ export function RotaryDial({ value, onChange }: RotaryDialProps) {
       <div className="flex flex-col items-center gap-1">
         <span
           className="text-3xl font-semibold text-text-primary tracking-wider"
-          style={{ fontVariantNumeric: 'tabular-nums', fontFamily: "'Inter', monospace" }}
+          style={{ fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-sans)' }}
         >
           {formatTime(value)}
         </span>

@@ -42,6 +42,7 @@ export const DEFAULT_SETTINGS = {
   navPosition: 'left' as const,
   pointsCounterVisible: true,
   accentColor: '',
+  fontFamily: 'source-serif-4' as const,
   uiZoom: 110,
   pointsColorFixed: false,
   hiddenNavTabs: [] as string[],

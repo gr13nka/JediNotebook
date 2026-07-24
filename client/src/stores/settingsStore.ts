@@ -1,8 +1,9 @@
 import { create } from 'zustand';
-import type { CustomThemeColors, Language, NavPosition, PersistedSettings, ThemeMode } from '@shared/types';
+import type { AppFont, CustomThemeColors, Language, NavPosition, PersistedSettings, ThemeMode } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { db } from '../db';
-import { applyAccentColor, applyTheme, applyZoom } from '../theme/applyTheme';
+import { applyAccentColor, applyFont, applyTheme, applyZoom } from '../theme/applyTheme';
+import { resolveAppFont } from '../theme/fonts';
 
 function detectBrowserLanguage(): Language {
   const browserLang = navigator.language?.slice(0, 2).toLowerCase();
@@ -13,6 +14,7 @@ function detectBrowserLanguage(): Language {
 type SettingsAction =
   | 'loaded' | 'load' | 'update' | 'addRecentVault'
   | 'setTheme' | 'setCustomColors' | 'setAccentColor' | 'setZoom'
+  | 'setFontFamily'
   | 'hideTab' | 'showTab' | 'reorderTabs' | 'setNavPosition';
 
 /**
@@ -35,6 +37,7 @@ interface SettingsState extends PersistedSettings {
   setTheme: (theme: ThemeMode) => Promise<void>;
   setCustomColors: (colors: CustomThemeColors) => Promise<void>;
   setAccentColor: (color: string) => Promise<void>;
+  setFontFamily: (fontFamily: AppFont) => Promise<void>;
   setZoom: (zoom: number) => Promise<void>;
   hideTab: (tab: string) => Promise<void>;
   showTab: (tab: string) => Promise<void>;
@@ -96,6 +99,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (merged.theme !== 'light' && merged.theme !== 'dark' && merged.theme !== 'custom') {
         merged.theme = (merged.theme as string) === 'neu-light' ? 'light' : 'dark';
       }
+      merged.fontFamily = resolveAppFont(raw.fontFamily);
       // `darkMode` always mirrors the fully-resolved theme — never trusted from the row directly.
       merged.darkMode = merged.theme !== 'light';
 
@@ -111,8 +115,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({ ...merged, loaded: true });
       applyTheme(merged.theme, merged.customThemeColors);
       applyAccentColor(merged.accentColor);
+      applyFont(merged.fontFamily);
       applyZoom(merged.uiZoom);
     } else {
+      applyFont(DEFAULT_SETTINGS.fontFamily);
       applyZoom(DEFAULT_SETTINGS.uiZoom);
       set({ language: detectBrowserLanguage(), loaded: true });
     }
@@ -158,6 +164,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setAccentColor: async (color) => {
     applyAccentColor(color);
     await get().update({ accentColor: color });
+  },
+
+  setFontFamily: async (fontFamily) => {
+    const resolved = resolveAppFont(fontFamily);
+    applyFont(resolved);
+    await get().update({ fontFamily: resolved });
   },
 
   setZoom: async (zoom) => {
