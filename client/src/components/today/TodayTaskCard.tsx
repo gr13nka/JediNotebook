@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
+import { CompletionBurst, useCompletionBurst } from '../ui/CompletionBurst';
 import type { EnrichedBoxTask } from '../../hooks/useTaskBox';
 
 interface TodayTaskCardProps {
@@ -30,6 +31,14 @@ export function TodayTaskCard({
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(task.title);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [burst, fireBurst] = useCompletionBurst();
+
+  // `onComplete` is a toggle, so the celebration is gated on the direction of
+  // this particular click — un-ticking a task is not an achievement.
+  const handleComplete = () => {
+    if (!task.isCompleted) fireBurst();
+    onComplete();
+  };
 
   useEffect(() => {
     setEditValue(task.title);
@@ -147,13 +156,14 @@ export function TodayTaskCard({
       {/* Bottom row: complete button */}
       <div className="flex items-center gap-2">
         <button
-          onClick={onComplete}
-          className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 ml-auto"
+          onClick={handleComplete}
+          className="relative shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 ml-auto"
           style={{
             boxShadow: task.isCompleted ? NEU.pressedSm : NEU.raisedSm,
             backgroundColor: task.isCompleted ? '#27AE60' : undefined,
           }}
         >
+          <CompletionBurst burst={burst} />
           {task.isCompleted ? (
             <motion.svg
               width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white"

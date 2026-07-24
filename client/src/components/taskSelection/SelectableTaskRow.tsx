@@ -5,6 +5,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import type { TranslationKey } from '../../i18n/translations';
 import { ContextMenu } from '../ui/ContextMenu';
 import { InlineTextEdit } from '../ui/InlineTextEdit';
+import { CompletionBurst, useCompletionBurst } from '../ui/CompletionBurst';
 
 /** Canonical box order; each row offers the two entries that aren't its current box. */
 const MOVE_TARGETS: TimeBox[] = ['today', 'week', 'later'];
@@ -76,6 +77,13 @@ export function SelectableTaskRow({
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [burst, fireBurst] = useCompletionBurst();
+
+  // Celebrate only the incomplete -> complete direction of the toggle.
+  const handleToggleComplete = () => {
+    if (!isCompleted) fireBurst();
+    onToggleComplete();
+  };
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -122,13 +130,14 @@ export function SelectableTaskRow({
 
           {/* Complete checkbox */}
           <button
-            onClick={onToggleComplete}
-            className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-[5px] border-2 transition-colors hover:border-green hover:bg-green/10"
+            onClick={handleToggleComplete}
+            className="relative flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-[5px] border-2 transition-colors hover:border-green hover:bg-green/10"
             style={{
               borderColor: isCompleted ? 'var(--color-green)' : 'var(--color-text-muted)',
               backgroundColor: isCompleted ? 'var(--color-green)' : 'transparent',
             }}
           >
+            <CompletionBurst burst={burst} />
             {isCompleted && (
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />

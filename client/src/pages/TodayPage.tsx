@@ -6,6 +6,7 @@ import { useTaskBox } from '../hooks/useTaskBox';
 import { db } from '../db';
 import { updateRecord } from '../db/repository';
 import { useTranslation } from '../i18n/useTranslation';
+import { CelebrationConfetti } from '../components/ui/CelebrationConfetti';
 import { NEU } from '../utils/shadows';
 import { useSettingsStore } from '../stores/settingsStore';
 
@@ -54,6 +55,7 @@ export function TodayPage() {
     updateRecord(db.projectTasks, taskId, { title });
   const [hideCompleted, setHideCompleted] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [finale, setFinale] = useState(0);
 
   // Android back button / browser back exits focus mode
   useEffect(() => {
@@ -90,9 +92,15 @@ export function TodayPage() {
     reorderBox([...ids, ...completedIds]);
   }, [incompleteTasks, completedTasks, reorderBox]);
 
+  // The finale is derived from this click, not from watching `allDone`:
+  // `useTaskBox` yields [] until its live query resolves, so `allDone` flips
+  // false -> true on every visit once the data lands, and watching it would
+  // replay the confetti on every navigation to /today.
   const handleComplete = useCallback((taskId: string) => {
+    const clearsTheDay = incompleteTasks.length === 1 && incompleteTasks[0].id === taskId;
     toggleComplete(taskId);
-  }, [toggleComplete]);
+    if (clearsTheDay) setFinale((n) => n + 1);
+  }, [incompleteTasks, toggleComplete]);
 
   const renderTaskCard = (task: typeof todayTasks[0], i: number, list: typeof todayTasks) => (
     <TodayTaskCard
@@ -191,8 +199,9 @@ export function TodayPage() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-              className="text-center py-8"
+              className="relative text-center py-8"
             >
+              <CelebrationConfetti burst={finale} />
               <p className="text-2xl font-bold text-accent mb-1">{t('today.allDone')}</p>
               <p className="text-sm text-text-muted">
                 {t('today.allDoneDesc')}

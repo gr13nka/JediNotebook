@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { RecurrenceEditor } from './RecurrenceEditor';
 import { InlineTextEdit } from '../ui/InlineTextEdit';
+import { CompletionBurst, useCompletionBurst } from '../ui/CompletionBurst';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 interface TaskItemProps {
@@ -42,6 +43,13 @@ const RecurringIcon = ({ active }: { active: boolean }) => (
 export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrence, draggable, onDragStart, onDragOver, onDrop, isDragOver }: TaskItemProps) {
   const [editing, setEditing] = useState(false);
   const [showRecurrence, setShowRecurrence] = useState(false);
+  const [burst, fireBurst] = useCompletionBurst();
+
+  // Celebrate only the incomplete -> complete direction of the toggle.
+  const handleToggle = () => {
+    if (!task.isCompleted) fireBurst();
+    onToggle();
+  };
 
   return (
     <>
@@ -64,13 +72,14 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
         )}
 
         <button
-          onClick={onToggle}
-          className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center transition-all duration-200"
+          onClick={handleToggle}
+          className="relative w-5 h-5 rounded-full shrink-0 flex items-center justify-center transition-all duration-200"
           style={{
             boxShadow: task.isCompleted ? NEU.pressedSm : NEU.raisedSm,
             backgroundColor: task.isCompleted ? '#27AE60' : undefined,
           }}
         >
+          <CompletionBurst burst={burst} />
           {task.isCompleted && (
             <motion.svg
               width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
