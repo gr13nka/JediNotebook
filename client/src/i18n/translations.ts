@@ -285,10 +285,10 @@ const en = {
   'projects.noLinkedActivity': 'No linked activity',
   'projects.notePlaceholder': 'Take a note...',
 
-  // Projects mobile
-  'settings.mobileProjects': 'MOBILE PROJECTS',
-  'settings.mobileProjectGrid': 'Grid view',
-  'settings.mobileProjectGridDesc': 'Show projects as a card grid instead of the sidebar menu on mobile',
+  // Project cards
+  'settings.mobileProjects': 'PROJECT CARDS',
+  'settings.mobileProjectGrid': 'Card grid',
+  'settings.mobileProjectGridDesc': 'Show projects as cards; desktop cards can be moved and resized',
 
   // Vault
   'settings.vault': 'Vault Sync',
@@ -595,9 +595,9 @@ const ru: Record<TranslationKey, string> = {
   'projects.linkedActivity': 'Связанная активность',
   'projects.noLinkedActivity': 'Без связанной активности',
   'projects.notePlaceholder': 'Заметка...',
-  'settings.mobileProjects': 'ПРОЕКТЫ (МОБИЛЬНЫЕ)',
-  'settings.mobileProjectGrid': 'Вид сетки',
-  'settings.mobileProjectGridDesc': 'Показывать проекты сеткой карточек на мобильном',
+  'settings.mobileProjects': 'КАРТОЧКИ ПРОЕКТОВ',
+  'settings.mobileProjectGrid': 'Сетка карточек',
+  'settings.mobileProjectGridDesc': 'Показывать проекты карточками; на компьютере карточки можно перемещать и менять по размеру',
   'settings.vault': 'Синхронизация файлов',
   'vault.description': 'Экспорт и импорт данных в виде читаемых Markdown файлов. Используйте с Syncthing для синхронизации между устройствами.',
   'vault.exportZip': 'Экспорт в ZIP',

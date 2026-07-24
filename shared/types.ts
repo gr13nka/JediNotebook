@@ -105,10 +105,23 @@ export interface DeviceSettings {
   bottomNavTabs: string[];
   bottomNavScrollable: boolean;
   bottomNavPages: string[][];
-  mobileProjectGrid: boolean;
+  projectGridEnabled: boolean;
+  projectGridLayout: ProjectGridLayout;
 }
 
 export type PersistedDeviceSettings = Omit<DeviceSettings, 'id'>;
+
+export interface ProjectCardFrame {
+  col: number;
+  row: number;
+  colSpan: 1 | 2 | 3 | 4;
+  rowSpan: 1 | 2 | 3;
+}
+
+export interface ProjectGridLayout {
+  version: 1;
+  desktop: Record<string, ProjectCardFrame>;
+}
 
 export type BarStyle = 'thick-linear' | 'segmented' | 'circular';
 

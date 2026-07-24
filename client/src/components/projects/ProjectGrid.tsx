@@ -1,0 +1,281 @@
+import React, { useRef } from 'react';
+import { motion } from 'motion/react';
+import type { Project, ProjectFolder, ProjectGridLayout } from '@shared/types';
+import { useTranslation } from '../../i18n/useTranslation';
+import { NEU } from '../../utils/shadows';
+import { useProjectCardLayout } from './useProjectCardLayout';
+import { PROJECT_CARD_GAP_PX, PROJECT_CARD_ROW_PX } from './projectCardLayout';
+
+interface ProjectCardMetrics {
+  total: number;
+  done: number;
+}
+
+interface ProjectGridActions {
+  openProject: (projectId: string) => void;
+  requestAddProject: (folderId: string | null) => void;
+  requestAddFolder: () => void;
+  requestDeleteProject: (projectId: string) => void;
+}
+
+interface ProjectGridProps {
+  projects: Project[];
+  folders: ProjectFolder[];
+  taskCounts?: Record<string, ProjectCardMetrics>;
+  layout: ProjectGridLayout;
+  onLayoutChange: (next: ProjectGridLayout) => void | Promise<void>;
+  viewport: 'mobile' | 'desktop';
+  variant?: 'mobile-picker' | 'desktop-sidebar';
+  activeProjectId?: string | null;
+  editable?: boolean;
+  fontPx: number;
+  actions: ProjectGridActions;
+}
+
+function PlusIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function FolderPlusIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <line x1="12" y1="11" x2="12" y2="17" />
+      <line x1="9" y1="14" x2="15" y2="14" />
+    </svg>
+  );
+}
+
+export function ProjectGrid({
+  projects,
+  folders,
+  taskCounts = {},
+  layout,
+  onLayoutChange,
+  viewport,
+  variant = viewport === 'desktop' ? 'desktop-sidebar' : 'mobile-picker',
+  activeProjectId = null,
+  editable = false,
+  fontPx,
+  actions,
+}: ProjectGridProps) {
+  const { t } = useTranslation();
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDesktop = viewport === 'desktop';
+  const grid = useProjectCardLayout({
+    projects,
+    folders,
+    value: layout,
+    onChange: onLayoutChange,
+    viewport,
+    editable: editable && isDesktop,
+    onActivate: actions.openProject,
+  });
+
+  const clearLongPress = () => {
+    if (!longPressTimerRef.current) return;
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  };
+
+  const showUnfiledTitle = grid.sections.length > 1;
+
+  const isSidebar = variant === 'desktop-sidebar';
+
+  return (
+    <div
+      {...grid.containerProps}
+      className={`flex-1 min-h-0 overflow-y-auto ${isSidebar ? 'p-2' : 'p-3 md:p-4'}`}
+    >
+      {isDesktop && (
+        <div className={`mb-3 flex items-center ${isSidebar ? 'justify-end' : 'justify-between'} gap-2`}>
+          {!isSidebar && (
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70">
+              {t('projects.title')}
+            </span>
+          )}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={actions.requestAddFolder}
+              className="h-7 w-7 flex items-center justify-center rounded-lg text-text-muted hover:text-accent transition-colors"
+              style={{ boxShadow: NEU.raisedSm }}
+              title={t('folders.newFolder')}
+            >
+              <FolderPlusIcon />
+            </button>
+            <button
+              type="button"
+              onClick={() => actions.requestAddProject(null)}
+              className="h-7 w-7 flex items-center justify-center rounded-lg text-text-muted hover:text-accent transition-colors"
+              style={{ boxShadow: NEU.raisedSm }}
+              title={t('projects.newProject')}
+            >
+              <PlusIcon size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => grid.resetLayout()}
+              className="h-7 px-2 rounded-lg text-[11px] text-text-muted hover:text-text-secondary transition-colors"
+              style={{ boxShadow: NEU.raisedSm }}
+            >
+              {t('settings.reset')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {grid.sections.length === 0 ? (
+        <div
+          className={isDesktop ? 'grid' : 'grid grid-cols-2 gap-3'}
+          style={isDesktop ? {
+            gridTemplateColumns: `repeat(${grid.columns}, minmax(0, 1fr))`,
+            gridAutoRows: `${PROJECT_CARD_ROW_PX}px`,
+            gap: PROJECT_CARD_GAP_PX,
+          } : undefined}
+        >
+          <AddProjectTile
+            desktop={isDesktop}
+            onClick={() => actions.requestAddProject(null)}
+            label={t('projects.newTitle')}
+          />
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {grid.sections.map((section) => (
+            <section key={section.folder?.id ?? '__unfiled'} className="min-w-0">
+              {(section.folder || showUnfiledTitle) && (
+                <div className="mb-2 flex items-center gap-2">
+                  {section.folder && (
+                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: section.folder.color }} />
+                  )}
+                  <span className="text-xs font-semibold uppercase tracking-wider text-text-muted/70">
+                    {section.folder?.name ?? t('folders.unfiled')}
+                  </span>
+                </div>
+              )}
+
+              <div
+                data-project-grid-section
+                className={isDesktop ? 'grid min-w-0' : 'grid grid-cols-2 gap-3'}
+                style={isDesktop ? {
+                  gridTemplateColumns: `repeat(${grid.columns}, minmax(0, 1fr))`,
+                  gridAutoRows: `${PROJECT_CARD_ROW_PX}px`,
+                  gap: PROJECT_CARD_GAP_PX,
+                } : undefined}
+              >
+                {section.cards.map((card) => {
+                  const counts = taskCounts[card.project.id];
+                  const { style, ...rootProps } = card.rootProps;
+                  const isActive = card.project.id === activeProjectId;
+                  return (
+                    <motion.article
+                      key={card.project.id}
+                      {...rootProps}
+                      whileTap={isDesktop ? undefined : { scale: 0.96 }}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        actions.requestDeleteProject(card.project.id);
+                      }}
+                      onTouchStart={() => {
+                        if (isDesktop) return;
+                        longPressTimerRef.current = setTimeout(() => {
+                          actions.requestDeleteProject(card.project.id);
+                        }, 600);
+                      }}
+                      onTouchEnd={clearLongPress}
+                      onTouchMove={clearLongPress}
+                      className={`group relative flex flex-col items-start gap-1.5 overflow-hidden rounded-2xl p-3 text-left outline-none transition-[box-shadow,opacity,transform,background-color] focus-visible:ring-2 focus-visible:ring-accent ${
+                        isActive ? 'bg-bg-elevated text-text-primary' : 'bg-bg-card'
+                      } ${
+                        isDesktop && editable ? 'cursor-grab touch-none active:cursor-grabbing' : ''
+                      } ${card.isDragging || card.isResizing ? 'opacity-80' : ''}`}
+                      style={{
+                        ...style,
+                        boxShadow: card.isDragging || card.isResizing
+                          ? NEU.modal
+                          : (isActive ? NEU.pressedSm : NEU.raised),
+                      }}
+                    >
+                      <div className="flex items-center gap-2 w-full min-w-0">
+                        {card.project.icon ? (
+                          <span className="text-lg leading-none shrink-0">{card.project.icon}</span>
+                        ) : (
+                          <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: card.project.color }} />
+                        )}
+                        <span className="font-medium text-text-primary truncate" style={{ fontSize: `${fontPx}px` }}>
+                          {card.project.name}
+                        </span>
+                      </div>
+                      {counts && (
+                        <span className="text-[11px] text-text-muted tabular-nums">
+                          {counts.total}
+                        </span>
+                      )}
+
+                      {isDesktop && editable && (
+                        <button
+                          {...card.resizeHandleProps}
+                          data-project-card-action
+                          className="absolute bottom-1.5 right-1.5 h-5 w-5 rounded-md text-text-muted/70 opacity-0 transition-opacity hover:text-text-secondary group-hover:opacity-100 focus:opacity-100 cursor-nwse-resize"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                            <path d="M4 10h6V4" />
+                            <path d="M7 10h3V7" />
+                          </svg>
+                        </button>
+                      )}
+                    </motion.article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+
+          <div
+            className={isDesktop ? 'grid' : 'grid grid-cols-2 gap-3'}
+            style={isDesktop ? {
+              gridTemplateColumns: `repeat(${grid.columns}, minmax(0, 1fr))`,
+              gridAutoRows: `${PROJECT_CARD_ROW_PX}px`,
+              gap: PROJECT_CARD_GAP_PX,
+            } : undefined}
+          >
+            <AddProjectTile
+              desktop={isDesktop}
+              onClick={() => actions.requestAddProject(null)}
+              label={t('projects.newTitle')}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddProjectTile({
+  desktop,
+  onClick,
+  label,
+}: {
+  desktop: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <motion.button
+      type="button"
+      whileTap={desktop ? undefined : { scale: 0.96 }}
+      onClick={onClick}
+      className="flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-border p-3 text-text-muted transition-colors hover:border-accent/50 hover:text-accent"
+      style={desktop ? { minHeight: PROJECT_CARD_ROW_PX } : undefined}
+    >
+      <PlusIcon size={20} />
+      <span className="text-xs">{label}</span>
+    </motion.button>
+  );
+}

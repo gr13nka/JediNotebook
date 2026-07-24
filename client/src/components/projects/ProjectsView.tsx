@@ -12,6 +12,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { NEU } from '../../utils/shadows';
 import { db } from '../../db';
 import { FileTree } from './FileTree';
+import { ProjectGrid } from './ProjectGrid';
 import { ProjectTabs } from './ProjectTabs';
 import { ProjectDraftEditor } from './ProjectDraftEditor';
 import { ProjectTaskList } from './ProjectTaskList';
@@ -20,8 +21,10 @@ import { AddFolderModal } from './AddFolderModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { useProjectTypography } from '../settings/ProjectTypographySettings';
 
-const MIN_SIDEBAR = 160;
-const MAX_SIDEBAR = 400;
+const MIN_TREE_SIDEBAR = 160;
+const MAX_TREE_SIDEBAR = 400;
+const MIN_GRID_SIDEBAR = 280;
+const MAX_GRID_SIDEBAR = 640;
 const MIN_TASK_PANEL = 200;
 const MAX_TASK_PANEL = 500;
 const MIN_TASK_PANEL_HEIGHT = 80;
@@ -66,14 +69,16 @@ export function ProjectsView() {
   const splitDirection = useProjectUIStore((s) => s.splitDirection);
   const setSplitDirection = useProjectUIStore((s) => s.setSplitDirection);
   const navPosition = useSettingsStore((s) => s.navPosition);
-  const mobileProjectGrid = useSettingsStore((s) => s.mobileProjectGrid);
+  const projectGridEnabled = useSettingsStore((s) => s.projectGridEnabled);
+  const projectGridLayout = useSettingsStore((s) => s.projectGridLayout);
+  const updateSettings = useSettingsStore((s) => s.update);
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [gridDeleteProject, setGridDeleteProject] = useState<typeof projects[0] | null>(null);
   const [showAddProject, setShowAddProject] = useState(false);
+  const [addProjectFolderId, setAddProjectFolderId] = useState<string | null>(null);
   const [showAddFolder, setShowAddFolder] = useState(false);
   const [isDesktop, setIsDesktop] = useState(() => window.matchMedia('(min-width: 768px)').matches);
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mobile bottom sheet state (persisted in store to survive navigation)
   const sheetHeight = useProjectUIStore((s) => s.mobileSheetHeight);
@@ -90,17 +95,20 @@ export function ProjectsView() {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  // Auto-open first project when no tab is active
-  // Skip on mobile when grid view is enabled (user picks from grid instead)
+  // Auto-open first project when no tab is active. Mobile grid mode remains a
+  // picker; desktop grid mode is just an alternate sidebar, so the editor stays open.
   useEffect(() => {
-    if (!isDesktop && mobileProjectGrid) return;
+    if (!isDesktop && projectGridEnabled) return;
     if (activeTabId || projects.length === 0) return;
     openTab(projects[0].id);
-  }, [projects, activeTabId, openTab, isDesktop, mobileProjectGrid]);
+  }, [projects, activeTabId, openTab, isDesktop, projectGridEnabled]);
 
   // Resizable sidebar width
   const [sidebarWidth, setSidebarWidth] = useState(220);
   const sidebarDragging = useRef(false);
+  const sidebarMin = projectGridEnabled ? MIN_GRID_SIDEBAR : MIN_TREE_SIDEBAR;
+  const sidebarMax = projectGridEnabled ? MAX_GRID_SIDEBAR : MAX_TREE_SIDEBAR;
+  const effectiveSidebarWidth = Math.min(sidebarMax, Math.max(sidebarMin, sidebarWidth));
 
   // Resizable task panel width (vertical split)
   const [taskPanelWidth, setTaskPanelWidth] = useState(288);
@@ -136,11 +144,11 @@ export function ProjectsView() {
     e.preventDefault();
     sidebarDragging.current = true;
     const startX = e.clientX;
-    const startWidth = sidebarWidth;
+    const startWidth = effectiveSidebarWidth;
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!sidebarDragging.current) return;
-      const newWidth = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, startWidth + (ev.clientX - startX)));
+      const newWidth = Math.min(sidebarMax, Math.max(sidebarMin, startWidth + (ev.clientX - startX)));
       setSidebarWidth(newWidth);
     };
 
@@ -156,7 +164,7 @@ export function ProjectsView() {
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [sidebarWidth]);
+  }, [effectiveSidebarWidth, sidebarMax, sidebarMin]);
 
   const handleTaskMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -359,14 +367,41 @@ export function ProjectsView() {
       {!sidebarCollapsed && (
         <div
           className="hidden md:flex shrink-0 flex-col bg-bg-primary border-r border-border relative"
-          style={{ width: sidebarWidth }}
+          style={{ width: effectiveSidebarWidth }}
         >
           <div className="px-3 pt-3 pb-1">
             <h2 className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70">
               {t('projects.title')}
             </h2>
           </div>
-          <FileTree />
+          {projectGridEnabled ? (
+            <ProjectGrid
+              viewport="desktop"
+              variant="desktop-sidebar"
+              activeProjectId={activeTabId}
+              editable
+              projects={projects}
+              folders={folders}
+              taskCounts={taskCounts ?? {}}
+              fontPx={projectListFontPx}
+              layout={projectGridLayout}
+              onLayoutChange={(next) => updateSettings({ projectGridLayout: next })}
+              actions={{
+                openProject: openTab,
+                requestAddProject: (folderId) => {
+                  setAddProjectFolderId(folderId);
+                  setShowAddProject(true);
+                },
+                requestAddFolder: () => setShowAddFolder(true),
+                requestDeleteProject: (projectId) => {
+                  const project = projects.find((p) => p.id === projectId);
+                  if (project) setGridDeleteProject(project);
+                },
+              }}
+            />
+          ) : (
+            <FileTree />
+          )}
           {/* Resize handle */}
           <div
             onMouseDown={handleSidebarMouseDown}
@@ -403,7 +438,7 @@ export function ProjectsView() {
           className="flex md:hidden items-center gap-2 border-b border-border px-2 py-1.5 shrink-0 bg-bg-primary"
           style={{ paddingTop: 'calc(0.375rem + env(safe-area-inset-top, 0px))' }}
         >
-          {mobileProjectGrid && activeProject ? (
+          {projectGridEnabled && activeProject ? (
             /* Grid mode: editor bar — back + name + hamburger */
             <>
               <button
@@ -427,7 +462,7 @@ export function ProjectsView() {
                 {mobileTreeOpen ? '✕' : '☰'}
               </button>
             </>
-          ) : mobileProjectGrid && !activeProject ? (
+          ) : projectGridEnabled && !activeProject ? (
             /* Grid mode: grid title bar */
             <>
               <span className="flex-1 text-sm text-text-primary font-medium">{t('projects.title')}</span>
@@ -444,7 +479,10 @@ export function ProjectsView() {
                   </svg>
                 </button>
                 <button
-                  onClick={() => setShowAddProject(true)}
+                  onClick={() => {
+                    setAddProjectFolderId(null);
+                    setShowAddProject(true);
+                  }}
                   className="w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:text-accent transition-colors"
                   style={{ boxShadow: NEU.raisedSm }}
                 >
@@ -686,100 +724,31 @@ export function ProjectsView() {
               </div>
             </motion.div>
           )
-        ) : !isDesktop && mobileProjectGrid ? (
-          /* Mobile grid view */
-          <div className="flex-1 overflow-y-auto p-3">
-            <div className="grid grid-cols-2 gap-3">
-              {(() => {
-                const grouped: { folderId: string | null; folderName: string; folderColor: string; items: typeof projects }[] = [];
-                const byFolder = new Map<string | null, typeof projects>();
-
-                for (const p of projects) {
-                  const fid = (p as any).folderId ?? null;
-                  if (!byFolder.has(fid)) byFolder.set(fid, []);
-                  byFolder.get(fid)!.push(p);
-                }
-
-                for (const folder of folders) {
-                  const items = byFolder.get(folder.id);
-                  if (items && items.length > 0) {
-                    grouped.push({ folderId: folder.id, folderName: folder.name, folderColor: folder.color, items });
-                  }
-                }
-
-                const unfiled = byFolder.get(null);
-                if (unfiled && unfiled.length > 0) {
-                  grouped.push({ folderId: null, folderName: '', folderColor: '', items: unfiled });
-                }
-
-                return grouped.map((group) => (
-                  <React.Fragment key={group.folderId ?? '__unfiled'}>
-                    {group.folderId && (
-                      <div className="col-span-2 flex items-center gap-2 mt-2 first:mt-0">
-                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: group.folderColor }} />
-                        <span className="text-xs font-semibold uppercase tracking-wider text-text-muted/70">{group.folderName}</span>
-                      </div>
-                    )}
-                    {!group.folderId && grouped.length > 1 && (
-                      <div className="col-span-2 flex items-center gap-2 mt-2 first:mt-0">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-text-muted/70">Unfiled</span>
-                      </div>
-                    )}
-
-                    {group.items.map((p) => {
-                      const counts = taskCounts?.[p.id];
-                      return (
-                        <motion.button
-                          key={p.id}
-                          whileTap={{ scale: 0.96 }}
-                          onClick={() => openTab(p.id)}
-                          onTouchStart={() => {
-                            longPressTimerRef.current = setTimeout(() => {
-                              setGridDeleteProject(p);
-                            }, 600);
-                          }}
-                          onTouchEnd={() => {
-                            if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
-                          }}
-                          onTouchMove={() => {
-                            if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
-                          }}
-                          className="flex flex-col items-start gap-1.5 p-3 rounded-2xl bg-bg-card text-left"
-                          style={{ boxShadow: NEU.raised }}
-                        >
-                          <div className="flex items-center gap-2 w-full">
-                            {(p as any).icon ? (
-                              <span className="text-lg">{(p as any).icon}</span>
-                            ) : (
-                              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                            )}
-                            <span className="font-medium text-text-primary truncate" style={{ fontSize: `${projectListFontPx}px` }}>{p.name}</span>
-                          </div>
-                          {counts && (
-                            <span className="text-[11px] text-text-muted tabular-nums">
-                              {counts.total}
-                            </span>
-                          )}
-                        </motion.button>
-                      );
-                    })}
-                  </React.Fragment>
-                ));
-              })()}
-
-              <motion.button
-                whileTap={{ scale: 0.96 }}
-                onClick={() => setShowAddProject(true)}
-                className="flex flex-col items-center justify-center gap-1 p-3 rounded-2xl border-2 border-dashed border-border text-text-muted"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                <span className="text-xs">{t('projects.newTitle')}</span>
-              </motion.button>
-            </div>
-          </div>
+        ) : !isDesktop && projectGridEnabled ? (
+          <ProjectGrid
+            viewport="mobile"
+            variant="mobile-picker"
+            activeProjectId={activeTabId}
+            editable={false}
+            projects={projects}
+            folders={folders}
+            taskCounts={taskCounts ?? {}}
+            fontPx={projectListFontPx}
+            layout={projectGridLayout}
+            onLayoutChange={(next) => updateSettings({ projectGridLayout: next })}
+            actions={{
+              openProject: openTab,
+              requestAddProject: (folderId) => {
+                setAddProjectFolderId(folderId);
+                setShowAddProject(true);
+              },
+              requestAddFolder: () => setShowAddFolder(true),
+              requestDeleteProject: (projectId) => {
+                const project = projects.find((p) => p.id === projectId);
+                if (project) setGridDeleteProject(project);
+              },
+            }}
+          />
         ) : (
           <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
             {t('projects.empty')}
@@ -787,7 +756,7 @@ export function ProjectsView() {
         )}
       </div>
 
-      {/* Modals for mobile grid */}
+      {/* Modals for project grid */}
       <AddFolderModal
         open={showAddFolder}
         onClose={() => setShowAddFolder(false)}
@@ -795,8 +764,15 @@ export function ProjectsView() {
       />
       <AddProjectModal
         open={showAddProject}
-        onClose={() => setShowAddProject(false)}
-        onAdd={async (data) => { const p = await createProject(data); openTab(p.id); }}
+        onClose={() => {
+          setShowAddProject(false);
+          setAddProjectFolderId(null);
+        }}
+        onAdd={async (data) => {
+          const p = await createProject({ ...data, folderId: addProjectFolderId });
+          openTab(p.id);
+          setAddProjectFolderId(null);
+        }}
       />
 
       <ConfirmModal
@@ -812,7 +788,7 @@ export function ProjectsView() {
         message={t('projects.deleteConfirm')}
       />
 
-      {/* Grid long-press delete */}
+      {/* Grid long-press/context delete */}
       <ConfirmModal
         open={!!gridDeleteProject}
         onClose={() => setGridDeleteProject(null)}

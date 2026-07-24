@@ -300,6 +300,42 @@ db.version(14).stores({
   vaultBase: 'path',
 });
 
+// Generalize the old mobile-only project grid preference into a device-local
+// project card grid setting and initialize the desktop card layout container.
+db.version(15).stores({
+  activities: 'id, name, sortOrder, deletedAt, updatedAt',
+  timeEntries: 'id, activityId, date, startedAt, endedAt, deletedAt, updatedAt',
+  settings: 'id',
+  deviceSettings: 'id',
+  habits: 'id, name, sortOrder, deletedAt, updatedAt',
+  habitEntries: 'id, habitId, date, deletedAt, updatedAt, [habitId+date]',
+  notes: 'id, isPinned, deletedAt, updatedAt',
+  pomodoroPresets: 'id, name, sortOrder, deletedAt, updatedAt',
+  projects: 'id, name, folderId, sortOrder, isArchived, deletedAt, updatedAt',
+  projectTasks: 'id, projectId, sortOrder, isCompleted, deletedAt, updatedAt, timeBox, scheduledDate',
+  todayTasks: 'id, projectTaskId, projectId, date, isCompleted, deletedAt, updatedAt',
+  projectFolders: 'id, name, parentFolderId, sortOrder, deletedAt, updatedAt',
+  inboxItems: 'id, deletedAt, updatedAt',
+  mindMaps: 'id, deletedAt, updatedAt',
+  pdfDocuments: 'id, isPinned, deletedAt, updatedAt',
+  vaultBase: 'path',
+}).upgrade(async tx => {
+  const raw = await tx.table('deviceSettings').get('default') as Record<string, unknown> | undefined;
+  if (!raw) return;
+
+  const next = { ...raw };
+  const legacyGridEnabled = typeof raw.mobileProjectGrid === 'boolean' ? raw.mobileProjectGrid : undefined;
+  delete next.mobileProjectGrid;
+
+  await tx.table('deviceSettings').put({
+    ...next,
+    projectGridEnabled: typeof raw.projectGridEnabled === 'boolean'
+      ? raw.projectGridEnabled
+      : (legacyGridEnabled ?? DEFAULT_DEVICE_SETTINGS.projectGridEnabled),
+    projectGridLayout: raw.projectGridLayout ?? DEFAULT_DEVICE_SETTINGS.projectGridLayout,
+  });
+});
+
 /**
  * Hard-deletes every vault-synced row — the app's only sanctioned
  * exception to the no-hard-deletes/`deletedAt` rule. Irreversible on its

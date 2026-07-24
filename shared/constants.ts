@@ -68,7 +68,11 @@ export const DEFAULT_DEVICE_SETTINGS = {
     ['/', '/today', '/projects', '/inbox'],
     ['/tasks', '/settings'],
   ] as string[][],
-  mobileProjectGrid: false,
+  projectGridEnabled: false,
+  projectGridLayout: {
+    version: 1,
+    desktop: {},
+  },
 } satisfies PersistedDeviceSettings;
 
 export const BREAK_ACTIVITY = {
