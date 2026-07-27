@@ -1,32 +1,44 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { EmojiPicker } from '../ui/EmojiPicker';
 import { useTranslation } from '../../i18n/useTranslation';
-import { ACTIVITY_COLORS } from '@shared/constants';
+import { PROJECT_COLORS } from '@shared/constants';
 import { NEU } from '../../utils/shadows';
 
 interface AddProjectModalProps {
   open: boolean;
   onClose: () => void;
   onAdd: (data: { name: string; color: string; icon?: string }) => void;
+  usedColors?: string[];
 }
 
-export function AddProjectModal({ open, onClose, onAdd }: AddProjectModalProps) {
+function getDefaultProjectColor(usedColors: string[]): string {
+  return PROJECT_COLORS.find((c) => !usedColors.includes(c)) ?? PROJECT_COLORS[0];
+}
+
+export function AddProjectModal({ open, onClose, onAdd, usedColors = [] }: AddProjectModalProps) {
   const { t } = useTranslation();
+  const defaultColor = getDefaultProjectColor(usedColors);
   const [name, setName] = useState('');
-  const [color, setColor] = useState<string>(ACTIVITY_COLORS[0]);
+  const [color, setColor] = useState<string>(defaultColor);
   const [icon, setIcon] = useState('');
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [emojiAnchorRect, setEmojiAnchorRect] = useState<DOMRect | null>(null);
   const iconBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setColor(defaultColor);
+    }
+  }, [defaultColor, open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     onAdd({ name: name.trim(), color, icon: icon || undefined });
     setName('');
-    setColor(ACTIVITY_COLORS[0]);
+    setColor(defaultColor);
     setIcon('');
     onClose();
   };
@@ -52,7 +64,7 @@ export function AddProjectModal({ open, onClose, onAdd }: AddProjectModalProps) 
         <div>
           <span className="text-xs text-text-muted mb-2 block">{t('projects.color')}</span>
           <div className="flex gap-2 flex-wrap">
-            {ACTIVITY_COLORS.map((c) => (
+            {PROJECT_COLORS.map((c) => (
               <button
                 key={c}
                 type="button"

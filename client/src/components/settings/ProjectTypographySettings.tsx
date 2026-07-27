@@ -1,23 +1,7 @@
-import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { FreeNumberControl } from './FreeNumberControl';
-
-const PROJECT_LIST_BASE_PX = 13;
-const PROJECT_NOTE_BASE_PX = 14;
-
-function scaledBase(base: number, zoom: number): number {
-  return Math.round((base * zoom) / 100);
-}
-
-export function useProjectTypography() {
-  const uiZoom = useSettingsStore((s) => s.uiZoom);
-  const listOverride = useSettingsStore((s) => s.projectListFontOverridePx);
-  const noteOverride = useSettingsStore((s) => s.projectNoteFontOverridePx);
-  return {
-    projectListFontPx: listOverride ?? scaledBase(PROJECT_LIST_BASE_PX, uiZoom),
-    projectNoteFontPx: noteOverride ?? scaledBase(PROJECT_NOTE_BASE_PX, uiZoom),
-  };
-}
+import { PROJECT_TEXT_MIN_PX, useProjectTypography } from './projectTypography';
 
 export function ProjectTypographySettings() {
   const { t } = useTranslation();
@@ -29,11 +13,11 @@ export function ProjectTypographySettings() {
     <div className="flex flex-col gap-4">
       <div>
         <h3 className="text-sm font-medium text-text-secondary mb-2">{t('settings.projectListFont')}</h3>
-        <FreeNumberControl value={projectListFontPx} min={10} suffix="px" onChange={setList} onReset={() => setList(null)} resetLabel={t('settings.reset')} />
+        <FreeNumberControl value={projectListFontPx} min={PROJECT_TEXT_MIN_PX} suffix="px" onChange={setList} onReset={() => setList(null)} resetLabel={t('settings.reset')} />
       </div>
       <div>
         <h3 className="text-sm font-medium text-text-secondary mb-2">{t('settings.projectNoteFont')}</h3>
-        <FreeNumberControl value={projectNoteFontPx} min={10} suffix="px" onChange={setNote} onReset={() => setNote(null)} resetLabel={t('settings.reset')} />
+        <FreeNumberControl value={projectNoteFontPx} min={PROJECT_TEXT_MIN_PX} suffix="px" onChange={setNote} onReset={() => setNote(null)} resetLabel={t('settings.reset')} />
       </div>
     </div>
   );

@@ -3,7 +3,8 @@ import { NEU } from '../../utils/shadows';
 import { renderLineMd } from '../../utils/markdown';
 import { useTranslation } from '../../i18n/useTranslation';
 import { EditProjectModal } from './EditProjectModal';
-import { useProjectTypography } from '../settings/ProjectTypographySettings';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { adjustProjectNoteFontPx, useProjectTypography } from '../settings/projectTypography';
 import {
   setTextPayload,
   readPayload,
@@ -45,6 +46,12 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
   const containerRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
   const { projectNoteFontPx } = useProjectTypography();
+  const setProjectNoteFontOverride = useSettingsStore((s) => s.setProjectNoteFontOverride);
+  const projectNoteFontPxRef = useRef(projectNoteFontPx);
+
+  useEffect(() => {
+    projectNoteFontPxRef.current = projectNoteFontPx;
+  }, [projectNoteFontPx]);
 
   useEffect(() => {
     setLocalDesc(description);
@@ -85,6 +92,38 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
       onSave(localDesc);
     }
   };
+
+  const adjustProjectNoteFont = useCallback((deltaPx: number) => {
+    const next = adjustProjectNoteFontPx(projectNoteFontPxRef.current, deltaPx);
+    if (next === projectNoteFontPxRef.current) return;
+    projectNoteFontPxRef.current = next;
+    void setProjectNoteFontOverride(next);
+  }, [setProjectNoteFontOverride]);
+
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!e.ctrlKey || !e.shiftKey) return;
+
+    const wantsIncrease = e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd';
+    const wantsDecrease = e.key === '-' || e.key === '_' || e.code === 'Minus' || e.code === 'NumpadSubtract';
+    if (!wantsIncrease && !wantsDecrease) return;
+
+    e.preventDefault();
+    adjustProjectNoteFont(wantsIncrease ? 1 : -1);
+  };
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey || e.deltaY === 0) return;
+      e.preventDefault();
+      adjustProjectNoteFont(e.deltaY < 0 ? 1 : -1);
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [adjustProjectNoteFont]);
 
   // Enter edit mode on mouse-up, and only when nothing is selected. Using
   // `click` here meant a drag-select immediately entered edit mode and threw
@@ -300,6 +339,7 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
             // draggable="true" makes mousedown-drag start a drag instead of a
             // selection — which would make the description unselectable.
             onDragStart={handleTextDragStart}
+            onKeyDown={handleEditorKeyDown}
             style={{ gridArea: '1 / 1', fontSize: `${projectNoteFontPx}px` }}
             className={`${EDITOR_TEXT} w-full min-w-0 bg-transparent text-text-primary focus:outline-none border-none resize-none overflow-hidden whitespace-pre-wrap selection:bg-accent/30 selection:text-text-primary ${
               isEditing ? '' : 'invisible pointer-events-none'

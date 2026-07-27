@@ -11,6 +11,27 @@ export const ACTIVITY_COLORS = [
   '#D4873A', // burnt orange
 ] as const;
 
+export const PROJECT_COLORS = [
+  '#D94F5C', // pomegranate
+  '#F47B3A', // tangerine
+  '#D8A11D', // marigold
+  '#86A83D', // olive
+  '#35A66B', // fern
+  '#13A69A', // jade
+  '#258FB8', // lagoon
+  '#4D73D9', // cornflower
+  '#7562D8', // iris
+  '#A957C7', // orchid
+  '#D65B93', // raspberry
+  '#C66B4E', // terracotta
+  '#8A7B32', // brass
+  '#4E956F', // eucalyptus
+  '#2B7B78', // peacock
+  '#516E9F', // denim
+  '#8B633F', // walnut
+  '#6D667F', // slate violet
+] as const;
+
 export const DEFAULT_CUSTOM_THEME_COLORS = {
   bgPrimary: '#1a1a2e',
   bgCard: '#16213e',

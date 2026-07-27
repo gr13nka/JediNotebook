@@ -9,7 +9,7 @@ import { AddProjectModal } from './AddProjectModal';
 import { AddFolderModal } from './AddFolderModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { InlineTextEdit } from '../ui/InlineTextEdit';
-import { useProjectTypography } from '../settings/ProjectTypographySettings';
+import { useProjectTypography } from '../settings/projectTypography';
 import type { ProjectFolder, Project } from '@shared/types';
 
 interface ContextMenuState {
@@ -376,6 +376,7 @@ export function FileTree() {
         open={showAddProject}
         onClose={() => setShowAddProject(false)}
         onAdd={handleAddProject}
+        usedColors={projects.map((p) => p.color)}
       />
 
       <ConfirmModal

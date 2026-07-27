@@ -2,7 +2,7 @@ import { db } from '../db';
 import { notDeleted, updateRecord } from '../db/repository';
 import { useEntity } from './useEntity';
 import type { ProjectFolder } from '@shared/types';
-import { ACTIVITY_COLORS } from '@shared/constants';
+import { PROJECT_COLORS } from '@shared/constants';
 
 const bySortOrder = (a: ProjectFolder, b: ProjectFolder) => a.sortOrder - b.sortOrder;
 
@@ -15,7 +15,7 @@ export function useFolders() {
     const all = notDeleted(await db.projectFolders.toArray());
     return create({
       name,
-      color: color || ACTIVITY_COLORS[Math.floor(Math.random() * ACTIVITY_COLORS.length)],
+      color: color || PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)],
       sortOrder: all.length,
       parentFolderId,
       isExpanded: true,

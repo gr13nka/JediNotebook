@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { useTranslation } from '../../i18n/useTranslation';
-import { ACTIVITY_COLORS } from '@shared/constants';
+import { PROJECT_COLORS } from '@shared/constants';
 import { NEU } from '../../utils/shadows';
 
 interface AddFolderModalProps {
@@ -14,14 +14,14 @@ interface AddFolderModalProps {
 export function AddFolderModal({ open, onClose, onAdd }: AddFolderModalProps) {
   const { t } = useTranslation();
   const [name, setName] = useState('');
-  const [color, setColor] = useState<string>(ACTIVITY_COLORS[0]);
+  const [color, setColor] = useState<string>(PROJECT_COLORS[0]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     onAdd({ name: name.trim(), color });
     setName('');
-    setColor(ACTIVITY_COLORS[0]);
+    setColor(PROJECT_COLORS[0]);
     onClose();
   };
 
@@ -39,7 +39,7 @@ export function AddFolderModal({ open, onClose, onAdd }: AddFolderModalProps) {
         <div>
           <span className="text-xs text-text-muted mb-2 block">{t('folders.color')}</span>
           <div className="flex gap-2 flex-wrap">
-            {ACTIVITY_COLORS.map((c) => (
+            {PROJECT_COLORS.map((c) => (
               <button
                 key={c}
                 type="button"

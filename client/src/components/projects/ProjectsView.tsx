@@ -19,7 +19,7 @@ import { ProjectTaskList } from './ProjectTaskList';
 import { AddProjectModal } from './AddProjectModal';
 import { AddFolderModal } from './AddFolderModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
-import { useProjectTypography } from '../settings/ProjectTypographySettings';
+import { useProjectTypography } from '../settings/projectTypography';
 
 const MIN_TREE_SIDEBAR = 160;
 const MAX_TREE_SIDEBAR = 400;
@@ -768,6 +768,7 @@ export function ProjectsView() {
           setShowAddProject(false);
           setAddProjectFolderId(null);
         }}
+        usedColors={projects.map((p) => p.color)}
         onAdd={async (data) => {
           const p = await createProject({ ...data, folderId: addProjectFolderId });
           openTab(p.id);

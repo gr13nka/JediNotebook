@@ -3,7 +3,7 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { EmojiPicker } from '../ui/EmojiPicker';
 import { useTranslation } from '../../i18n/useTranslation';
-import { ACTIVITY_COLORS } from '@shared/constants';
+import { PROJECT_COLORS } from '@shared/constants';
 import { NEU } from '../../utils/shadows';
 
 interface EditProjectModalProps {
@@ -23,6 +23,9 @@ export function EditProjectModal({ open, onClose, name, color, icon, onSave }: E
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [emojiAnchorRect, setEmojiAnchorRect] = useState<DOMRect | null>(null);
   const iconBtnRef = useRef<HTMLButtonElement>(null);
+  const colorOptions = (PROJECT_COLORS as readonly string[]).includes(localColor)
+    ? PROJECT_COLORS
+    : [localColor, ...PROJECT_COLORS];
 
   // Sync local state when modal opens with new values
   useEffect(() => {
@@ -61,7 +64,7 @@ export function EditProjectModal({ open, onClose, name, color, icon, onSave }: E
         <div>
           <span className="text-xs text-text-muted mb-2 block">{t('projects.color')}</span>
           <div className="flex gap-2 flex-wrap">
-            {ACTIVITY_COLORS.map((c) => (
+            {colorOptions.map((c) => (
               <button
                 key={c}
                 type="button"
