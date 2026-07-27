@@ -73,6 +73,7 @@ export const DEFAULT_DEVICE_SETTINGS = {
     version: 1,
     desktop: {},
   },
+  taskSelectionDesktopSwipeEnabled: false,
 } satisfies PersistedDeviceSettings;
 
 export const BREAK_ACTIVITY = {

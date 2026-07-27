@@ -135,6 +135,9 @@ const en = {
   'taskSelection.toToday': '→ Today',
   'taskSelection.toWeek': '→ Week',
   'taskSelection.toLater': '→ Later',
+  'taskSelection.toProject': 'Project',
+  'taskSelection.moveProjectTitle': 'Move to project',
+  'taskSelection.noProjectTargets': 'No other active projects.',
 
   // Today
   'today.title': 'Today',
@@ -189,6 +192,8 @@ const en = {
   'settings.tz': 'Timezone',
   'settings.maxTasks': 'Max Tasks Per Project',
   'settings.tasksPerProject': 'tasks per project',
+  'settings.taskSelectionDesktopSwipe': 'Desktop task swipe',
+  'settings.taskSelectionDesktopSwipeDesc': 'Enable horizontal swipe gestures on the Task Selection screen for touchpads and mouse drags.',
 
   // Folders
   'folders.newFolder': 'New Folder',
@@ -464,6 +469,9 @@ const ru: Record<TranslationKey, string> = {
   'taskSelection.toToday': '→ Сегодня',
   'taskSelection.toWeek': '→ Неделя',
   'taskSelection.toLater': '→ Позже',
+  'taskSelection.toProject': 'Проект',
+  'taskSelection.moveProjectTitle': 'Переместить в проект',
+  'taskSelection.noProjectTargets': 'Нет других активных проектов.',
   'today.title': 'Сегодня',
   'today.allDone': 'Всё готово!',
   'today.allDoneDesc': 'Вы выполнили все задачи на сегодня.',
@@ -514,6 +522,8 @@ const ru: Record<TranslationKey, string> = {
   'settings.tz': 'Часовой пояс',
   'settings.maxTasks': 'Макс. задач на проект',
   'settings.tasksPerProject': 'задач на проект',
+  'settings.taskSelectionDesktopSwipe': 'Свайпы задач на компьютере',
+  'settings.taskSelectionDesktopSwipeDesc': 'Включает горизонтальные жесты на экране выбора задач для тачпада и перетаскивания мышью.',
   'folders.newFolder': 'Новая папка',
   'folders.folderName': 'Название папки',
   'folders.namePlaceholder': 'Название папки',

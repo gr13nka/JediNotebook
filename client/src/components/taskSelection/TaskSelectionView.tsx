@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAllProjectTasks, type TaskGroup } from '../../hooks/useAllProjectTasks';
 import { moveTaskToBox } from '../../hooks/useTaskBox';
@@ -7,13 +7,15 @@ import { useReorderList } from '../../hooks/useReorderList';
 import { useTranslation } from '../../i18n/useTranslation';
 import type { TranslationKey } from '../../i18n/translations';
 import { useProjectUIStore } from '../../stores/projectUIStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { InfoTooltip } from '../ui/InfoTooltip';
+import { BottomSheet } from '../ui/BottomSheet';
 import { StalenessCounter } from './StalenessCounter';
 import { TaskGroupCard, type TaskSortMode } from './TaskGroupCard';
 import { FolderGroupSection } from './FolderGroupSection';
 import { SelectableTaskRow } from './SelectableTaskRow';
 import { db } from '../../db';
-import { createProjectTask, deleteProjectTask, toggleProjectTask } from '../../db/taskOps';
+import { createProjectTask, deleteProjectTask, moveTaskToProject, toggleProjectTask } from '../../db/taskOps';
 import type { ProjectTask, TimeBox } from '@shared/types';
 
 const container = {
@@ -67,10 +69,12 @@ export function TaskSelectionView() {
   const { t } = useTranslation();
   const { groups, folderGroups } = useAllProjectTasks();
   const { projects, reorderProjects } = useProjects();
+  const taskSelectionDesktopSwipeEnabled = useSettingsStore((s) => s.taskSelectionDesktopSwipeEnabled);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [sortMode, setSortMode] = useState<TaskSortMode>('custom');
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
+  const [isDesktop, setIsDesktop] = useState(false);
   // Default 'week': the daily flip-through-and-promote habit this view
   // exists for — /today already owns the today-only view.
   const [boxTab, setBoxTab] = useState<BoxTab>('week');
@@ -89,6 +93,17 @@ export function TaskSelectionView() {
 
   // Flat view completed section
   const [flatCompletedCollapsed, setFlatCompletedCollapsed] = useState(true);
+  const [projectMoveTask, setProjectMoveTask] = useState<ProjectTask | null>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    setIsDesktop(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const swipeRowsEnabled = !isDesktop || taskSelectionDesktopSwipeEnabled;
 
   // Switching box tab drops any in-progress custom flat order — the same
   // reasoning as `handleSortMode` below: a manual order captured against one
@@ -246,6 +261,17 @@ export function TaskSelectionView() {
     [projects],
   );
 
+  const projectMoveTargets = useMemo(
+    () => availableProjects.filter((p) => p.id !== projectMoveTask?.projectId),
+    [availableProjects, projectMoveTask?.projectId],
+  );
+
+  const handleMoveTaskToProject = async (targetProjectId: string) => {
+    if (!projectMoveTask) return;
+    await moveTaskToProject(projectMoveTask.id, targetProjectId);
+    setProjectMoveTask(null);
+  };
+
   // Set default project when opening add bar
   const openAddBar = () => {
     setAddingTask(true);
@@ -358,7 +384,7 @@ export function TaskSelectionView() {
       {availableProjects.length > 0 && (
         <div className="mb-4">
           {addingTask ? (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-bg-elevated/50">
+            <div className="flex min-h-[58px] items-center gap-2 rounded-lg border border-dashed border-border bg-bg-card/70 px-3 py-2">
               <input
                 ref={addInputRef}
                 value={newTaskTitle}
@@ -399,7 +425,7 @@ export function TaskSelectionView() {
           ) : (
             <button
               onClick={openAddBar}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-text-muted hover:text-text-secondary hover:bg-bg-elevated/30 transition-colors text-sm w-full"
+              className="flex min-h-[58px] w-full items-center gap-2 rounded-lg border border-dashed border-border px-4 text-left text-sm text-text-muted transition-colors hover:bg-bg-elevated/30 hover:text-text-secondary"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
@@ -414,7 +440,7 @@ export function TaskSelectionView() {
       {viewMode === 'flat' ? (
         /* ---- FLAT VIEW ---- */
         <motion.div
-          className="flex flex-col gap-0"
+          className="flex flex-col gap-2"
           variants={container}
           initial="hidden"
           animate="show"
@@ -441,6 +467,8 @@ export function TaskSelectionView() {
                   onDrop={sortMode === 'custom' ? rowProps.onDrop : undefined}
                   isDragOver={rowProps.isDragOver}
                   projectInfo={projectMap.get(task.projectId)}
+                  swipeEnabled={swipeRowsEnabled}
+                  onMoveToProject={setProjectMoveTask}
                 />
               </motion.div>
             );
@@ -488,6 +516,8 @@ export function TaskSelectionView() {
                         }}
                         draggable={false}
                         projectInfo={projectMap.get(task.projectId)}
+                        swipeEnabled={swipeRowsEnabled}
+                        onMoveToProject={setProjectMoveTask}
                       />
                     ))}
                   </motion.div>
@@ -523,6 +553,8 @@ export function TaskSelectionView() {
                         tasks={group.incompleteTasks}
                         completedTasks={group.completedTasks}
                         onMoveToBox={moveTaskToBox}
+                        onMoveToProject={setProjectMoveTask}
+                        swipeEnabled={swipeRowsEnabled}
                         sortMode={groupedSortMode}
                         dragEnabled={groupDragEnabled}
                         isCollapsed={collapsedProjects.has(group.project.id)}
@@ -548,6 +580,8 @@ export function TaskSelectionView() {
                     tasks={group.incompleteTasks}
                     completedTasks={group.completedTasks}
                     onMoveToBox={moveTaskToBox}
+                    onMoveToProject={setProjectMoveTask}
+                    swipeEnabled={swipeRowsEnabled}
                     sortMode={groupedSortMode}
                     dragEnabled={groupDragEnabled}
                     isCollapsed={collapsedProjects.has(group.project.id)}
@@ -570,6 +604,38 @@ export function TaskSelectionView() {
           {t('taskSelection.empty')}
         </div>
       )}
+
+      <BottomSheet
+        open={projectMoveTask !== null}
+        onClose={() => setProjectMoveTask(null)}
+        title={t('taskSelection.moveProjectTitle')}
+      >
+        <div className="flex flex-col gap-1 px-2">
+          {projectMoveTargets.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              onClick={() => handleMoveTaskToProject(project.id)}
+              className="flex min-h-[48px] items-center gap-3 rounded-xl px-3 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated/50"
+            >
+              {project.icon ? (
+                <span className="text-base leading-none">{project.icon}</span>
+              ) : (
+                <span
+                  className="h-3 w-3 flex-shrink-0 rounded-full"
+                  style={{ backgroundColor: project.color }}
+                />
+              )}
+              <span className="min-w-0 flex-1 truncate">{project.name}</span>
+            </button>
+          ))}
+          {projectMoveTargets.length === 0 && (
+            <div className="px-3 py-6 text-center text-sm text-text-muted">
+              {t('taskSelection.noProjectTargets')}
+            </div>
+          )}
+        </div>
+      </BottomSheet>
     </div>
   );
 }

@@ -13,6 +13,8 @@ interface TaskGroupCardProps {
   tasks: ProjectTask[];
   completedTasks: ProjectTask[];
   onMoveToBox: (taskId: string, target: TimeBox) => void;
+  onMoveToProject?: (task: ProjectTask) => void;
+  swipeEnabled?: boolean;
   sortMode: TaskSortMode;
   /**
    * External gate ANDed with `sortMode === 'custom'` below to get the actual
@@ -45,6 +47,8 @@ export function TaskGroupCard({
   tasks,
   completedTasks,
   onMoveToBox,
+  onMoveToProject,
+  swipeEnabled = false,
   sortMode,
   dragEnabled = true,
   isCollapsed = false,
@@ -83,7 +87,7 @@ export function TaskGroupCard({
 
       {/* Project header row */}
       <div
-        className={`flex items-center gap-3 py-3 px-2 rounded-lg ${onToggleCollapse ? 'cursor-pointer hover:bg-bg-elevated/30' : ''} transition-colors`}
+        className={`flex min-h-9 items-center gap-3 rounded-lg border border-border bg-bg-card px-2.5 py-2 ${onToggleCollapse ? 'cursor-pointer hover:bg-bg-elevated/30' : ''} transition-colors`}
         onClick={onToggleCollapse}
         draggable={draggableProject && isDragEnabled}
         onDragStart={onProjectDragStart}
@@ -129,7 +133,7 @@ export function TaskGroupCard({
             transition={{ duration: 0.2, ease: 'easeInOut' }}
             style={{ overflow: 'hidden' }}
           >
-            <div className="pl-4" onDragEnd={reorder.handleDragEnd} onDragLeave={reorder.handleDragLeave}>
+            <div className="flex flex-col gap-2 pl-3 pt-2" onDragEnd={reorder.handleDragEnd} onDragLeave={reorder.handleDragLeave}>
               {sortedTasks.map((task, i) => {
                 const rowProps = reorder.getRowProps(i);
                 return (
@@ -137,6 +141,8 @@ export function TaskGroupCard({
                     key={task.id}
                     task={task}
                     onMoveToBox={onMoveToBox}
+                    onMoveToProject={onMoveToProject}
+                    swipeEnabled={swipeEnabled}
                     onToggleComplete={() => toggleTask(task.id)}
                     onDelete={() => deleteTask(task.id)}
                     onRename={(title) => updateTask(task.id, { title })}
@@ -181,6 +187,8 @@ export function TaskGroupCard({
                             key={task.id}
                             task={task}
                             onMoveToBox={onMoveToBox}
+                            onMoveToProject={onMoveToProject}
+                            swipeEnabled={swipeEnabled}
                             onToggleComplete={() => toggleTask(task.id)}
                             onDelete={() => deleteTask(task.id)}
                             onRename={(title) => updateTask(task.id, { title })}

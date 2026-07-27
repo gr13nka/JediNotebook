@@ -24,6 +24,8 @@ export interface EnrichedBoxTask extends ProjectTask {
  * isn't forced to mount a box's live query just to reach it.
  */
 export async function moveTaskToBox(taskId: string, target: TimeBox): Promise<void> {
+  const task = await db.projectTasks.get(taskId);
+  if (!task || task.timeBox === target) return;
   const timeBoxOrder = await nextBoxOrder(target);
   await updateRecord(db.projectTasks, taskId, {
     timeBox: target,

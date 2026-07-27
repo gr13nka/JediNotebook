@@ -336,6 +336,36 @@ db.version(15).stores({
   });
 });
 
+// Device-local task-selection gesture preference. No new indexes; existing
+// installs just need the explicit default in deviceSettings.
+db.version(16).stores({
+  activities: 'id, name, sortOrder, deletedAt, updatedAt',
+  timeEntries: 'id, activityId, date, startedAt, endedAt, deletedAt, updatedAt',
+  settings: 'id',
+  deviceSettings: 'id',
+  habits: 'id, name, sortOrder, deletedAt, updatedAt',
+  habitEntries: 'id, habitId, date, deletedAt, updatedAt, [habitId+date]',
+  notes: 'id, isPinned, deletedAt, updatedAt',
+  pomodoroPresets: 'id, name, sortOrder, deletedAt, updatedAt',
+  projects: 'id, name, folderId, sortOrder, isArchived, deletedAt, updatedAt',
+  projectTasks: 'id, projectId, sortOrder, isCompleted, deletedAt, updatedAt, timeBox, scheduledDate',
+  todayTasks: 'id, projectTaskId, projectId, date, isCompleted, deletedAt, updatedAt',
+  projectFolders: 'id, name, parentFolderId, sortOrder, deletedAt, updatedAt',
+  inboxItems: 'id, deletedAt, updatedAt',
+  mindMaps: 'id, deletedAt, updatedAt',
+  pdfDocuments: 'id, isPinned, deletedAt, updatedAt',
+  vaultBase: 'path',
+}).upgrade(async tx => {
+  const raw = await tx.table('deviceSettings').get('default') as Record<string, unknown> | undefined;
+  if (!raw) return;
+  await tx.table('deviceSettings').put({
+    ...raw,
+    taskSelectionDesktopSwipeEnabled: typeof raw.taskSelectionDesktopSwipeEnabled === 'boolean'
+      ? raw.taskSelectionDesktopSwipeEnabled
+      : DEFAULT_DEVICE_SETTINGS.taskSelectionDesktopSwipeEnabled,
+  });
+});
+
 /**
  * Hard-deletes every vault-synced row — the app's only sanctioned
  * exception to the no-hard-deletes/`deletedAt` rule. Irreversible on its

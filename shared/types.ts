@@ -107,6 +107,7 @@ export interface DeviceSettings {
   bottomNavPages: string[][];
   projectGridEnabled: boolean;
   projectGridLayout: ProjectGridLayout;
+  taskSelectionDesktopSwipeEnabled: boolean;
 }
 
 export type PersistedDeviceSettings = Omit<DeviceSettings, 'id'>;

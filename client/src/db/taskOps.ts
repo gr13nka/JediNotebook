@@ -91,6 +91,18 @@ export async function deleteProjectTask(taskId: string): Promise<void> {
   await softDelete(db.projectTasks, taskId);
 }
 
+/** Moves a task into another project, appending it to that project's task order. */
+export async function moveTaskToProject(taskId: string, targetProjectId: string): Promise<void> {
+  const task = await db.projectTasks.get(taskId);
+  if (!task || task.projectId === targetProjectId) return;
+
+  const targetTasks = notDeleted(await db.projectTasks.where('projectId').equals(targetProjectId).toArray());
+  await updateRecord(db.projectTasks, taskId, {
+    projectId: targetProjectId,
+    sortOrder: targetTasks.length,
+  });
+}
+
 /**
  * Spawns the next occurrence of a completed recurring task, if one is due.
  *

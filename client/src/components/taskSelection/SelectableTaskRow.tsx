@@ -1,8 +1,9 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import type { ProjectTask, TimeBox } from '@shared/types';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import type { TranslationKey } from '../../i18n/translations';
+import { clampSwipeOffset, resolveTaskSwipe } from '../../utils/taskSwipe';
 import { ContextMenu } from '../ui/ContextMenu';
 import { InlineTextEdit } from '../ui/InlineTextEdit';
 import { CompletionBurst, useCompletionBurst } from '../ui/CompletionBurst';
@@ -19,6 +20,7 @@ interface SelectableTaskRowProps {
   task: ProjectTask;
   /** Moves the task to any box; the row offers the two boxes it is not currently in. */
   onMoveToBox: (taskId: string, target: TimeBox) => void;
+  onMoveToProject?: (task: ProjectTask) => void;
   onToggleComplete: () => void;
   onDelete: () => void;
   onRename?: (title: string) => void;
@@ -28,6 +30,7 @@ interface SelectableTaskRowProps {
   onDrop?: (e: React.DragEvent) => void;
   isDragOver?: 'above' | 'below' | null;
   projectInfo?: { name: string; color: string; icon?: string };
+  swipeEnabled?: boolean;
 }
 
 function getStalenessScore(createdAt: string): number {
@@ -47,6 +50,29 @@ const DragDotsIcon = () => (
   </svg>
 );
 
+const CalendarIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
+const FolderIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+const ArchiveIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="4" rx="1" />
+    <path d="M5 7v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7" />
+    <path d="M10 12h4" />
+  </svg>
+);
+
 function getStalenessColor(score: number, fixed: boolean): string {
   if (fixed) return 'text-text-muted';
   if (score < 9) return 'text-green-500';
@@ -54,9 +80,16 @@ function getStalenessColor(score: number, fixed: boolean): string {
   return 'text-red-500';
 }
 
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(
+    target.closest('button, input, textarea, select, [contenteditable="true"], [data-no-swipe="true"]'),
+  );
+}
+
 export function SelectableTaskRow({
   task,
   onMoveToBox,
+  onMoveToProject,
   onToggleComplete,
   onDelete,
   onRename,
@@ -66,9 +99,11 @@ export function SelectableTaskRow({
   onDrop,
   isDragOver,
   projectInfo,
+  swipeEnabled = false,
 }: SelectableTaskRowProps) {
   const isCompleted = task.isCompleted;
   const isInToday = task.timeBox === 'today';
+  const canSwipe = swipeEnabled && !isCompleted;
   const stalenessVisible = useSettingsStore((s) => s.pointsCounterVisible);
   const colorFixed = useSettingsStore((s) => s.pointsColorFixed);
   const { t } = useTranslation();
@@ -78,6 +113,29 @@ export function SelectableTaskRow({
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [burst, fireBurst] = useCompletionBurst();
+  const [offsetX, setOffsetX] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const offsetRef = useRef(0);
+  const wheelTimer = useRef<number | null>(null);
+  const suppressClickRef = useRef(false);
+  const pointerRef = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    baseX: number;
+    mode: 'pending' | 'horizontal' | 'vertical';
+  } | null>(null);
+
+  useEffect(() => {
+    offsetRef.current = offsetX;
+  }, [offsetX]);
+
+  useEffect(() => {
+    return () => {
+      if (wheelTimer.current !== null) window.clearTimeout(wheelTimer.current);
+    };
+  }, []);
 
   // Celebrate only the incomplete -> complete direction of the toggle.
   const handleToggleComplete = () => {
@@ -101,34 +159,174 @@ export function SelectableTaskRow({
     return items;
   }, [t, onDelete, onRename]);
 
+  const settleSwipe = useCallback((offset: number) => {
+    if (!canSwipe) {
+      setOffsetX(0);
+      return;
+    }
+    const width = rowRef.current?.offsetWidth ?? 360;
+    const resolution = resolveTaskSwipe(offset, width);
+    setIsSwiping(false);
+    setOffsetX(resolution.restingX);
+    if (resolution.commit) {
+      window.setTimeout(() => {
+        onMoveToBox(task.id, resolution.commit as TimeBox);
+        setOffsetX(0);
+      }, 130);
+    }
+  }, [canSwipe, onMoveToBox, task.id]);
+
+  const moveToBoxAndClose = (target: TimeBox) => {
+    onMoveToBox(task.id, target);
+    setOffsetX(0);
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canSwipe || isInteractiveTarget(e.target) || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    pointerRef.current = {
+      id: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      baseX: offsetRef.current,
+      mode: 'pending',
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const pointer = pointerRef.current;
+    if (!pointer || pointer.id !== e.pointerId) return;
+
+    const dx = e.clientX - pointer.startX;
+    const dy = e.clientY - pointer.startY;
+    if (pointer.mode === 'pending') {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
+      pointer.mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'horizontal' : 'vertical';
+    }
+    if (pointer.mode === 'vertical') return;
+
+    e.preventDefault();
+    suppressClickRef.current = true;
+    setIsSwiping(true);
+    setOffsetX(clampSwipeOffset(pointer.baseX + dx, rowRef.current?.offsetWidth ?? 360));
+  };
+
+  const handlePointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    const pointer = pointerRef.current;
+    if (!pointer || pointer.id !== e.pointerId) return;
+    pointerRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    if (pointer.mode === 'horizontal') {
+      settleSwipe(offsetRef.current);
+    } else {
+      setIsSwiping(false);
+    }
+  };
+
+  const handleClickCapture = (e: React.MouseEvent) => {
+    if (!suppressClickRef.current) return;
+    suppressClickRef.current = false;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!canSwipe || Math.abs(e.deltaX) < 8 || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    const next = clampSwipeOffset(offsetRef.current - e.deltaX, rowRef.current?.offsetWidth ?? 360);
+    setIsSwiping(true);
+    setOffsetX(next);
+    if (wheelTimer.current !== null) window.clearTimeout(wheelTimer.current);
+    wheelTimer.current = window.setTimeout(() => settleSwipe(offsetRef.current), 120);
+  };
+
   return (
-    <>
-      <div className="relative">
-        {isDragOver === 'above' && (
-          <div className="absolute -top-[2px] left-8 right-3 h-[2px] rounded-full bg-accent z-10" />
+    <div className="relative">
+      {isDragOver === 'above' && (
+        <div className="absolute -top-[2px] left-8 right-3 h-[2px] rounded-full bg-accent z-20" />
+      )}
+
+      <div
+        ref={rowRef}
+        className="relative overflow-hidden rounded-lg"
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+      >
+        {canSwipe && (
+          <div className="absolute inset-0 grid grid-cols-2 rounded-lg border border-border bg-bg-elevated/70">
+            <div className="flex items-center gap-1.5 px-2">
+              <button
+                type="button"
+                onClick={() => moveToBoxAndClose('today')}
+                className="flex h-12 min-w-12 flex-col items-center justify-center gap-0.5 rounded-md text-[10px] font-medium text-green hover:bg-green/10"
+              >
+                <CalendarIcon />
+                {t('taskSelection.boxToday')}
+              </button>
+              <button
+                type="button"
+                onClick={() => moveToBoxAndClose('week')}
+                className="flex h-12 min-w-12 flex-col items-center justify-center gap-0.5 rounded-md text-[10px] font-medium text-accent hover:bg-accent/10"
+              >
+                <CalendarIcon />
+                {t('taskSelection.boxWeek')}
+              </button>
+            </div>
+            <div className="flex items-center justify-end gap-1.5 px-2">
+              <button
+                type="button"
+                onClick={() => onMoveToProject?.(task)}
+                disabled={!onMoveToProject}
+                className="flex h-12 min-w-12 flex-col items-center justify-center gap-0.5 rounded-md text-[10px] font-medium text-text-secondary hover:bg-bg-card/70 disabled:opacity-40"
+              >
+                <FolderIcon />
+                {t('taskSelection.toProject')}
+              </button>
+              <button
+                type="button"
+                onClick={() => moveToBoxAndClose('later')}
+                className="flex h-12 min-w-12 flex-col items-center justify-center gap-0.5 rounded-md text-[10px] font-medium text-text-muted hover:bg-bg-card/70"
+              >
+                <ArchiveIcon />
+                {t('taskSelection.boxLater')}
+              </button>
+            </div>
+          </div>
         )}
+
         <div
-          className={`flex items-center gap-3 py-3 px-2 rounded-lg transition-colors ${
+          className={`relative flex min-h-[84px] items-center gap-3 rounded-lg border border-border bg-bg-card px-2.5 py-2.5 ${
             isCompleted
               ? 'opacity-50'
               : isInToday
-                ? 'bg-bg-elevated/50'
-                : 'hover:bg-bg-elevated/30'
-          }`}
-          draggable={draggable}
-          onDragStart={onDragStart}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
+                ? 'shadow-[inset_3px_0_0_var(--color-green)]'
+                : 'hover:bg-bg-card'
+          } ${isSwiping ? '' : 'transition-transform duration-200 ease-out'}`}
+          style={{
+            transform: `translate3d(${offsetX}px, 0, 0)`,
+            touchAction: canSwipe ? 'pan-y' : undefined,
+          }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerEnd}
+          onClickCapture={handleClickCapture}
+          onWheel={handleWheel}
           onContextMenu={handleContextMenu}
         >
-          {/* Drag handle */}
           {draggable && !isCompleted && (
-            <span className="cursor-grab active:cursor-grabbing select-none flex-shrink-0 opacity-40 hover:opacity-100 transition-opacity">
+            <span
+              data-no-swipe="true"
+              draggable
+              onDragStart={onDragStart}
+              className="cursor-grab active:cursor-grabbing select-none flex-shrink-0 opacity-40 hover:opacity-100 transition-opacity"
+            >
               <DragDotsIcon />
             </span>
           )}
 
-          {/* Complete checkbox */}
           <button
             onClick={handleToggleComplete}
             className="relative flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-[5px] border-2 transition-colors hover:border-green hover:bg-green/10"
@@ -145,7 +343,6 @@ export function SelectableTaskRow({
             )}
           </button>
 
-          {/* Task name + project info */}
           <div className="flex-1 min-w-0">
             {projectInfo && (
               <div className="flex items-center gap-1.5 mb-0.5">
@@ -181,15 +378,13 @@ export function SelectableTaskRow({
             )}
           </div>
 
-          {/* Per-task score */}
           {stalenessVisible && !isCompleted && score > 0 && (
             <span className={`flex-shrink-0 text-xs font-medium tabular-nums ${getStalenessColor(score, colorFixed)}`}>
               {score}
             </span>
           )}
 
-          {/* Quick-move buttons: the two boxes this task is not currently in */}
-          {!isCompleted && (
+          {!canSwipe && !isCompleted && (
             <div className="flex-shrink-0 flex items-center gap-1">
               {MOVE_TARGETS.filter((target) => target !== task.timeBox).map((target) => (
                 <button
@@ -203,12 +398,13 @@ export function SelectableTaskRow({
             </div>
           )}
         </div>
-        {isDragOver === 'below' && (
-          <div className="absolute -bottom-[2px] left-8 right-3 h-[2px] rounded-full bg-accent z-10" />
-        )}
 
         <ContextMenu items={contextMenuItems} position={ctxMenu} onClose={closeCtxMenu} />
       </div>
-    </>
+
+      {isDragOver === 'below' && (
+        <div className="absolute -bottom-[2px] left-8 right-3 h-[2px] rounded-full bg-accent z-20" />
+      )}
+    </div>
   );
 }
