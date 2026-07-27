@@ -1,13 +1,15 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TimerDisplay } from '../components/timer/TimerDisplay';
 import { TodayTaskCard } from '../components/today/TodayTaskCard';
-import { useTaskBox } from '../hooks/useTaskBox';
+import { useTaskBox, type EnrichedBoxTask } from '../hooks/useTaskBox';
+import { useTodayCardReorder } from '../hooks/useTodayCardReorder';
 import { db } from '../db';
 import { updateRecord } from '../db/repository';
 import { useTranslation } from '../i18n/useTranslation';
 import { CelebrationConfetti } from '../components/ui/CelebrationConfetti';
 import { NEU } from '../utils/shadows';
+import { buildTodayBoxOrder } from '../utils/todayReorder';
 import { useSettingsStore } from '../stores/settingsStore';
 
 const EyeIcon = () => (
@@ -44,6 +46,56 @@ const ExpandIcon = () => (
   </svg>
 );
 
+const getTaskId = (task: EnrichedBoxTask) => task.id;
+
+interface TodayIncompleteTaskListProps {
+  tasks: EnrichedBoxTask[];
+  completedTasks: EnrichedBoxTask[];
+  onComplete: (taskId: string) => void;
+  onEditTitle: (taskId: string, title: string) => void;
+  reorderBox: (orderedIds: string[]) => void;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  className?: string;
+}
+
+function TodayIncompleteTaskList({
+  tasks,
+  completedTasks,
+  onComplete,
+  onEditTitle,
+  reorderBox,
+  scrollContainerRef,
+  className = '',
+}: TodayIncompleteTaskListProps) {
+  const handleCommit = useCallback((orderedIncompleteIds: string[]) => {
+    reorderBox(buildTodayBoxOrder(orderedIncompleteIds, completedTasks.map((task) => task.id)));
+  }, [completedTasks, reorderBox]);
+
+  const reorder = useTodayCardReorder({
+    items: tasks,
+    getId: getTaskId,
+    onCommit: handleCommit,
+    scrollContainerRef,
+  });
+
+  return (
+    <div className={`flex flex-col gap-3 ${className}`}>
+      <AnimatePresence mode="popLayout">
+        {reorder.orderedItems.map((task, i) => (
+          <TodayTaskCard
+            key={task.id}
+            task={task}
+            onComplete={() => onComplete(task.id)}
+            onEditTitle={(title) => onEditTitle(task.id, title)}
+            isFirst={i === 0}
+            reorder={reorder.getCardProps(task.id)}
+          />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function TodayPage() {
   const { t } = useTranslation();
   const timeTrackingVisible = useSettingsStore((s) => s.timeTrackingVisible);
@@ -56,6 +108,7 @@ export function TodayPage() {
   const [hideCompleted, setHideCompleted] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [finale, setFinale] = useState(0);
+  const focusScrollRef = useRef<HTMLDivElement>(null);
 
   // Android back button / browser back exits focus mode
   useEffect(() => {
@@ -73,25 +126,6 @@ export function TodayPage() {
   const completedTasks = todayTasks.filter((t) => t.isCompleted);
   const allDone = todayTasks.length > 0 && incompleteTasks.length === 0;
 
-  const handleMoveUp = useCallback((taskId: string) => {
-    const idx = incompleteTasks.findIndex((t) => t.id === taskId);
-    if (idx <= 0) return;
-    const ids = incompleteTasks.map((t) => t.id);
-    [ids[idx - 1], ids[idx]] = [ids[idx], ids[idx - 1]];
-    // Append completed task ids to preserve their order
-    const completedIds = completedTasks.map((t) => t.id);
-    reorderBox([...ids, ...completedIds]);
-  }, [incompleteTasks, completedTasks, reorderBox]);
-
-  const handleMoveDown = useCallback((taskId: string) => {
-    const idx = incompleteTasks.findIndex((t) => t.id === taskId);
-    if (idx < 0 || idx >= incompleteTasks.length - 1) return;
-    const ids = incompleteTasks.map((t) => t.id);
-    [ids[idx], ids[idx + 1]] = [ids[idx + 1], ids[idx]];
-    const completedIds = completedTasks.map((t) => t.id);
-    reorderBox([...ids, ...completedIds]);
-  }, [incompleteTasks, completedTasks, reorderBox]);
-
   // The finale is derived from this click, not from watching `allDone`:
   // `useTaskBox` yields [] until its live query resolves, so `allDone` flips
   // false -> true on every visit once the data lands, and watching it would
@@ -102,15 +136,13 @@ export function TodayPage() {
     if (clearsTheDay) setFinale((n) => n + 1);
   }, [incompleteTasks, toggleComplete]);
 
-  const renderTaskCard = (task: typeof todayTasks[0], i: number, list: typeof todayTasks) => (
+  const renderCompletedTaskCard = (task: typeof todayTasks[0]) => (
     <TodayTaskCard
       key={task.id}
       task={task}
       onComplete={() => handleComplete(task.id)}
-      onMoveUp={!task.isCompleted && i > 0 ? () => handleMoveUp(task.id) : undefined}
-      onMoveDown={!task.isCompleted && i < list.length - 1 ? () => handleMoveDown(task.id) : undefined}
       onEditTitle={(title) => updateTaskTitle(task.id, title)}
-      isFirst={i === 0}
+      isFirst={false}
     />
   );
 
@@ -159,14 +191,19 @@ export function TodayPage() {
 
             {/* Centered incomplete tasks only — safe area bottom */}
             <div
-              className="flex-1 overflow-auto px-4 py-4 max-w-2xl mx-auto w-full relative z-[52] flex flex-col justify-center"
+              ref={focusScrollRef}
+              className="flex-1 overflow-auto px-4 py-4 max-w-2xl mx-auto w-full relative z-[52] flex flex-col"
               style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
             >
-              <div className="flex flex-col gap-3">
-                <AnimatePresence mode="popLayout">
-                  {incompleteTasks.map((task, i) => renderTaskCard(task, i, incompleteTasks))}
-                </AnimatePresence>
-              </div>
+              <TodayIncompleteTaskList
+                tasks={incompleteTasks}
+                completedTasks={completedTasks}
+                onComplete={handleComplete}
+                onEditTitle={updateTaskTitle}
+                reorderBox={reorderBox}
+                scrollContainerRef={focusScrollRef}
+                className="my-auto"
+              />
             </div>
           </motion.div>
         )}
@@ -211,10 +248,14 @@ export function TodayPage() {
         </AnimatePresence>
 
         {/* Incomplete tasks */}
-        <div className="flex flex-col gap-3 mb-6">
-          <AnimatePresence mode="popLayout">
-            {incompleteTasks.map((task, i) => renderTaskCard(task, i, incompleteTasks))}
-          </AnimatePresence>
+        <div className="mb-6">
+          <TodayIncompleteTaskList
+            tasks={incompleteTasks}
+            completedTasks={completedTasks}
+            onComplete={handleComplete}
+            onEditTitle={updateTaskTitle}
+            reorderBox={reorderBox}
+          />
         </div>
 
         {/* Completed tasks section */}
@@ -244,15 +285,7 @@ export function TodayPage() {
                 >
                   <div className="flex flex-col gap-3">
                     <AnimatePresence mode="popLayout">
-                      {completedTasks.map((task) => (
-                        <TodayTaskCard
-                          key={task.id}
-                          task={task}
-                          onComplete={() => handleComplete(task.id)}
-                          onEditTitle={(title) => updateTaskTitle(task.id, title)}
-                          isFirst={false}
-                        />
-                      ))}
+                      {completedTasks.map(renderCompletedTaskCard)}
                     </AnimatePresence>
                   </div>
                 </motion.div>

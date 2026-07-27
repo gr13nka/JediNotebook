@@ -3,30 +3,18 @@ import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { CompletionBurst, useCompletionBurst } from '../ui/CompletionBurst';
 import type { EnrichedBoxTask } from '../../hooks/useTaskBox';
+import type { TodayCardReorderProps } from '../../hooks/useTodayCardReorder';
 
 interface TodayTaskCardProps {
   task: EnrichedBoxTask;
   onComplete: () => void;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
   onEditTitle: (title: string) => void;
   isFirst: boolean;
+  reorder?: TodayCardReorderProps;
 }
 
-const ChevronUp = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="18 15 12 9 6 15" />
-  </svg>
-);
-
-const ChevronDown = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 12 15 18 9" />
-  </svg>
-);
-
 export function TodayTaskCard({
-  task, onComplete, onMoveUp, onMoveDown, onEditTitle, isFirst,
+  task, onComplete, onEditTitle, isFirst, reorder,
 }: TodayTaskCardProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(task.title);
@@ -74,14 +62,26 @@ export function TodayTaskCard({
 
   return (
     <motion.div
+      ref={reorder?.setDragNode}
       layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1, scale: reorder?.isDragging ? 1.02 : 1 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-      className="rounded-xl bg-bg-card p-3 sm:p-4"
+      transition={reorder?.isDragging ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 30 }}
+      className={`rounded-xl bg-bg-card p-3 sm:p-4 ${
+        reorder ? (reorder.isDragging ? 'cursor-grabbing select-none' : 'cursor-grab') : ''
+      }`}
+      onPointerDown={reorder?.onPointerDown}
+      onPointerMove={reorder?.onPointerMove}
+      onPointerUp={reorder?.onPointerUp}
+      onPointerCancel={reorder?.onPointerCancel}
+      onClickCapture={reorder?.onClickCapture}
       style={{
         boxShadow: NEU.raised,
+        y: reorder?.dragY ?? 0,
+        zIndex: reorder?.isDragging ? 20 : undefined,
+        position: reorder?.isDragging ? 'relative' : undefined,
+        touchAction: reorder ? 'pan-y' : undefined,
         border: isFirst && !task.isCompleted
           ? `2px solid ${task.projectColor}4D`
           : task.isCompleted
@@ -102,62 +102,16 @@ export function TodayTaskCard({
         <span className={`text-xs truncate ${task.isCompleted ? 'text-green' : 'text-text-muted'}`}>
           {task.projectName}
         </span>
-
-        <div className="flex items-center gap-1 ml-auto shrink-0">
-          {/* Move up/down buttons */}
-          {!task.isCompleted && (onMoveUp || onMoveDown) && (
-            <div className="flex items-center gap-0.5">
-              <button
-                onClick={onMoveUp}
-                disabled={!onMoveUp}
-                className="p-1 rounded text-text-muted active:text-text-primary disabled:opacity-20 transition-colors"
-              >
-                <ChevronUp />
-              </button>
-              <button
-                onClick={onMoveDown}
-                disabled={!onMoveDown}
-                className="p-1 rounded text-text-muted active:text-text-primary disabled:opacity-20 transition-colors"
-              >
-                <ChevronDown />
-              </button>
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* Middle row: title */}
-      <div className="mb-2">
-        {editing ? (
-          <input
-            ref={inputRef}
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleSave}
-            onKeyDown={handleKeyDown}
-            className="text-sm font-medium w-full bg-transparent text-text-primary focus:outline-none border-none py-0"
-            style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
-          />
-        ) : (
-          <div className="flex items-center gap-1.5">
-            <span
-              onClick={() => setEditing(true)}
-              className={`text-sm font-medium transition-colors duration-200 cursor-text ${
-                task.isCompleted ? 'line-through text-green' : 'text-text-primary'
-              }`}
-              style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
-            >
-              {task.title}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Bottom row: complete button */}
+      {/* Task row: complete + title */}
       <div className="flex items-center gap-2">
         <button
+          type="button"
+          data-no-card-drag="true"
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={handleComplete}
-          className="relative shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 ml-auto"
+          className="relative -ml-1 shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-200"
           style={{
             boxShadow: task.isCompleted ? NEU.pressedSm : NEU.raisedSm,
             backgroundColor: task.isCompleted ? '#27AE60' : undefined,
@@ -182,6 +136,29 @@ export function TodayTaskCard({
             </svg>
           )}
         </button>
+        {editing ? (
+          <input
+            data-no-card-drag="true"
+            ref={inputRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown}
+            className="text-sm font-medium w-full bg-transparent text-text-primary focus:outline-none border-none py-0"
+            style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
+          />
+        ) : (
+          <span
+            data-no-card-drag="true"
+            onClick={() => setEditing(true)}
+            className={`min-w-0 flex-1 text-sm font-medium transition-colors duration-200 cursor-text ${
+              task.isCompleted ? 'line-through text-green' : 'text-text-primary'
+            }`}
+            style={isFirst && !task.isCompleted ? { fontSize: '0.9375rem' } : undefined}
+          >
+            {task.title}
+          </span>
+        )}
       </div>
     </motion.div>
   );

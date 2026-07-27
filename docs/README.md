@@ -4,5 +4,6 @@
 - [Vault sync across devices](vault-sync.md) — configure Syncthing while keeping paths and interface preferences local.
 - [Vault conflict resolution](vault-conflict-resolution.md) — how conflict copies are merged, and the constraints behind the design.
 - [Task Selection swipe sorting](task-selection-swipe.md) — gesture rules, settings, and data invariants for task triage.
+- [Today drag reorder](today-drag-reorder.md) — card drag rules, hit targets, and ordering invariants for the Today screen.
 - [Android build and install](android-build-and-install.md) — build and update a USB-connected Android device.
 - [Linux build and install](linux-build-and-install.md) — build and install the Linux application.
