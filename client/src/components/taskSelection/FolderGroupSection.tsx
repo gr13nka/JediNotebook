@@ -55,7 +55,7 @@ export function FolderGroupSection({ folder, children, isCollapsed, onToggle, pr
             transition={{ duration: 0.2, ease: 'easeInOut' }}
             style={{ overflow: 'hidden' }}
           >
-            <div className="flex flex-col gap-2 pl-2">
+            <div className="-mr-2 -mb-2 flex flex-col gap-3 pl-2 pr-2 pt-1 pb-2">
               {children}
             </div>
           </motion.div>

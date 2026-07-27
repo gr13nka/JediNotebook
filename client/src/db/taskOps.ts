@@ -1,5 +1,6 @@
 import { db } from './index';
 import { newRecord, notDeleted, softDelete, updateRecord } from './repository';
+import { normalizeTaskText } from '../utils/taskText';
 import { getLogicalDate } from '../utils/time';
 import { shouldCreateRecurrence } from '../utils/recurrence';
 import type { ProjectTask, RecurrenceRule, TimeBox } from '@shared/types';
@@ -70,9 +71,10 @@ export async function createProjectTask(
 ): Promise<ProjectTask> {
   const all = notDeleted(await db.projectTasks.where('projectId').equals(projectId).toArray());
   const timeBoxOrder = await nextBoxOrder('later');
+  const cleanTitle = normalizeTaskText(title);
   const task = newRecord({
     projectId,
-    title,
+    title: cleanTitle,
     sortOrder: all.length,
     isCompleted: false,
     completedAt: null,

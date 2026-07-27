@@ -30,9 +30,11 @@ app runs in mobile WebViews where native DnD is inconsistent.
 
 ## Interactive targets
 
-The completion button, title text, and inline title editor do not start a card
-drag. Keep those areas excluded from drag start so completion and editing remain
-reliable.
+The completion button and inline title editor do not start a card drag. A plain
+click on the card body, including the title text, opens title editing and raises
+the card visually; a movement/hold from the same body surface still starts
+reorder. Keep the editor excluded from drag start so cursor placement, text
+selection, and editing remain reliable.
 
 During an active drag, text selection is disabled at the document level and the
 current selection is cleared. Restore the previous selection styles when the
@@ -62,7 +64,7 @@ Manual checks should cover:
 - normal Today drag up and down
 - Focus mode drag and auto-scroll
 - completion button before and after a drag
-- title click and inline edit
+- card/title click raising the card and opening inline edit
 - dragging over text without selecting it
 - touch scrolling without a long press
 - touch long-press drag

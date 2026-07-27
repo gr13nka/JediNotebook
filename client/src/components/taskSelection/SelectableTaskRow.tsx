@@ -4,9 +4,10 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import type { TranslationKey } from '../../i18n/translations';
 import { clampSwipeOffset, resolveTaskSwipe } from '../../utils/taskSwipe';
+import { normalizeTaskText } from '../../utils/taskText';
 import { ContextMenu } from '../ui/ContextMenu';
-import { InlineTextEdit } from '../ui/InlineTextEdit';
 import { CompletionBurst, useCompletionBurst } from '../ui/CompletionBurst';
+import { TaskTextArea } from '../ui/TaskTextArea';
 
 /** Canonical box order; each row offers the two entries that aren't its current box. */
 const MOVE_TARGETS: TimeBox[] = ['today', 'week', 'later'];
@@ -112,6 +113,7 @@ export function SelectableTaskRow({
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(task.title);
   const [burst, fireBurst] = useCompletionBurst();
   const [offsetX, setOffsetX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -132,6 +134,10 @@ export function SelectableTaskRow({
   }, [offsetX]);
 
   useEffect(() => {
+    if (!renaming) setRenameValue(task.title);
+  }, [renaming, task.title]);
+
+  useEffect(() => {
     return () => {
       if (wheelTimer.current !== null) window.clearTimeout(wheelTimer.current);
     };
@@ -150,14 +156,33 @@ export function SelectableTaskRow({
 
   const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
 
+  const startRenaming = useCallback(() => {
+    if (!onRename || isCompleted) return;
+    setRenameValue(task.title);
+    setRenaming(true);
+  }, [isCompleted, onRename, task.title]);
+
+  const cancelRenaming = useCallback(() => {
+    setRenameValue(task.title);
+    setRenaming(false);
+  }, [task.title]);
+
+  const commitRenaming = useCallback(() => {
+    if (!onRename) return;
+    const trimmed = normalizeTaskText(renameValue);
+    if (trimmed && trimmed !== task.title) onRename(trimmed);
+    setRenameValue(trimmed || task.title);
+    setRenaming(false);
+  }, [onRename, renameValue, task.title]);
+
   const contextMenuItems = useMemo(() => {
     const items: { label: string; onClick: () => void; danger?: boolean }[] = [];
     if (onRename) {
-      items.push({ label: t('common.rename'), onClick: () => setRenaming(true) });
+      items.push({ label: t('common.rename'), onClick: startRenaming });
     }
     items.push({ label: t('common.delete'), onClick: onDelete, danger: true });
     return items;
-  }, [t, onDelete, onRename]);
+  }, [t, onDelete, onRename, startRenaming]);
 
   const settleSwipe = useCallback((offset: number) => {
     if (!canSwipe) {
@@ -250,7 +275,7 @@ export function SelectableTaskRow({
 
       <div
         ref={rowRef}
-        className="relative overflow-hidden rounded-lg"
+        className={`relative rounded-lg ${renaming ? 'z-30 overflow-visible' : 'overflow-hidden'}`}
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
@@ -297,15 +322,20 @@ export function SelectableTaskRow({
         )}
 
         <div
-          className={`relative flex min-h-[84px] items-center gap-3 rounded-lg border border-border bg-bg-card px-2.5 py-2.5 ${
+          className={`relative flex items-center gap-3 rounded-lg border bg-bg-card ${
+            renaming
+              ? 'my-1 min-h-[112px] border-accent/50 px-4 py-4 shadow-[0_14px_34px_rgba(31,41,55,0.18),inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+              : 'min-h-[84px] border-border px-2.5 py-2.5'
+          } ${
             isCompleted
               ? 'opacity-50'
-              : isInToday
+              : isInToday && !renaming
                 ? 'shadow-[inset_3px_0_0_var(--color-green)]'
                 : 'hover:bg-bg-card'
-          } ${isSwiping ? '' : 'transition-transform duration-200 ease-out'}`}
+          } ${isSwiping ? '' : 'transition-[transform,box-shadow,border-color,min-height,padding,margin] duration-200 ease-out'}`}
           style={{
             transform: `translate3d(${offsetX}px, 0, 0)`,
+            zIndex: renaming ? 30 : undefined,
             touchAction: canSwipe ? 'pan-y' : undefined,
           }}
           onPointerDown={handlePointerDown}
@@ -313,6 +343,9 @@ export function SelectableTaskRow({
           onPointerUp={handlePointerEnd}
           onPointerCancel={handlePointerEnd}
           onClickCapture={handleClickCapture}
+          onClick={(e) => {
+            if (!isInteractiveTarget(e.target)) startRenaming();
+          }}
           onWheel={handleWheel}
           onContextMenu={handleContextMenu}
         >
@@ -355,17 +388,20 @@ export function SelectableTaskRow({
               </div>
             )}
             {renaming && onRename ? (
-              <InlineTextEdit
-                value={task.title}
-                editing={renaming}
-                onCommit={(title) => { onRename(title); setRenaming(false); }}
-                onCancel={() => setRenaming(false)}
-                className="block text-[15px] leading-snug text-text-primary"
+              <TaskTextArea
+                value={renameValue}
+                onValueChange={setRenameValue}
+                onCommit={commitRenaming}
+                onCancel={cancelRenaming}
+                onBlur={commitRenaming}
+                focusOnMount
+                data-no-swipe="true"
+                className="text-base leading-snug text-text-primary"
               />
             ) : (
               <span
-                onDoubleClick={() => onRename && setRenaming(true)}
-                className={`block text-[15px] leading-snug ${
+                onClick={startRenaming}
+                className={`block leading-snug break-words [overflow-wrap:anywhere] ${renaming ? 'text-base' : 'text-[15px]'} ${
                   isCompleted
                     ? 'line-through text-text-muted'
                     : isInToday
@@ -378,13 +414,13 @@ export function SelectableTaskRow({
             )}
           </div>
 
-          {stalenessVisible && !isCompleted && score > 0 && (
+          {stalenessVisible && !renaming && !isCompleted && score > 0 && (
             <span className={`flex-shrink-0 text-xs font-medium tabular-nums ${getStalenessColor(score, colorFixed)}`}>
               {score}
             </span>
           )}
 
-          {!canSwipe && !isCompleted && (
+          {!canSwipe && !renaming && !isCompleted && (
             <div className="flex-shrink-0 flex items-center gap-1">
               {MOVE_TARGETS.filter((target) => target !== task.timeBox).map((target) => (
                 <button

@@ -6,8 +6,10 @@ import { useInbox } from '../../hooks/useInbox';
 import { useProjects } from '../../hooks/useProjects';
 import { useTranslation } from '../../i18n/useTranslation';
 import { createProjectTask } from '../../db/taskOps';
+import { normalizeTaskText } from '../../utils/taskText';
 import { ACTIVITY_COLORS } from '@shared/constants';
 import { Card } from '../ui/Card';
+import { TaskTextArea } from '../ui/TaskTextArea';
 
 interface InboxViewProps {
   embedded?: boolean;
@@ -77,7 +79,6 @@ export function InboxView({ embedded = false }: InboxViewProps) {
   const [taskModePickerId, setTaskModePickerId] = useState<string | null>(null);
   const autoSortTriggered = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const sortEditRef = useRef<HTMLInputElement>(null);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const clearUndoTimer = useCallback(() => {
@@ -110,12 +111,6 @@ export function InboxView({ embedded = false }: InboxViewProps) {
     }
   }, [mode, clearUndoTimer]);
 
-  useEffect(() => {
-    if (isSortEditing) {
-      sortEditRef.current?.focus();
-    }
-  }, [isSortEditing]);
-
   // Auto-enter sort mode from ?mode=sort query param
   useEffect(() => {
     if (!embedded && !autoSortTriggered.current && searchParams.get('mode') === 'sort' && items.length > 0) {
@@ -133,26 +128,11 @@ export function InboxView({ embedded = false }: InboxViewProps) {
   };
 
   const handleAdd = async () => {
-    const text = inputText.trim();
+    const text = normalizeTaskText(inputText);
     if (!text) return;
     await addItem(text);
     setInputText('');
-    if (inputRef.current) {
-      inputRef.current.style.height = 'auto';
-      inputRef.current.focus();
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleAdd();
-    }
-  };
-
-  const autoResize = (el: HTMLTextAreaElement) => {
-    el.style.height = 'auto';
-    el.style.height = el.scrollHeight + 'px';
+    inputRef.current?.focus();
   };
 
   const startEditing = (id: string, text: string) => {
@@ -161,7 +141,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
   };
 
   const saveEdit = async (id: string) => {
-    const trimmed = editText.trim();
+    const trimmed = normalizeTaskText(editText);
     if (trimmed) {
       await updateItem(id, trimmed);
     }
@@ -252,7 +232,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
 
   const handleSortEditSave = async () => {
     if (!currentItem) return;
-    const trimmed = sortEditText.trim();
+    const trimmed = normalizeTaskText(sortEditText);
     if (trimmed) {
       await updateItem(currentItem.id, trimmed);
     }
@@ -397,18 +377,17 @@ export function InboxView({ embedded = false }: InboxViewProps) {
           >
             <Card className="min-h-[120px] flex flex-col justify-center">
               {isSortEditing ? (
-                <input
-                  ref={sortEditRef}
+                <TaskTextArea
                   value={sortEditText}
-                  onChange={(e) => setSortEditText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSortEditSave();
-                    if (e.key === 'Escape') setIsSortEditing(false);
-                  }}
-                  className="w-full bg-transparent text-lg text-text-primary outline-none border-b border-border py-1"
+                  onValueChange={setSortEditText}
+                  onCommit={handleSortEditSave}
+                  onCancel={() => setIsSortEditing(false)}
+                  onBlur={handleSortEditSave}
+                  focusOnMount
+                  className="border-b border-border py-1 text-lg leading-snug text-text-primary"
                 />
               ) : (
-                <p className="text-lg text-text-primary">{item.text}</p>
+                <p className="text-lg text-text-primary break-words [overflow-wrap:anywhere]">{item.text}</p>
               )}
               <p className="text-xs text-text-muted mt-2">{relativeTime(item.createdAt)}</p>
             </Card>
@@ -503,21 +482,17 @@ export function InboxView({ embedded = false }: InboxViewProps) {
         className="flex w-full items-center gap-2 rounded-2xl bg-bg-card p-2.5"
         style={{ boxShadow: NEU.pressed }}
       >
-        <textarea
-          ref={inputRef}
+        <TaskTextArea
+          textareaRef={inputRef}
           value={inputText}
-          onChange={(e) => {
-            setInputText(e.target.value);
-            autoResize(e.target);
-          }}
-          onKeyDown={handleKeyDown}
+          onValueChange={setInputText}
+          onCommit={handleAdd}
           placeholder={t('inbox.placeholder')}
-          rows={1}
-          className="min-h-10 flex-1 resize-none overflow-hidden bg-transparent px-2.5 py-2 text-sm leading-5 text-text-primary outline-none placeholder:text-text-muted"
+          className="min-h-10 flex-1 px-2.5 py-2 text-sm leading-5 text-text-primary placeholder:text-text-muted"
         />
         <button
           onClick={handleAdd}
-          disabled={!inputText.trim()}
+          disabled={!normalizeTaskText(inputText)}
           className="flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl px-0 text-base font-medium text-accent transition-opacity disabled:opacity-40"
           style={{ boxShadow: NEU.raisedSm }}
         >
@@ -579,33 +554,33 @@ export function InboxView({ embedded = false }: InboxViewProps) {
                 transition={{ duration: 0.2 }}
               >
                 <div
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-bg-card"
+                  className="flex items-start gap-3 px-4 py-3 rounded-xl bg-bg-card"
                   style={{ boxShadow: NEU.raisedSm }}
                 >
                   {editingId === item.id ? (
-                    <input
+                    <TaskTextArea
                       value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveEdit(item.id);
-                        if (e.key === 'Escape') setEditingId(null);
-                      }}
+                      onValueChange={setEditText}
+                      onCommit={() => saveEdit(item.id)}
+                      onCancel={() => setEditingId(null)}
                       onBlur={() => saveEdit(item.id)}
-                      autoFocus
-                      className="flex-1 bg-transparent text-sm text-text-primary outline-none"
+                      focusOnMount
+                      className="min-w-0 flex-1 text-sm leading-snug text-text-primary"
                     />
                   ) : (
                     <span
-                      className="flex-1 text-sm text-text-primary cursor-pointer"
+                      className="min-w-0 flex-1 cursor-pointer text-sm leading-snug text-text-primary break-words [overflow-wrap:anywhere]"
                       onClick={() => startEditing(item.id, item.text)}
                     >
                       {item.text}
                     </span>
                   )}
-                  <span className="text-xs text-text-muted whitespace-nowrap">
-                    {relativeTime(item.createdAt)}
-                  </span>
-                  {taskMode && (
+                  {editingId !== item.id && (
+                    <span className="text-xs text-text-muted whitespace-nowrap">
+                      {relativeTime(item.createdAt)}
+                    </span>
+                  )}
+                  {editingId !== item.id && taskMode && (
                     <div className="relative">
                       <button
                         onClick={() => setTaskModePickerId(taskModePickerId === item.id ? null : item.id)}
@@ -648,12 +623,14 @@ export function InboxView({ embedded = false }: InboxViewProps) {
                       </AnimatePresence>
                     </div>
                   )}
-                  <button
-                    onClick={() => deleteItem(item.id)}
-                    className="p-1 rounded-lg text-text-muted hover:text-red transition-colors shrink-0"
-                  >
-                    <TrashIcon />
-                  </button>
+                  {editingId !== item.id && (
+                    <button
+                      onClick={() => deleteItem(item.id)}
+                      className="p-1 rounded-lg text-text-muted hover:text-red transition-colors shrink-0"
+                    >
+                      <TrashIcon />
+                    </button>
+                  )}
                 </div>
               </motion.div>
             ))}

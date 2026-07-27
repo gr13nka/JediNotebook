@@ -37,9 +37,10 @@ rails so there is a single primary move surface.
 ## Gesture contract
 
 The row body handles horizontal pointer movement and horizontal wheel movement.
-Vertical movement remains page scrolling. Interactive descendants such as
-checkboxes, text editors, menu targets, and the drag handle do not start a
-swipe.
+Vertical movement remains page scrolling. A plain click on a non-interactive
+part of the row opens title editing and visually lifts the row. Interactive
+descendants such as checkboxes, text editors, menu targets, and the drag handle
+do not start a swipe or title edit.
 
 Gestures resolve to one of three outcomes:
 
@@ -86,4 +87,4 @@ Manual checks should cover:
 - desktop with swipe disabled
 - desktop with swipe enabled
 - project picker move to another active project
-- completion, rename, context menu, delete, and reorder on rows
+- completion, single-click rename, context menu, delete, and reorder on rows

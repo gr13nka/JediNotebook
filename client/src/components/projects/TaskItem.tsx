@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
+import { normalizeTaskText } from '../../utils/taskText';
 import { RecurrenceEditor } from './RecurrenceEditor';
-import { InlineTextEdit } from '../ui/InlineTextEdit';
 import { CompletionBurst, useCompletionBurst } from '../ui/CompletionBurst';
+import { TaskTextArea } from '../ui/TaskTextArea';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 interface TaskItemProps {
@@ -42,13 +43,36 @@ const RecurringIcon = ({ active }: { active: boolean }) => (
 
 export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrence, draggable, onDragStart, onDragOver, onDrop, isDragOver }: TaskItemProps) {
   const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(task.title);
   const [showRecurrence, setShowRecurrence] = useState(false);
   const [burst, fireBurst] = useCompletionBurst();
+
+  useEffect(() => {
+    if (!editing) setEditValue(task.title);
+  }, [editing, task.title]);
 
   // Celebrate only the incomplete -> complete direction of the toggle.
   const handleToggle = () => {
     if (!task.isCompleted) fireBurst();
     onToggle();
+  };
+
+  const startEditing = () => {
+    if (task.isCompleted) return;
+    setEditValue(task.title);
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditValue(task.title);
+    setEditing(false);
+  };
+
+  const commitEditing = () => {
+    const trimmed = normalizeTaskText(editValue);
+    if (trimmed && trimmed !== task.title) onRename(trimmed);
+    setEditValue(trimmed || task.title);
+    setEditing(false);
   };
 
   return (
@@ -58,7 +82,7 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
         <div className="absolute -top-[2px] left-2 right-2 h-[2px] rounded-full bg-accent z-10" />
       )}
       <div
-        className="flex items-center gap-1.5 py-1.5"
+        className="flex items-start gap-1.5 py-1.5"
         draggable={draggable}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
@@ -92,19 +116,21 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
           )}
         </button>
         {editing ? (
-          <div className="flex-1">
-            <InlineTextEdit
-              value={task.title}
-              editing={editing}
-              onCommit={(title) => { onRename(title); setEditing(false); }}
-              onCancel={() => setEditing(false)}
-              className="text-sm text-text-primary py-0"
+          <div className="min-w-0 flex-1">
+            <TaskTextArea
+              value={editValue}
+              onValueChange={setEditValue}
+              onCommit={commitEditing}
+              onCancel={cancelEditing}
+              onBlur={commitEditing}
+              focusOnMount
+              className="text-sm text-text-primary py-0 leading-snug"
             />
           </div>
         ) : (
           <span
-            onClick={() => !task.isCompleted && setEditing(true)}
-            className={`flex-1 text-sm transition-colors duration-200 ${
+            onClick={startEditing}
+            className={`min-w-0 flex-1 text-sm leading-snug transition-colors duration-200 break-words [overflow-wrap:anywhere] ${
               task.isCompleted
                 ? 'line-through text-green cursor-default'
                 : 'text-text-primary cursor-text'
@@ -113,7 +139,7 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
             {task.title}
           </span>
         )}
-        {onUpdateRecurrence && (
+        {!editing && onUpdateRecurrence && (
           <button
             onClick={() => setShowRecurrence(!showRecurrence)}
             className="p-0.5 transition-colors"
@@ -121,12 +147,14 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
             <RecurringIcon active={!!task.recurrenceRule} />
           </button>
         )}
-        <button
-          onClick={onDelete}
-          className="text-text-muted hover:text-red text-xs px-1 transition-colors"
-        >
-          &times;
-        </button>
+        {!editing && (
+          <button
+            onClick={onDelete}
+            className="text-text-muted hover:text-red text-xs px-1 transition-colors"
+          >
+            &times;
+          </button>
+        )}
       </div>
       {isDragOver === 'below' && (
         <div className="absolute -bottom-[2px] left-2 right-2 h-[2px] rounded-full bg-accent z-10" />

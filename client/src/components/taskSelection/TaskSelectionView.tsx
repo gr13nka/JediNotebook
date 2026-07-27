@@ -8,8 +8,10 @@ import { useTranslation } from '../../i18n/useTranslation';
 import type { TranslationKey } from '../../i18n/translations';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { normalizeTaskText } from '../../utils/taskText';
 import { InfoTooltip } from '../ui/InfoTooltip';
 import { BottomSheet } from '../ui/BottomSheet';
+import { TaskTextArea } from '../ui/TaskTextArea';
 import { StalenessCounter } from './StalenessCounter';
 import { TaskGroupCard, type TaskSortMode } from './TaskGroupCard';
 import { FolderGroupSection } from './FolderGroupSection';
@@ -86,7 +88,7 @@ export function TaskSelectionView() {
   const newTaskTitle = useProjectUIStore((s) => s.quickAddDraft);
   const setNewTaskTitle = useProjectUIStore((s) => s.setQuickAddDraft);
   const [newTaskProjectId, setNewTaskProjectId] = useState('');
-  const addInputRef = useRef<HTMLInputElement>(null);
+  const addInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Flat view custom order override (only 'custom' sort mode uses it)
   const [flatOrder, setFlatOrder] = useState<string[] | null>(null);
@@ -238,7 +240,7 @@ export function TaskSelectionView() {
 
   // Quick add task
   const handleAddTask = async () => {
-    const title = newTaskTitle.trim();
+    const title = normalizeTaskText(newTaskTitle);
     if (!title || !newTaskProjectId) return;
     await createProjectTask(newTaskProjectId, title);
     setNewTaskTitle('');
@@ -384,43 +386,47 @@ export function TaskSelectionView() {
       {availableProjects.length > 0 && (
         <div className="mb-4">
           {addingTask ? (
-            <div className="flex min-h-[58px] items-center gap-2 rounded-lg border border-dashed border-border bg-bg-card/70 px-3 py-2">
-              <input
-                ref={addInputRef}
+            <div className="flex min-h-[58px] flex-col gap-2 rounded-lg border border-dashed border-border bg-bg-card/70 px-3 py-2 sm:flex-row sm:items-start">
+              <TaskTextArea
+                textareaRef={addInputRef}
                 value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
+                onValueChange={setNewTaskTitle}
+                onCommit={handleAddTask}
                 onKeyDown={handleAddKeyDown}
                 placeholder={t('taskSelection.addTask')}
-                className="flex-1 text-sm bg-transparent text-text-primary placeholder:text-text-muted focus:outline-none"
+                focusOnMount
+                className="min-h-9 flex-1 py-2 text-sm leading-5 text-text-primary placeholder:text-text-muted"
               />
-              <select
-                value={newTaskProjectId}
-                onChange={(e) => setNewTaskProjectId(e.target.value)}
-                className="text-xs bg-transparent text-text-primary border border-border rounded-lg px-2 py-1 focus:outline-none focus:border-accent max-w-[140px]"
-              >
-                {!newTaskProjectId && (
-                  <option value="">{t('taskSelection.selectProject')}</option>
-                )}
-                {availableProjects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              <button
-                onClick={handleAddTask}
-                disabled={!newTaskTitle.trim() || !newTaskProjectId}
-                className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-accent text-white disabled:opacity-30 transition-opacity"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </button>
-              <button
-                onClick={() => { setAddingTask(false); setNewTaskTitle(''); }}
-                className="flex-shrink-0 text-text-muted hover:text-text-secondary text-sm px-1"
-              >
-                &times;
-              </button>
+              <div className="flex shrink-0 items-center gap-2 self-end sm:self-start">
+                <select
+                  value={newTaskProjectId}
+                  onChange={(e) => setNewTaskProjectId(e.target.value)}
+                  className="max-w-[180px] rounded-lg border border-border bg-transparent px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-accent sm:max-w-[140px]"
+                >
+                  {!newTaskProjectId && (
+                    <option value="">{t('taskSelection.selectProject')}</option>
+                  )}
+                  {availableProjects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleAddTask}
+                  disabled={!normalizeTaskText(newTaskTitle) || !newTaskProjectId}
+                  className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-accent text-white disabled:opacity-30 transition-opacity"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => { setAddingTask(false); setNewTaskTitle(''); }}
+                  className="flex-shrink-0 text-text-muted hover:text-text-secondary text-sm px-1"
+                >
+                  &times;
+                </button>
+              </div>
             </div>
           ) : (
             <button
@@ -440,7 +446,7 @@ export function TaskSelectionView() {
       {viewMode === 'flat' ? (
         /* ---- FLAT VIEW ---- */
         <motion.div
-          className="flex flex-col gap-2"
+          className="-mx-2 -my-2 flex flex-col gap-3 px-2 py-2"
           variants={container}
           initial="hidden"
           animate="show"

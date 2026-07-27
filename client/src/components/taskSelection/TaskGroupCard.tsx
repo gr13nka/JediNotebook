@@ -133,7 +133,7 @@ export function TaskGroupCard({
             transition={{ duration: 0.2, ease: 'easeInOut' }}
             style={{ overflow: 'hidden' }}
           >
-            <div className="flex flex-col gap-2 pl-3 pt-2" onDragEnd={reorder.handleDragEnd} onDragLeave={reorder.handleDragLeave}>
+            <div className="-mr-2 -mb-2 flex flex-col gap-3 pl-3 pr-2 pt-3 pb-2" onDragEnd={reorder.handleDragEnd} onDragLeave={reorder.handleDragLeave}>
               {sortedTasks.map((task, i) => {
                 const rowProps = reorder.getRowProps(i);
                 return (
