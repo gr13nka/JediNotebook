@@ -3,23 +3,8 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { Toggle } from '../ui/Toggle';
 import { NEU } from '../../utils/shadows';
-import type { TranslationKey } from '../../i18n/translations';
+import { ALL_NAV_ITEMS, NAV_ITEM_MAP, type NavItem } from '../layout/navItems';
 
-interface NavItem {
-  to: string;
-  labelKey: TranslationKey;
-}
-
-const ALL_NAV_ITEMS: NavItem[] = [
-  { to: '/', labelKey: 'nav.tracking' },
-  { to: '/today', labelKey: 'nav.today' },
-  { to: '/projects', labelKey: 'nav.projects' },
-  { to: '/inbox', labelKey: 'nav.inbox' },
-  { to: '/tasks', labelKey: 'nav.taskSelection' },
-  { to: '/settings', labelKey: 'nav.settings' },
-];
-
-const NAV_ITEM_MAP = new Map(ALL_NAV_ITEMS.map((item) => [item.to, item]));
 const MAX_TABS = 5;
 
 // --- Icons ---
