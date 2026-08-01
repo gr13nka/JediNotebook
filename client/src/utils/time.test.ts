@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { formatDuration, getLogicalDate } from './time';
+import { daysBetween, formatDuration, getLogicalDate } from './time';
 
 // getLogicalDate builds its result from LOCAL date components throughout
 // (both the dayStartHour comparison and the output string), so every case
@@ -90,6 +90,27 @@ describe('getLogicalDate', () => {
     vi.setSystemTime(frozen);
     expect(getLogicalDate(6)).toBe(getLogicalDate(6, frozen));
     expect(getLogicalDate(6)).toBe('2026-07-21');
+  });
+
+  it('daysBetween: positive when b is later', () => {
+    expect(daysBetween('2026-07-20', '2026-07-21')).toBe(1);
+    expect(daysBetween('2026-07-01', '2026-07-31')).toBe(30);
+  });
+
+  it('daysBetween: zero for the same day', () => {
+    expect(daysBetween('2026-07-21', '2026-07-21')).toBe(0);
+  });
+
+  it('daysBetween: negative when b is earlier', () => {
+    expect(daysBetween('2026-07-21', '2026-07-20')).toBe(-1);
+  });
+
+  it('daysBetween: crosses month and year boundaries exactly (UTC parse, DST-immune)', () => {
+    expect(daysBetween('2026-02-28', '2026-03-01')).toBe(1); // 2026 is not a leap year
+    expect(daysBetween('2025-12-31', '2026-01-01')).toBe(1);
+    // Spans the spring DST transition in most northern-hemisphere zones; a
+    // local-time parse would make this a non-integer (23-hour day).
+    expect(daysBetween('2026-03-01', '2026-04-01')).toBe(31);
   });
 
   it('is timezone-independent: local hour comparison and output stay consistent east of UTC', () => {

@@ -46,6 +46,14 @@ export interface UserSettings {
   dayEndHour: number;
   timezone: string;
   maxTasksPerProject: number;
+  /** Whether the sweep auto-archives completed tasks after `archiveCompletedAfterDays`. */
+  autoArchiveCompleted: boolean;
+  /** Logical days a completed task stays in working views before archiving; `0` = immediately on completion. */
+  archiveCompletedAfterDays: number;
+  /** Whether the sweep auto-soft-deletes archived tasks after `deleteArchivedAfterDays`. */
+  autoDeleteArchived: boolean;
+  /** Logical days after `archivedAt` (not completion) before an archived task is soft-deleted. */
+  deleteArchivedAfterDays: number;
   pointsCounterVisible: boolean;
   /** Whether the time-tracking UI is available. Existing time data is preserved. */
   timeTrackingVisible: boolean;
@@ -210,6 +218,8 @@ export interface ProjectTask {
   sortOrder: number;
   isCompleted: boolean;
   completedAt: string | null;
+  /** Set when the auto-archive sweep (or immediate mode) hides a completed task from working views; cleared on un-complete/restore. */
+  archivedAt: string | null;
   recurrenceRule: RecurrenceRule | null;
   lastRecurredDate: string | null;
   /** Which box (today/week/later) the task currently lives in. */

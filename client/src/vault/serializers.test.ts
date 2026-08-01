@@ -69,6 +69,7 @@ function makeTask(overrides: Partial<ProjectTask> = {}): ProjectTask {
     sortOrder: 0,
     isCompleted: false,
     completedAt: null,
+    archivedAt: null,
     recurrenceRule,
     lastRecurredDate: '2026-06-15',
     timeBox: 'later',
@@ -135,6 +136,10 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
     dayEndHour: 2,
     timezone: 'Europe/Athens',
     maxTasksPerProject: 5,
+    autoArchiveCompleted: true,
+    archiveCompletedAfterDays: 1,
+    autoDeleteArchived: false,
+    deleteArchivedAfterDays: 30,
     pointsCounterVisible: true,
     timeTrackingVisible: true,
     lastRolloverDate: null,
@@ -312,6 +317,28 @@ describe('Project + tasks serialization', () => {
     expect(back.scheduledDate).toBeNull();
   });
 
+  it('round-trips a set archivedAt', () => {
+    const p = makeProject();
+    const task = makeTask({
+      isCompleted: true,
+      completedAt: '2026-07-18T12:00:00.000Z',
+      archivedAt: '2026-07-20T06:00:00.000Z',
+    });
+    const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
+
+    const [back] = deserializeProjectTasks(tasksContent);
+    expect(back.archivedAt).toBe('2026-07-20T06:00:00.000Z');
+  });
+
+  it('round-trips a null archivedAt (the not-archived default)', () => {
+    const p = makeProject();
+    const task = makeTask({ archivedAt: null });
+    const { content: tasksContent } = serializeProjectTasksFile(p, [task]);
+
+    const [back] = deserializeProjectTasks(tasksContent);
+    expect(back.archivedAt).toBeNull();
+  });
+
   it(
     'defaults timeBox/scheduledDate/timeBoxOrder when reading a legacy file written before ' +
       'Phase 5 (frontmatter has no time-box fields at all)',
@@ -342,6 +369,9 @@ describe('Project + tasks serialization', () => {
       expect(back.timeBox).toBe('later');
       expect(back.scheduledDate).toBeNull();
       expect(back.timeBoxOrder).toBe(0);
+      // Same tolerance for the archive feature: a file written before
+      // `archivedAt` existed deserializes as not-archived.
+      expect(back.archivedAt).toBeNull();
     },
   );
 });

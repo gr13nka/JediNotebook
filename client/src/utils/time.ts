@@ -37,6 +37,22 @@ export function getLogicalDate(dayStartHour: number, reference: Date = new Date(
   return `${adjusted.getFullYear()}-${pad(adjusted.getMonth() + 1)}-${pad(adjusted.getDate())}`;
 }
 
+/**
+ * Whole days from logical-date string `a` (YYYY-MM-DD) to `b` — positive when
+ * `b` is later, `0` for the same day, negative when `b` is earlier. Both
+ * strings are parsed as UTC midnights via `Date.UTC`, so the difference is an
+ * exact multiple of 86_400_000 ms — immune to DST transitions and month/year
+ * lengths, which a local-time parse would not be.
+ */
+export function daysBetween(a: string, b: string): number {
+  return (parseUtcMidnight(b) - parseUtcMidnight(a)) / 86_400_000;
+}
+
+function parseUtcMidnight(date: string): number {
+  const [y, m, d] = date.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
 export function getTodayRange(dayStartHour: number): { start: Date; end: Date } {
   const today = getLogicalDate(dayStartHour);
   const start = new Date(today + 'T00:00:00');
