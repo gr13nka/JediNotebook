@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Activity, DeviceSettings, TimeEntry, UserSettings, Habit, HabitEntry, Note, PomodoroPreset, Project, ProjectTask, TodayTask, ProjectFolder, InboxItem, MindMap, PdfDocument, TimeBox, VaultBaseEntry } from '@shared/types';
+import type { Activity, DeviceSettings, TimeEntry, UserSettings, Project, ProjectTask, TodayTask, ProjectFolder, InboxItem, TimeBox, VaultBaseEntry } from '@shared/types';
 import { DEFAULT_DEVICE_SETTINGS, DEFAULT_SETTINGS } from '@shared/constants';
 import { classifyTimeBoxForMigration } from './migrations';
 import { getLogicalDate } from '../utils/time';
@@ -9,17 +9,11 @@ const db = new Dexie('TimeTrackerDB') as Dexie & {
   timeEntries: EntityTable<TimeEntry, 'id'>;
   settings: EntityTable<UserSettings, 'id'>;
   deviceSettings: EntityTable<DeviceSettings, 'id'>;
-  habits: EntityTable<Habit, 'id'>;
-  habitEntries: EntityTable<HabitEntry, 'id'>;
-  notes: EntityTable<Note, 'id'>;
-  pomodoroPresets: EntityTable<PomodoroPreset, 'id'>;
   projects: EntityTable<Project, 'id'>;
   projectTasks: EntityTable<ProjectTask, 'id'>;
   todayTasks: EntityTable<TodayTask, 'id'>;
   projectFolders: EntityTable<ProjectFolder, 'id'>;
   inboxItems: EntityTable<InboxItem, 'id'>;
-  mindMaps: EntityTable<MindMap, 'id'>;
-  pdfDocuments: EntityTable<PdfDocument, 'id'>;
   vaultBase: EntityTable<VaultBaseEntry, 'path'>;
 };
 
@@ -364,6 +358,23 @@ db.version(16).stores({
       ? raw.taskSelectionDesktopSwipeEnabled
       : DEFAULT_DEVICE_SETTINGS.taskSelectionDesktopSwipeEnabled,
   });
+});
+
+// Drop the six legacy stores left behind by the 2026-07 feature trim. A
+// stores() call is a delta — unmentioned tables carry over unchanged, and
+// `null` physically deletes the object store; the full re-declaration seen in
+// earlier versions is only required when a version has an .upgrade()
+// transaction (it can only touch tables named in its own stores() call), which
+// v17 doesn't. Any pre-refactor rows still sitting in these stores are
+// intentionally and irreversibly discarded — no code has been able to read
+// them since the features were deleted.
+db.version(17).stores({
+  habits: null,
+  habitEntries: null,
+  notes: null,
+  pomodoroPresets: null,
+  mindMaps: null,
+  pdfDocuments: null,
 });
 
 /**

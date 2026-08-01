@@ -162,47 +162,6 @@ export interface TimerState {
   isRunning: boolean;
 }
 
-export type HabitType = 'boolean' | 'numeric';
-
-export interface Habit {
-  id: string;
-  name: string;
-  type: HabitType;
-  color: string;
-  icon: string;
-  targetValue: number;
-  unit: string;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  deviceId: string;
-}
-
-export interface HabitEntry {
-  id: string;
-  habitId: string;
-  date: string;
-  value: number;
-  completed: boolean;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  deviceId: string;
-}
-
-export interface Note {
-  id: string;
-  title: string;
-  content: string;
-  color: string;
-  isPinned: boolean;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  deviceId: string;
-}
-
 export interface ProjectFolder {
   id: string;
   name: string;
@@ -282,60 +241,6 @@ export interface TodayTask {
 export interface InboxItem {
   id: string;
   text: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  deviceId: string;
-}
-
-export interface MindMapNode {
-  id: string;
-  text: string;
-  children: string[];
-  color?: string;
-  collapsed?: boolean;
-  direction?: 'right' | 'left' | 'top' | 'bottom';
-}
-
-export interface MindMap {
-  id: string;
-  title: string;
-  nodes: MindMapNode[];
-  rootNodeId: string;
-  color: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  deviceId: string;
-}
-
-export interface PdfDocument {
-  id: string;
-  title: string;
-  fileName: string;
-  fileSize: number;
-  pageCount: number;
-  color: string;
-  isPinned: boolean;
-  thumbnail: Blob | null;
-  pdfData: Blob;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  deviceId: string;
-}
-
-export interface PomodoroPreset {
-  id: string;
-  name: string;
-  workMinutes: number;
-  breakMinutes: number;
-  longBreakMinutes: number;
-  sessionsBeforeLongBreak: number;
-  autoStartBreaks: boolean;
-  autoStartWork: boolean;
-  isDefault: boolean;
-  sortOrder: number;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
