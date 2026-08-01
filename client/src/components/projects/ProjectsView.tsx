@@ -635,6 +635,7 @@ export function ProjectsView() {
               {/* Editor panel */}
               <div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-3">
                 <ProjectDraftEditor
+                  projectId={activeProject.id}
                   title={activeProject.name}
                   description={activeProject.description}
                   color={activeProject.color}
@@ -693,6 +694,7 @@ export function ProjectsView() {
               {/* Editor — fills space above sheet */}
               <div style={{ flex: 1, minHeight: '15%' }} className="overflow-y-auto p-3">
                 <ProjectDraftEditor
+                  projectId={activeProject.id}
                   title={activeProject.name}
                   description={activeProject.description}
                   color={activeProject.color}

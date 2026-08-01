@@ -16,9 +16,19 @@ import {
   cutRange,
   insertLine,
 } from '../../utils/taskDnd';
+import {
+  recordEdit,
+  undo,
+  redo,
+  getProjectHistory,
+  setProjectHistory,
+  type UndoEntry,
+} from '../../utils/textUndo';
 import type { Activity } from '@shared/types';
 
 interface ProjectDraftEditorProps {
+  /** Keys the per-project undo history, which survives editor remounts. */
+  projectId: string;
   title: string;
   description: string;
   color: string;
@@ -38,7 +48,7 @@ interface ProjectDraftEditorProps {
 // resolve to identical line boxes, otherwise text shifts when they swap.
 const EDITOR_TEXT = 'project-note leading-relaxed';
 
-export function ProjectDraftEditor({ title, description, color, icon, onSaveProject, onSave, linkedActivityId, onLinkActivity, activities, onConsumeTask, onRegisterCut }: ProjectDraftEditorProps) {
+export function ProjectDraftEditor({ projectId, title, description, color, icon, onSaveProject, onSave, linkedActivityId, onLinkActivity, activities, onConsumeTask, onRegisterCut }: ProjectDraftEditorProps) {
   const [localDesc, setLocalDesc] = useState(description);
   const [isEditing, setIsEditing] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -53,9 +63,83 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
     projectNoteFontPxRef.current = projectNoteFontPx;
   }, [projectNoteFontPx]);
 
+  /**
+   * `localDesc` mirrored into a ref so stable callbacks (cut registration,
+   * undo snapshots) can read the current text without re-creating on every
+   * keystroke, and so saves happen outside state updaters — React may invoke
+   * updaters twice under StrictMode, which would double-save.
+   */
+  const localDescRef = useRef(localDesc);
   useEffect(() => {
-    setLocalDesc(description);
-  }, [description]);
+    localDescRef.current = localDesc;
+  }, [localDesc]);
+
+  /** The editor's state right now — text plus textarea selection. */
+  const currentEntry = useCallback((): UndoEntry => {
+    const text = localDescRef.current;
+    const ta = textareaRef.current;
+    return ta
+      ? { text, caretStart: ta.selectionStart, caretEnd: ta.selectionEnd }
+      : { text, caretStart: text.length, caretEnd: text.length };
+  }, []);
+
+  /**
+   * Pushes the current state as its own undo step. Called before every
+   * discrete mutation (DnD cut/drop, an external overwrite landing) so the
+   * pre-mutation text stays one Ctrl+Z away. Only ever reached from event
+   * handlers or a real `description` change — never from a mount effect, so
+   * a StrictMode double-mount records nothing into the module-level history.
+   */
+  const recordSnapshot = useCallback(() => {
+    setProjectHistory(
+      projectId,
+      recordEdit(getProjectHistory(projectId), currentEntry(), Date.now(), 'snapshot')
+    );
+  }, [projectId, currentEntry]);
+
+  /**
+   * External-overwrite bookkeeping. `lastAppliedDescRef` is the last
+   * `description` value this editor produced or accepted — a live-query
+   * re-emit equal to it (our own save echo, or a title/color save) is
+   * ignored. `pendingExternalRef` stashes a genuinely-foreign value that
+   * arrived mid-edit (textarea focused) so in-progress typing is never
+   * clobbered; handleDescBlur settles it.
+   */
+  const lastAppliedDescRef = useRef(description);
+  const pendingExternalRef = useRef<string | null>(null);
+
+  /** Persists `next` as our own — the next live-query echo must be ignored. */
+  const saveDesc = useCallback(
+    (next: string) => {
+      lastAppliedDescRef.current = next;
+      pendingExternalRef.current = null;
+      onSave(next);
+    },
+    [onSave]
+  );
+
+  /** Accepts a foreign description, keeping the overwritten text undoable. */
+  const applyExternalDesc = useCallback(
+    (next: string) => {
+      if (next !== localDescRef.current) {
+        recordSnapshot();
+        localDescRef.current = next;
+        setLocalDesc(next);
+      }
+      lastAppliedDescRef.current = next;
+      pendingExternalRef.current = null;
+    },
+    [recordSnapshot]
+  );
+
+  useEffect(() => {
+    if (description === lastAppliedDescRef.current) return; // our own echo
+    if (document.activeElement === textareaRef.current) {
+      pendingExternalRef.current = description;
+      return;
+    }
+    applyExternalDesc(description);
+  }, [description, applyExternalDesc]);
 
   const autoResize = useCallback(() => {
     if (textareaRef.current) {
@@ -72,24 +156,50 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
     autoResize();
   }, [localDesc, autoResize]);
 
+  // Caret target for entering edit mode — end of the clicked preview line,
+  // set by handleContainerMouseUp and consumed exactly once here.
+  const entryCaretRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       const ta = textareaRef.current;
       ta.focus();
-      const len = ta.value.length;
-      ta.setSelectionRange(len, len);
+      const caret = entryCaretRef.current ?? ta.value.length;
+      entryCaretRef.current = null;
+      ta.setSelectionRange(caret, caret);
     }
   }, [isEditing]);
 
   const handleDescChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const prevText = localDescRef.current;
+    // The textarea's selection at onChange time is already post-edit; clamped
+    // to the pre-change text it lands within a character of the true pre-edit
+    // caret — close enough for a typing-run boundary.
+    const caretStart = Math.min(e.target.selectionStart, prevText.length);
+    const caretEnd = Math.min(e.target.selectionEnd, prevText.length);
+    setProjectHistory(
+      projectId,
+      recordEdit(
+        getProjectHistory(projectId),
+        { text: prevText, caretStart, caretEnd },
+        Date.now(),
+        'typing'
+      )
+    );
+    localDescRef.current = e.target.value;
     setLocalDesc(e.target.value);
     autoResize();
   };
 
   const handleDescBlur = () => {
     setIsEditing(false);
-    if (localDesc !== description) {
-      onSave(localDesc);
+    const pending = pendingExternalRef.current;
+    if (localDesc !== lastAppliedDescRef.current) {
+      // Local edits win over anything stashed mid-edit — both sides carry an
+      // updatedAt, and last-write-wins settles it downstream.
+      saveDesc(localDesc);
+    } else if (pending !== null) {
+      applyExternalDesc(pending);
     }
   };
 
@@ -100,7 +210,40 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
     void setProjectNoteFontOverride(next);
   }, [setProjectNoteFontOverride]);
 
+  /** Applies one undo/redo step, restoring its caret once the value lands. */
+  const applyHistoryStep = (step: typeof undo) => {
+    const result = step(getProjectHistory(projectId), currentEntry());
+    if (!result) return;
+    setProjectHistory(projectId, result.history);
+    const { text, caretStart, caretEnd } = result.restored;
+    localDescRef.current = text;
+    setLocalDesc(text);
+    // The textarea is controlled — the restored value applies on the
+    // re-render this discrete event flushes, so the caret must wait a frame.
+    requestAnimationFrame(() => {
+      textareaRef.current?.setSelectionRange(caretStart, caretEnd);
+    });
+  };
+
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // App-level undo/redo. The native stack stays suppressed even when there
+    // is nothing to restore — programmatic value replacements (sync merges,
+    // DnD cut/drop) leave it pointing at stale text. `altKey` is excluded so
+    // AltGr layouts (reported as Ctrl+Alt) keep typing characters.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const key = e.key.toLowerCase();
+      if (key === 'z') {
+        e.preventDefault();
+        applyHistoryStep(e.shiftKey ? redo : undo);
+        return;
+      }
+      if (key === 'y' && e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        applyHistoryStep(redo);
+        return;
+      }
+    }
+
     if (!e.ctrlKey || !e.shiftKey) return;
 
     const wantsIncrease = e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd';
@@ -127,11 +270,16 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
 
   // Enter edit mode on mouse-up, and only when nothing is selected. Using
   // `click` here meant a drag-select immediately entered edit mode and threw
-  // the selection away.
-  const handleContainerMouseUp = () => {
+  // the selection away. The clicked preview line (located via its
+  // data-line-index) becomes the caret target — end of that source line;
+  // clicks outside any line fall back to end-of-text in the focus effect.
+  const handleContainerMouseUp = (e: React.MouseEvent) => {
     if (isEditing) return;
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed) return;
+    const lineIndex = lineIndexFromPoint(e.clientX, e.clientY);
+    entryCaretRef.current =
+      lineIndex === null ? null : offsetAfterLine(localDesc, lineIndex);
     setIsEditing(true);
   };
 
@@ -170,25 +318,18 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
     setTextPayload(e, localDesc.slice(start, end), start, end);
   };
 
-  /**
-   * Cut a range that the task panel has just turned into a task.
-   *
-   * `localDescRef` rather than `localDesc` so this callback stays stable and
-   * does not re-register on every keystroke, and so the save happens outside a
-   * state updater — React may invoke updaters twice under StrictMode, which
-   * would double-save.
-   */
-  const localDescRef = useRef(localDesc);
-  useEffect(() => {
-    localDescRef.current = localDesc;
-  }, [localDesc]);
-
-  const cutRangeFromDescription = useCallback((start: number, end: number) => {
-    const next = cutRange(localDescRef.current, start, end);
-    localDescRef.current = next;
-    setLocalDesc(next);
-    onSave(next);
-  }, [onSave]);
+  // Cut a range that the task panel has just turned into a task. Reads
+  // through localDescRef so the callback stays stable across keystrokes.
+  const cutRangeFromDescription = useCallback(
+    (start: number, end: number) => {
+      recordSnapshot();
+      const next = cutRange(localDescRef.current, start, end);
+      localDescRef.current = next;
+      setLocalDesc(next);
+      saveDesc(next);
+    },
+    [recordSnapshot, saveDesc]
+  );
 
   useEffect(() => {
     onRegisterCut?.(cutRangeFromDescription);
@@ -210,14 +351,17 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
     if (!payload || payload.kind !== 'task') return;
     e.preventDefault();
 
+    recordSnapshot();
+
     // Insert after the line the cursor is over. Dropping past the last line
     // (or into an empty description) appends.
     const lineIndex = lineIndexFromPoint(e.clientX, e.clientY);
     const offset =
       lineIndex === null ? localDesc.length : offsetAfterLine(localDesc, lineIndex);
     const next = insertLine(localDesc, offset, payload.title);
+    localDescRef.current = next;
     setLocalDesc(next);
-    onSave(next);
+    saveDesc(next);
     onConsumeTask?.(payload.taskId);
   };
 
