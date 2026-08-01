@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useProjects } from '../../hooks/useProjects';
 import { useActivities } from '../../hooks/useActivities';
 import { useFolders } from '../../hooks/useFolders';
@@ -78,7 +79,7 @@ export function ProjectsView() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [addProjectFolderId, setAddProjectFolderId] = useState<string | null>(null);
   const [showAddFolder, setShowAddFolder] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia('(min-width: 768px)').matches);
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   // Mobile bottom sheet state (persisted in store to survive navigation)
   const sheetHeight = useProjectUIStore((s) => s.mobileSheetHeight);
@@ -87,13 +88,6 @@ export function ProjectsView() {
   const mobileContainerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ y: number; height: number } | null>(null);
   const didDragRef = useRef(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)');
-    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
 
   // Auto-open first project when no tab is active. Mobile grid mode remains a
   // picker; desktop grid mode is just an alternate sidebar, so the editor stays open.
@@ -452,7 +446,7 @@ export function ProjectsView() {
                 </svg>
               </button>
               <span className="flex-1 text-text-primary font-medium truncate" style={{ fontSize: `${projectListFontPx}px` }}>
-                {(activeProject as any).icon ? `${(activeProject as any).icon} ` : ''}{activeProject.name}
+                {activeProject.icon ? `${activeProject.icon} ` : ''}{activeProject.name}
               </span>
               <button
                 onClick={() => setMobileTreeOpen(!mobileTreeOpen)}
@@ -523,7 +517,7 @@ export function ProjectsView() {
                   style={{ boxShadow: NEU.pressedSm, fontSize: `${projectListFontPx}px` }}
                 >
                   {openProjects.map((p) => (
-                    <option key={p.id} value={p.id}>{(p as any).icon ? `${(p as any).icon} ${p.name}` : p.name}</option>
+                    <option key={p.id} value={p.id}>{p.icon ? `${p.icon} ${p.name}` : p.name}</option>
                   ))}
                 </select>
               ) : (
@@ -634,11 +628,11 @@ export function ProjectsView() {
                   title={activeProject.name}
                   description={activeProject.description}
                   color={activeProject.color}
-                  icon={(activeProject as any).icon ?? ''}
+                  icon={activeProject.icon ?? ''}
                   onSaveProject={(data) => updateProject(activeProject.id, data)}
                   onSave={(description) => updateProject(activeProject.id, { description })}
                   {...(timeTrackingVisible ? {
-                    linkedActivityId: (activeProject as any).linkedActivityId ?? null,
+                    linkedActivityId: activeProject.linkedActivityId ?? null,
                     onLinkActivity: (activityId: string | null) => updateProject(activeProject.id, { linkedActivityId: activityId }),
                     activities,
                   } : {})}
@@ -686,11 +680,11 @@ export function ProjectsView() {
                   title={activeProject.name}
                   description={activeProject.description}
                   color={activeProject.color}
-                  icon={(activeProject as any).icon ?? ''}
+                  icon={activeProject.icon ?? ''}
                   onSaveProject={(data) => updateProject(activeProject.id, data)}
                   onSave={(description) => updateProject(activeProject.id, { description })}
                   {...(timeTrackingVisible ? {
-                    linkedActivityId: (activeProject as any).linkedActivityId ?? null,
+                    linkedActivityId: activeProject.linkedActivityId ?? null,
                     onLinkActivity: (activityId: string | null) => updateProject(activeProject.id, { linkedActivityId: activityId }),
                     activities,
                   } : {})}

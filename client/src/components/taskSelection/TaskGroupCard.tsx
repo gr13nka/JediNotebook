@@ -94,8 +94,8 @@ export function TaskGroupCard({
         onDragOver={onProjectDragOver}
         onDrop={onProjectDrop}
       >
-        {(project as any).icon ? (
-          <span className="text-base flex-shrink-0 leading-none">{(project as any).icon}</span>
+        {project.icon ? (
+          <span className="text-base flex-shrink-0 leading-none">{project.icon}</span>
         ) : (
           <span
             className="w-3 h-3 rounded-full flex-shrink-0"

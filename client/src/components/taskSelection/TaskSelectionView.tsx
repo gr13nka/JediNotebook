@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAllProjectTasks, type TaskGroup } from '../../hooks/useAllProjectTasks';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { moveTaskToBox } from '../../hooks/useTaskBox';
 import { useProjects } from '../../hooks/useProjects';
 import { useReorderList } from '../../hooks/useReorderList';
@@ -76,7 +77,7 @@ export function TaskSelectionView() {
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [sortMode, setSortMode] = useState<TaskSortMode>('custom');
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
-  const [isDesktop, setIsDesktop] = useState(false);
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   // Default 'week': the daily flip-through-and-promote habit this view
   // exists for — /today already owns the today-only view.
   const [boxTab, setBoxTab] = useState<BoxTab>('week');
@@ -97,14 +98,6 @@ export function TaskSelectionView() {
   const [flatCompletedCollapsed, setFlatCompletedCollapsed] = useState(true);
   const [projectMoveTask, setProjectMoveTask] = useState<ProjectTask | null>(null);
 
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)');
-    setIsDesktop(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-
   const swipeRowsEnabled = !isDesktop || taskSelectionDesktopSwipeEnabled;
 
   // Switching box tab drops any in-progress custom flat order — the same
@@ -120,7 +113,7 @@ export function TaskSelectionView() {
   const projectMap = useMemo(() => {
     const map = new Map<string, { name: string; color: string; icon: string }>();
     for (const g of groups) {
-      map.set(g.project.id, { name: g.project.name, color: g.project.color, icon: (g.project as any).icon ?? '' });
+      map.set(g.project.id, { name: g.project.name, color: g.project.color, icon: g.project.icon ?? '' });
     }
     return map;
   }, [groups]);

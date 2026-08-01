@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useLocation } from 'react-router-dom';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { Sidebar, useSidebarStore } from './Sidebar';
 import { BottomNav } from './BottomNav';
 import { DesktopBottomNav } from './DesktopBottomNav';
@@ -11,7 +12,7 @@ const FULL_BLEED_PAGES = ['/projects'];
 const HIDE_NAV_PAGES: string[] = [];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const [isDesktop, setIsDesktop] = useState(false);
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const collapsed = useSidebarStore((s) => s.collapsed);
   const navPosition = useSettingsStore((s) => s.navPosition);
   const location = useLocation();
@@ -25,14 +26,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const desktopBottomNav = navPosition === 'bottom';
   const dropdownNav = navPosition === 'dropdown';
-
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)');
-    setIsDesktop(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
 
   return (
     <div className="flex min-h-screen-safe bg-bg-primary relative">

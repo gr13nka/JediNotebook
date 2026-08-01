@@ -30,8 +30,8 @@ export function ProjectTabs() {
             }`}
             style={{ boxShadow: isActive ? NEU.pressedSm : undefined }}
           >
-            {(project as any).icon ? (
-              <span className="text-[11px] shrink-0 leading-none">{(project as any).icon}</span>
+            {project.icon ? (
+              <span className="text-[11px] shrink-0 leading-none">{project.icon}</span>
             ) : (
               <span
                 className="w-1.5 h-1.5 rounded-full shrink-0"

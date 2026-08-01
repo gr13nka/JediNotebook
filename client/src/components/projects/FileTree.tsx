@@ -142,7 +142,7 @@ export function FileTree() {
       projectId: project.id,
       projectName: project.name,
       projectColor: project.color,
-      projectIcon: (project as any).icon ?? '',
+      projectIcon: project.icon ?? '',
       startX: e.clientX,
       startY: e.clientY,
       active: false,
@@ -559,8 +559,8 @@ function ProjectRow({
         isActive ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary hover:bg-bg-elevated/30'
       } ${project.isArchived ? 'opacity-50' : ''}`}
     >
-      {(project as any).icon ? (
-        <span className="text-[14px] shrink-0 leading-none">{(project as any).icon}</span>
+      {project.icon ? (
+        <span className="text-[14px] shrink-0 leading-none">{project.icon}</span>
       ) : (
         <span
           className="w-2 h-2 rounded-full shrink-0"
