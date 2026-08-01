@@ -314,7 +314,7 @@ export function ProjectDraftEditor({ title, description, color, icon, onSaveProj
           onDragOver={handleEditorDragOver}
           onDragLeave={handleEditorDragLeave}
           onDrop={handleEditorDrop}
-          className={`grid rounded-xl p-4 text-text-primary cursor-text overflow-y-auto no-scrollbar ${isTaskDropTarget ? 'ring-2 ring-accent' : ''}`}
+          className={`grid rounded-xl p-4 text-text-primary cursor-text overflow-y-auto no-scrollbar select-text ${isTaskDropTarget ? 'ring-2 ring-accent' : ''}`}
           style={{ boxShadow: NEU.pressedSm, minHeight: '300px' }}
         >
           <div

@@ -99,18 +99,18 @@ export function ProjectsView() {
 
   // Resizable sidebar width
   const [sidebarWidth, setSidebarWidth] = useState(220);
-  const sidebarDragging = useRef(false);
+  const sidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const sidebarMin = projectGridEnabled ? MIN_GRID_SIDEBAR : MIN_TREE_SIDEBAR;
   const sidebarMax = projectGridEnabled ? MAX_GRID_SIDEBAR : MAX_TREE_SIDEBAR;
   const effectiveSidebarWidth = Math.min(sidebarMax, Math.max(sidebarMin, sidebarWidth));
 
   // Resizable task panel width (vertical split)
   const [taskPanelWidth, setTaskPanelWidth] = useState(288);
-  const taskDragging = useRef(false);
+  const taskDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   // Resizable task panel height (horizontal split)
   const [taskPanelHeight, setTaskPanelHeight] = useState(240);
-  const taskHeightDragging = useRef(false);
+  const taskHeightDragRef = useRef<{ startY: number; startHeight: number; maxHeight: number } | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const cutDescriptionRef = useRef<((start: number, end: number) => void) | null>(null);
@@ -134,58 +134,55 @@ export function ProjectsView() {
     setShowDeleteConfirm(true);
   };
 
-  const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
+  // All resize/drag handles use pointer capture on the handle element itself:
+  // setPointerCapture guarantees pointerup/pointercancel delivery even when the
+  // pointer is released outside the window, so the body cursor/userSelect
+  // overrides can never leak (the old window-mouseup approach lost the mouseup
+  // off-window and left text selection disabled globally).
+  const handleSidebarPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
-    sidebarDragging.current = true;
-    const startX = e.clientX;
-    const startWidth = effectiveSidebarWidth;
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!sidebarDragging.current) return;
-      const newWidth = Math.min(sidebarMax, Math.max(sidebarMin, startWidth + (ev.clientX - startX)));
-      setSidebarWidth(newWidth);
-    };
-
-    const onMouseUp = () => {
-      sidebarDragging.current = false;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    sidebarDragRef.current = { startX: e.clientX, startWidth: effectiveSidebarWidth };
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }, [effectiveSidebarWidth, sidebarMax, sidebarMin]);
+  }, [effectiveSidebarWidth]);
 
-  const handleTaskMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleSidebarPointerMove = useCallback((e: React.PointerEvent) => {
+    const drag = sidebarDragRef.current;
+    if (!drag) return;
+    const newWidth = Math.min(sidebarMax, Math.max(sidebarMin, drag.startWidth + (e.clientX - drag.startX)));
+    setSidebarWidth(newWidth);
+  }, [sidebarMax, sidebarMin]);
+
+  const handleSidebarPointerEnd = useCallback(() => {
+    if (!sidebarDragRef.current) return;
+    sidebarDragRef.current = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
+  const handleTaskPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
-    taskDragging.current = true;
-    const startX = e.clientX;
-    const startWidth = taskPanelWidth;
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!taskDragging.current) return;
-      // Dragging left increases task panel width
-      const newWidth = Math.min(MAX_TASK_PANEL, Math.max(MIN_TASK_PANEL, startWidth - (ev.clientX - startX)));
-      setTaskPanelWidth(newWidth);
-    };
-
-    const onMouseUp = () => {
-      taskDragging.current = false;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    taskDragRef.current = { startX: e.clientX, startWidth: taskPanelWidth };
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
   }, [taskPanelWidth]);
+
+  const handleTaskPointerMove = useCallback((e: React.PointerEvent) => {
+    const drag = taskDragRef.current;
+    if (!drag) return;
+    // Dragging left increases task panel width
+    const newWidth = Math.min(MAX_TASK_PANEL, Math.max(MIN_TASK_PANEL, drag.startWidth - (e.clientX - drag.startX)));
+    setTaskPanelWidth(newWidth);
+  }, []);
+
+  const handleTaskPointerEnd = useCallback(() => {
+    if (!taskDragRef.current) return;
+    taskDragRef.current = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
 
   // Initialize mobile sheet height on first render / resize
   useEffect(() => {
@@ -259,81 +256,91 @@ export function ProjectsView() {
     setSheetHeight(nearest);
   }, [sheetHeight, handleSheetTap]);
 
-  const handleSheetMouseDown = useCallback((e: React.MouseEvent) => {
+  // Pointer path is mouse/pen only — touch bails out here so the dedicated
+  // onTouch* handlers above keep owning touch drags and nothing double-fires.
+  const handleSheetPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
     e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragStartRef.current = { y: e.clientY, height: sheetHeight ?? 0 };
     didDragRef.current = false;
     setIsDragging(true);
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!dragStartRef.current || !mobileContainerRef.current) return;
-      const deltaY = dragStartRef.current.y - ev.clientY;
-      if (Math.abs(deltaY) > 5) didDragRef.current = true;
-      const containerH = mobileContainerRef.current.clientHeight;
-      const newHeight = Math.min(
-        containerH * 0.85,
-        Math.max(48, dragStartRef.current.height + deltaY),
-      );
-      setSheetHeight(newHeight);
-    };
-
-    const onMouseUp = () => {
-      setIsDragging(false);
-      dragStartRef.current = null;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      if (!didDragRef.current) {
-        handleSheetTap();
-        return;
-      }
-      const container = mobileContainerRef.current;
-      if (!container) return;
-      const containerH = container.clientHeight;
-      const current = useProjectUIStore.getState().mobileSheetHeight;
-      if (current === null) return;
-      const snapPoints = [48, containerH * 0.5, containerH * 0.85];
-      const nearest = snapPoints.reduce((a, b) =>
-        Math.abs(b - current) < Math.abs(a - current) ? b : a,
-      );
-      setSheetHeight(nearest);
-    };
-
     document.body.style.cursor = 'grab';
     document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }, [sheetHeight, handleSheetTap]);
+  }, [sheetHeight]);
 
-  const handleTaskHeightMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleSheetPointerMove = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    if (!dragStartRef.current || !mobileContainerRef.current) return;
+    const deltaY = dragStartRef.current.y - e.clientY;
+    if (Math.abs(deltaY) > 5) didDragRef.current = true;
+    const containerH = mobileContainerRef.current.clientHeight;
+    const newHeight = Math.min(
+      containerH * 0.85,
+      Math.max(48, dragStartRef.current.height + deltaY),
+    );
+    setSheetHeight(newHeight);
+  }, [setSheetHeight]);
+
+  const handleSheetPointerUp = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    if (!dragStartRef.current) return;
+    setIsDragging(false);
+    dragStartRef.current = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    if (!didDragRef.current) {
+      handleSheetTap();
+      return;
+    }
+    const container = mobileContainerRef.current;
+    if (!container) return;
+    const containerH = container.clientHeight;
+    const current = useProjectUIStore.getState().mobileSheetHeight;
+    if (current === null) return;
+    const snapPoints = [48, containerH * 0.5, containerH * 0.85];
+    const nearest = snapPoints.reduce((a, b) =>
+      Math.abs(b - current) < Math.abs(a - current) ? b : a,
+    );
+    setSheetHeight(nearest);
+  }, [handleSheetTap, setSheetHeight]);
+
+  const handleSheetPointerCancel = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    if (!dragStartRef.current) return;
+    setIsDragging(false);
+    dragStartRef.current = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
+  const handleTaskHeightPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
-    taskHeightDragging.current = true;
-    const startY = e.clientY;
-    const startHeight = taskPanelHeight;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const containerHeight = contentRef.current?.clientHeight ?? 600;
-    const maxHeight = containerHeight * MAX_TASK_PANEL_HEIGHT_RATIO;
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!taskHeightDragging.current) return;
-      // Dragging up increases task panel height
-      const newHeight = Math.min(maxHeight, Math.max(MIN_TASK_PANEL_HEIGHT, startHeight - (ev.clientY - startY)));
-      setTaskPanelHeight(newHeight);
+    taskHeightDragRef.current = {
+      startY: e.clientY,
+      startHeight: taskPanelHeight,
+      maxHeight: containerHeight * MAX_TASK_PANEL_HEIGHT_RATIO,
     };
-
-    const onMouseUp = () => {
-      taskHeightDragging.current = false;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
     document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
   }, [taskPanelHeight]);
+
+  const handleTaskHeightPointerMove = useCallback((e: React.PointerEvent) => {
+    const drag = taskHeightDragRef.current;
+    if (!drag) return;
+    // Dragging up increases task panel height
+    const newHeight = Math.min(drag.maxHeight, Math.max(MIN_TASK_PANEL_HEIGHT, drag.startHeight - (e.clientY - drag.startY)));
+    setTaskPanelHeight(newHeight);
+  }, []);
+
+  const handleTaskHeightPointerEnd = useCallback(() => {
+    if (!taskHeightDragRef.current) return;
+    taskHeightDragRef.current = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
 
   return (
     <div
@@ -360,7 +367,7 @@ export function ProjectsView() {
       {/* File tree sidebar - desktop: resizable, collapsible */}
       {!sidebarCollapsed && (
         <div
-          className="hidden md:flex shrink-0 flex-col bg-bg-primary border-r border-border relative"
+          className="hidden md:flex shrink-0 flex-col bg-bg-primary border-r border-border relative select-none"
           style={{ width: effectiveSidebarWidth }}
         >
           <div className="px-3 pt-3 pb-1">
@@ -398,7 +405,10 @@ export function ProjectsView() {
           )}
           {/* Resize handle */}
           <div
-            onMouseDown={handleSidebarMouseDown}
+            onPointerDown={handleSidebarPointerDown}
+            onPointerMove={handleSidebarPointerMove}
+            onPointerUp={handleSidebarPointerEnd}
+            onPointerCancel={handleSidebarPointerEnd}
             className="absolute top-0 right-0 bottom-0 w-1 cursor-col-resize hover:bg-accent/30 active:bg-accent/50 transition-colors z-10"
           />
         </div>
@@ -429,7 +439,7 @@ export function ProjectsView() {
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Mobile top bar */}
         <div
-          className="flex md:hidden items-center gap-2 border-b border-border px-2 py-1.5 shrink-0 bg-bg-primary"
+          className="flex md:hidden items-center gap-2 border-b border-border px-2 py-1.5 shrink-0 bg-bg-primary select-none"
           style={{ paddingTop: 'calc(0.375rem + env(safe-area-inset-top, 0px))' }}
         >
           {projectGridEnabled && activeProject ? (
@@ -542,7 +552,7 @@ export function ProjectsView() {
         </div>
 
         {/* Desktop tab bar - hidden on mobile */}
-        <div className="hidden md:flex items-center border-b border-border px-2 py-1 shrink-0 bg-bg-primary">
+        <div className="hidden md:flex items-center border-b border-border px-2 py-1 shrink-0 bg-bg-primary select-none">
           {/* Sidebar toggle button (desktop only) */}
           <button
             onClick={toggleSidebar}
@@ -643,18 +653,24 @@ export function ProjectsView() {
               {/* Task panel resize handle — desktop only */}
               {splitDirection === 'vertical' ? (
                 <div
-                  onMouseDown={handleTaskMouseDown}
+                  onPointerDown={handleTaskPointerDown}
+                  onPointerMove={handleTaskPointerMove}
+                  onPointerUp={handleTaskPointerEnd}
+                  onPointerCancel={handleTaskPointerEnd}
                   className="w-1 shrink-0 cursor-col-resize hover:bg-accent/30 active:bg-accent/50 transition-colors border-l border-border"
                 />
               ) : (
                 <div
-                  onMouseDown={handleTaskHeightMouseDown}
+                  onPointerDown={handleTaskHeightPointerDown}
+                  onPointerMove={handleTaskHeightPointerMove}
+                  onPointerUp={handleTaskHeightPointerEnd}
+                  onPointerCancel={handleTaskHeightPointerEnd}
                   className="h-1 shrink-0 cursor-row-resize hover:bg-accent/30 active:bg-accent/50 transition-colors border-t border-border"
                 />
               )}
               {/* Task panel */}
               <div
-                className="overflow-y-auto p-3"
+                className="overflow-y-auto p-3 select-none"
                 style={
                   splitDirection === 'vertical'
                     ? { width: taskPanelWidth, flexShrink: 0 }
@@ -699,14 +715,17 @@ export function ProjectsView() {
                   height: sheetHeight ?? 0,
                   transition: isDragging ? 'none' : 'height 0.3s ease-out',
                 }}
-                className="shrink-0 flex flex-col bg-bg-card rounded-t-2xl border-t border-border"
+                className="shrink-0 flex flex-col bg-bg-card rounded-t-2xl border-t border-border select-none"
               >
                 {/* Drag handle */}
                 <div
                   onTouchStart={handleSheetTouchStart}
                   onTouchMove={handleSheetTouchMove}
                   onTouchEnd={handleSheetTouchEnd}
-                  onMouseDown={handleSheetMouseDown}
+                  onPointerDown={handleSheetPointerDown}
+                  onPointerMove={handleSheetPointerMove}
+                  onPointerUp={handleSheetPointerUp}
+                  onPointerCancel={handleSheetPointerCancel}
                   className="flex justify-center py-3 cursor-grab touch-none"
                 >
                   <div className="w-12 h-1.5 rounded-full bg-text-muted/40" />
