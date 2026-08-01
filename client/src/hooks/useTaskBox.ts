@@ -45,7 +45,12 @@ export async function moveTaskToBox(taskId: string, target: TimeBox): Promise<vo
  */
 export function useTaskBox(box: TimeBox) {
   const tasks = useLiveQuery(async () => {
-    const rows = notDeleted(await db.projectTasks.where('timeBox').equals(box).toArray());
+    // `!t.archivedAt` (truthiness, not `=== null`): archived tasks never show
+    // in a box view, and pre-archive-feature rows carry `undefined` rather
+    // than `null`.
+    const rows = notDeleted(await db.projectTasks.where('timeBox').equals(box).toArray()).filter(
+      (t) => !t.archivedAt,
+    );
     const enriched: EnrichedBoxTask[] = [];
     for (const task of rows) {
       const project = await db.projects.get(task.projectId);

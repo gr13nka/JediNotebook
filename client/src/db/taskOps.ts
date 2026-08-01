@@ -177,15 +177,26 @@ export async function spawnNextOccurrence(task: ProjectTask): Promise<void> {
  * Flips a task's completion, stamping/clearing `completedAt`, then spawns its
  * next recurrence if completing it made one due (see `spawnNextOccurrence`).
  * No-ops if the task doesn't exist (already deleted underneath the caller).
+ *
+ * Archive interplay: `archiveCompletedAfterDays === 0` means "archive
+ * immediately", which the daily sweep (`useTaskRollover`) can't deliver — it
+ * only runs at the next logical-day boundary — so that one case stamps
+ * `archivedAt` right here, in the same update as the completion flip.
+ * Un-completing clears `archivedAt` unconditionally (a resurfaced task fully
+ * leaves the archive; invariant: archived ⇒ completed).
  */
 export async function toggleProjectTask(taskId: string): Promise<void> {
   const task = await db.projectTasks.get(taskId);
   if (!task) return;
   const now = new Date().toISOString();
   const newCompleted = !task.isCompleted;
+  const settings = newCompleted ? await db.settings.get('default') : undefined;
+  const archiveImmediately =
+    settings?.autoArchiveCompleted === true && settings.archiveCompletedAfterDays === 0;
   await db.projectTasks.update(taskId, {
     isCompleted: newCompleted,
     completedAt: newCompleted ? now : null,
+    ...(newCompleted ? (archiveImmediately ? { archivedAt: now } : {}) : { archivedAt: null }),
     updatedAt: now,
   });
   // `task` is the pre-toggle snapshot; only its recurrence-related fields are

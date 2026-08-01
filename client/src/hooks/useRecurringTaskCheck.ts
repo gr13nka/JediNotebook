@@ -10,6 +10,10 @@ import { spawnNextOccurrence } from '../db/taskOps';
 export function useRecurringTaskCheck() {
   useEffect(() => {
     const checkRecurring = async () => {
+      // Deliberately does NOT filter out archived rows (`archivedAt` set):
+      // the cleanup sweep auto-archives completed tasks, and this catch-up
+      // scan must keep seeing archived completed recurring tasks or their
+      // next occurrence would never spawn.
       const tasks = await db.projectTasks
         .filter((t) => !t.deletedAt && t.isCompleted && t.recurrenceRule !== null)
         .toArray();

@@ -15,10 +15,14 @@ export interface FolderGroup {
 }
 
 async function buildTaskGroup(project: Project): Promise<TaskGroup> {
+  // Archived rows (`archivedAt` set — falsy check, since pre-archive-feature
+  // rows carry `undefined`) are excluded here so Task Selection's grouped and
+  // flat completed lists never show them; `useProjectTasks` deliberately
+  // keeps them, for the project view's Archive section.
   const allTasks = await db.projectTasks
     .where('projectId')
     .equals(project.id)
-    .filter(isActive)
+    .filter((t) => isActive(t) && !t.archivedAt)
     .toArray();
   const incompleteTasks = allTasks.filter((t) => !t.isCompleted).sort((a, b) => a.sortOrder - b.sortOrder);
   const completedTasks = allTasks.filter((t) => t.isCompleted).sort((a, b) => {

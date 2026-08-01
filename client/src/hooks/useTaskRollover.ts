@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { db } from '../db';
-import { notDeleted, updateRecord } from '../db/repository';
+import { notDeleted, softDelete, updateRecord } from '../db/repository';
 import { nextBoxOrder } from '../db/taskOps';
 import { computeRollover } from '../db/rollover';
+import { computeCleanup } from '../db/cleanup';
 import { getLogicalDate } from '../utils/time';
 import { useSettingsStore } from '../stores/settingsStore';
 
@@ -15,7 +16,9 @@ let rolloverInFlight = false;
 
 /**
  * Fires the daily time-box rollover (see `computeRollover`'s doc comment for
- * the rules) on mount and whenever the tab regains visibility — same trigger
+ * the rules) plus the completed-task cleanup sweep (`computeCleanup`:
+ * completed → archived → soft-deleted) on mount and whenever the tab
+ * regains visibility — same trigger
  * pattern as `useRecurringTaskCheck`, chosen for the same reason: a plain
  * interval misses OS-suspended timers on mobile, but the app is guaranteed
  * to re-run this the moment the user actually looks at it again.
@@ -52,7 +55,14 @@ export function useTaskRollover() {
       if (rolloverInFlight) return;
       rolloverInFlight = true;
       try {
-        const { dayStartHour, lastRolloverDate } = useSettingsStore.getState();
+        const {
+          dayStartHour,
+          lastRolloverDate,
+          autoArchiveCompleted,
+          archiveCompletedAfterDays,
+          autoDeleteArchived,
+          deleteArchivedAfterDays,
+        } = useSettingsStore.getState();
         const today = getLogicalDate(dayStartHour);
 
         // Cheap fast path duplicated from computeRollover's own rule 1: skip
@@ -64,6 +74,22 @@ export function useTaskRollover() {
 
         const tasks = notDeleted(await db.projectTasks.toArray());
         const { toWeek, toLater, toToday } = computeRollover({ today, lastRolloverDate, tasks });
+
+        // Completed-task cleanup sweep, piggybacking on the same once-per-
+        // logical-day trigger and idempotency guard as the box rollover. A
+        // toggled-off stage maps to a `null` threshold (= stage disabled in
+        // `computeCleanup`). Settings changes take effect at the next
+        // logical-day sweep; the immediate mode (`archiveCompletedAfterDays
+        // === 0` archiving at completion time) is handled in
+        // `toggleProjectTask`, not here — though this sweep also covers it
+        // for tasks completed before the setting was switched on.
+        const { toArchive, toDelete } = computeCleanup({
+          today,
+          dayStartHour,
+          archiveCompletedAfterDays: autoArchiveCompleted ? archiveCompletedAfterDays : null,
+          deleteArchivedAfterDays: autoDeleteArchived ? deleteArchivedAfterDays : null,
+          tasks,
+        });
 
         await db.transaction('rw', [db.projectTasks, db.settings], async () => {
           // Re-check against the DB's own `lastRolloverDate`, not the
@@ -106,8 +132,22 @@ export function useTaskRollover() {
             });
           }
 
-          // Stamped unconditionally, even if all three arrays above were empty
-          // (e.g. 'today' was already clear and no pin was due) — otherwise
+          // Cleanup writes, under the same in-transaction lastRolloverDate
+          // guard as the box moves above. A completed task demoted by
+          // rollover (toLater) can also archive in the same run — two
+          // `updateRecord` calls on the same row, both fine. One shared
+          // stamp so every task archived by this sweep carries the same
+          // `archivedAt` instant.
+          const archivedStamp = new Date().toISOString();
+          for (const id of toArchive) {
+            await updateRecord(db.projectTasks, id, { archivedAt: archivedStamp });
+          }
+          for (const id of toDelete) {
+            await softDelete(db.projectTasks, id);
+          }
+
+          // Stamped unconditionally, even if every move/cleanup array above
+          // was empty (e.g. 'today' was already clear and no pin was due) — otherwise
           // this same no-op rollover would re-run on every future visibilitychange
           // until something finally did move.
           await db.settings.update('default', {
