@@ -548,6 +548,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
             {items.map((item) => (
               <motion.div
                 key={item.id}
+                className="group/inbox"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0, marginBottom: 0 }}
@@ -584,7 +585,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
                     <div className="relative">
                       <button
                         onClick={() => setTaskModePickerId(taskModePickerId === item.id ? null : item.id)}
-                        className="w-5 h-5 rounded-full border-2 border-accent/50 hover:border-accent transition-colors shrink-0"
+                        className="w-5 h-5 rounded-full border-2 border-accent/50 hover:border-accent transition-opacity can-hover:opacity-0 can-hover:group-hover/inbox:opacity-100 focus-visible:opacity-100 shrink-0"
                         title={t('inbox.task')}
                       />
                       <AnimatePresence>
@@ -626,7 +627,7 @@ export function InboxView({ embedded = false }: InboxViewProps) {
                   {editingId !== item.id && (
                     <button
                       onClick={() => deleteItem(item.id)}
-                      className="p-1 rounded-lg text-text-muted hover:text-red transition-colors shrink-0"
+                      className="p-1 rounded-lg text-text-muted hover:text-red transition-opacity can-hover:opacity-0 can-hover:group-hover/inbox:opacity-100 focus-visible:opacity-100 shrink-0"
                     >
                       <TrashIcon />
                     </button>

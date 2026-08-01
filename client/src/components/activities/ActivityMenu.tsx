@@ -5,12 +5,18 @@ import { NEU } from '../../utils/shadows';
 interface ActivityMenuProps {
   onEdit: () => void;
   onDelete: () => void;
+  /** Fired on every internal open-state change, including outside-click close. */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function ActivityMenu({ onEdit, onDelete }: ActivityMenuProps) {
+export function ActivityMenu({ onEdit, onDelete, onOpenChange }: ActivityMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
 
   useEffect(() => {
     if (!open) return;

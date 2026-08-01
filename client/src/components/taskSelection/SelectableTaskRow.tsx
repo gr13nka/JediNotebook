@@ -322,7 +322,7 @@ export function SelectableTaskRow({
         )}
 
         <div
-          className={`relative flex items-center gap-3 rounded-lg border bg-bg-card ${
+          className={`group/row relative flex items-center gap-3 rounded-lg border bg-bg-card ${
             renaming
               ? 'my-1 min-h-[112px] border-accent/50 px-4 py-4 shadow-[0_14px_34px_rgba(31,41,55,0.18),inset_0_0_0_1px_rgba(255,255,255,0.06)]'
               : 'min-h-[84px] border-border px-2.5 py-2.5'
@@ -421,7 +421,7 @@ export function SelectableTaskRow({
           )}
 
           {!canSwipe && !renaming && !isCompleted && (
-            <div className="flex-shrink-0 flex items-center gap-1">
+            <div className="flex-shrink-0 flex items-center gap-1 transition-opacity can-hover:opacity-0 can-hover:group-hover/row:opacity-100 focus-within:opacity-100">
               {MOVE_TARGETS.filter((target) => target !== task.timeBox).map((target) => (
                 <button
                   key={target}

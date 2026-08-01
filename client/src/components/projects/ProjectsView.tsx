@@ -552,7 +552,7 @@ export function ProjectsView() {
         </div>
 
         {/* Desktop tab bar - hidden on mobile */}
-        <div className="hidden md:flex items-center border-b border-border px-2 py-1 shrink-0 bg-bg-primary select-none">
+        <div className="group/topbar hidden md:flex items-center border-b border-border px-2 py-1 shrink-0 bg-bg-primary select-none">
           {/* Sidebar toggle button (desktop only) */}
           <button
             onClick={toggleSidebar}
@@ -591,7 +591,7 @@ export function ProjectsView() {
             {/* Split direction toggle (desktop only) */}
             <button
               onClick={() => setSplitDirection(splitDirection === 'vertical' ? 'horizontal' : 'vertical')}
-              className="hidden lg:flex w-6 h-6 items-center justify-center text-text-muted hover:text-text-secondary rounded transition-colors"
+              className="hidden lg:flex w-6 h-6 items-center justify-center text-text-muted hover:text-text-secondary rounded transition-opacity can-hover:opacity-0 can-hover:group-hover/topbar:opacity-100 focus-visible:opacity-100"
               title={splitDirection === 'vertical' ? t('projects.splitHorizontal') : t('projects.splitVertical')}
             >
               {splitDirection === 'vertical' ? (
@@ -610,7 +610,7 @@ export function ProjectsView() {
             {activeProject && (
               <button
                 onClick={handleDelete}
-                className="text-[11px] text-text-muted hover:text-red transition-colors"
+                className="text-[11px] text-text-muted hover:text-red transition-opacity can-hover:opacity-0 can-hover:group-hover/topbar:opacity-100 focus-visible:opacity-100"
               >
                 {t('projects.delete')}
               </button>

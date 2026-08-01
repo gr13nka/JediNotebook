@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import type { Activity } from '@shared/types';
 import { ProgressBar } from '../progress/ProgressBar';
@@ -29,6 +29,10 @@ export function ActivityCard({
   onLongPress,
 }: ActivityCardProps) {
   const { t } = useTranslation();
+  // While the menu is open the hover-reveal is suppressed so an outside-click
+  // close (pointer no longer over the card) can't leave an open menu on a
+  // hidden trigger.
+  const [menuOpen, setMenuOpen] = useState(false);
   const totalElapsed = elapsedSeconds + liveElapsed;
   const ratio = getProgressRatio(totalElapsed, activity.dailyBudgetMinutes);
   const budgetSeconds = activity.dailyBudgetMinutes * 60;
@@ -59,8 +63,12 @@ export function ActivityCard({
 
       {/* 3-dot menu */}
       {onEdit && onDelete && (
-        <div className="absolute top-2 right-2">
-          <ActivityMenu onEdit={onEdit} onDelete={onDelete} />
+        <div
+          className={`absolute top-2 right-2 transition-opacity focus-within:opacity-100 ${
+            menuOpen ? '' : 'can-hover:opacity-0 can-hover:group-hover:opacity-100'
+          }`}
+        >
+          <ActivityMenu onEdit={onEdit} onDelete={onDelete} onOpenChange={setMenuOpen} />
         </div>
       )}
 

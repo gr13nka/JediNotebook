@@ -82,7 +82,7 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
         <div className="absolute -top-[2px] left-2 right-2 h-[2px] rounded-full bg-accent z-10" />
       )}
       <div
-        className="flex items-start gap-1.5 py-1.5"
+        className="group/task flex items-start gap-1.5 py-1.5"
         draggable={draggable}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
@@ -142,7 +142,7 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
         {!editing && onUpdateRecurrence && (
           <button
             onClick={() => setShowRecurrence(!showRecurrence)}
-            className="p-0.5 transition-colors"
+            className="p-0.5 transition-opacity can-hover:opacity-0 can-hover:group-hover/task:opacity-100 focus-visible:opacity-100"
           >
             <RecurringIcon active={!!task.recurrenceRule} />
           </button>
@@ -150,7 +150,7 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
         {!editing && (
           <button
             onClick={onDelete}
-            className="text-text-muted hover:text-red text-xs px-1 transition-colors"
+            className="text-text-muted hover:text-red text-xs px-1 transition-opacity can-hover:opacity-0 can-hover:group-hover/task:opacity-100 focus-visible:opacity-100"
           >
             &times;
           </button>

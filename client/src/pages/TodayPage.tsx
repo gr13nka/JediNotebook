@@ -213,12 +213,12 @@ export function TodayPage() {
       <div>
         {/* Top bar */}
         <div
-          className="flex items-center gap-3 mb-4"
+          className="group/header flex items-center gap-3 mb-4"
         >
           <h1 className="text-lg font-bold text-text-primary">{t('today.title')}</h1>
           <button
             onClick={() => setFocusMode(true)}
-            className="ml-auto p-1.5 rounded-lg text-text-secondary hover:text-text-primary transition-colors"
+            className="ml-auto p-1.5 rounded-lg text-text-secondary hover:text-text-primary transition-opacity can-hover:opacity-0 can-hover:group-hover/header:opacity-100 focus-visible:opacity-100"
             style={{ boxShadow: NEU.raisedSm }}
             title={t('today.focusMode')}
           >
