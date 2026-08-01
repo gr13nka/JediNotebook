@@ -146,7 +146,7 @@ export function Sidebar() {
                   <item.icon size={18} />
                   {!collapsed && <span>{item.label}</span>}
                   {!collapsed && (
-                    <div className="ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab text-text-muted">
+                    <div className="ml-auto shrink-0 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-opacity cursor-grab text-text-muted">
                       <DragDotsIcon size={10} />
                     </div>
                   )}

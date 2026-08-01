@@ -222,7 +222,7 @@ export function ProjectGrid({
                         <button
                           {...card.resizeHandleProps}
                           data-project-card-action
-                          className="absolute bottom-1.5 right-1.5 h-5 w-5 rounded-md text-text-muted/70 opacity-0 transition-opacity hover:text-text-secondary group-hover:opacity-100 focus:opacity-100 cursor-nwse-resize"
+                          className="absolute bottom-1.5 right-1.5 h-5 w-5 rounded-md text-text-muted/70 transition-opacity hover:text-text-secondary can-hover:opacity-0 can-hover:group-hover:opacity-100 focus-visible:opacity-100 cursor-nwse-resize"
                         >
                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                             <path d="M4 10h6V4" />

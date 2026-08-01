@@ -192,7 +192,7 @@ export function DropdownNav() {
                   >
                     <item.icon size={18} />
                     <span>{item.label}</span>
-                    <div className="ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab text-text-muted">
+                    <div className="ml-auto shrink-0 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-opacity cursor-grab text-text-muted">
                       <DragDotsIcon size={10} />
                     </div>
                   </NavLink>
@@ -203,7 +203,7 @@ export function DropdownNav() {
               );
             })}
 
-            {/* Hidden tabs section — collapsed, expands on hover */}
+            {/* Hidden tabs section — on hover-capable devices collapsed until hover; on touch (no hover) always expanded, else the restore buttons would be unreachable */}
             {hiddenItems.length > 0 && (
               <div className="group/hidden">
                 <div className="border-t border-border mx-2 my-1" />
@@ -216,7 +216,7 @@ export function DropdownNav() {
                   {t('nav.hiddenTabs')}
                   <span className="ml-auto text-xs tabular-nums">{hiddenItems.length}</span>
                 </div>
-                <div className="grid grid-rows-[0fr] group-hover/hidden:grid-rows-[1fr] transition-[grid-template-rows] duration-200">
+                <div className="grid grid-rows-[1fr] can-hover:grid-rows-[0fr] can-hover:group-hover/hidden:grid-rows-[1fr] focus-within:grid-rows-[1fr] transition-[grid-template-rows] duration-200">
                   <div className="overflow-hidden">
                     {hiddenItems.map((item) => (
                       <button

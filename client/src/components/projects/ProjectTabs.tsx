@@ -44,7 +44,7 @@ export function ProjectTabs() {
                 e.stopPropagation();
                 closeTab(tabId);
               }}
-              className="text-text-muted hover:text-text-primary text-[11px] opacity-0 group-hover:opacity-100 transition-opacity ml-0.5"
+              className="text-text-muted hover:text-text-primary text-[11px] transition-opacity can-hover:opacity-0 can-hover:group-hover:opacity-100 ml-0.5"
             >
               &times;
             </span>

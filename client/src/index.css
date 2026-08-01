@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/*
+ * `can-hover:` — applies only on devices with a real hover pointer (mouse/trackpad).
+ * On touch devices (Android Tauri, tablets) the media query never matches, so any
+ * hiding gated behind it simply doesn't happen and the control stays visible.
+ *
+ * Canonical hover-reveal recipe:
+ *   transition-opacity can-hover:opacity-0 can-hover:group-hover:opacity-100 focus-visible:opacity-100
+ * (use `focus-within:opacity-100` instead when the hidden element wraps the focusable control)
+ *
+ * Result: controls are always visible on touch devices, hidden-until-hover on mouse,
+ * and keyboard focus always reveals them. Never write a bare
+ * `opacity-0 group-hover:opacity-100` — that makes the control unreachable on touch.
+ */
+@custom-variant can-hover (@media (hover: hover) and (pointer: fine));
+
 /* Typeface presets — bundled locally so desktop and mobile remain fully offline. */
 @font-face {
   font-family: 'Source Serif 4';

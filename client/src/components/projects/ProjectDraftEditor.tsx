@@ -412,7 +412,7 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="text-text-muted/0 group-hover:text-text-muted transition-colors shrink-0"
+          className="text-text-muted transition-opacity can-hover:opacity-0 can-hover:group-hover:opacity-100 group-focus-visible:opacity-100 shrink-0"
         >
           <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
           <path d="m15 5 4 4" />

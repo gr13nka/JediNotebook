@@ -484,7 +484,7 @@ function FolderRow({
             e.stopPropagation();
             onStartRename();
           }}
-          className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-text-secondary text-[10px] ml-0.5 transition-opacity"
+          className="can-hover:opacity-0 can-hover:group-hover:opacity-100 focus-visible:opacity-100 text-text-muted hover:text-text-secondary text-[10px] ml-0.5 transition-opacity"
           title={renameLabel}
           aria-label={renameLabel}
         >
@@ -498,7 +498,7 @@ function FolderRow({
             e.stopPropagation();
             onDelete();
           }}
-          className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-red text-[11px] ml-0.5 transition-opacity"
+          className="can-hover:opacity-0 can-hover:group-hover:opacity-100 focus-visible:opacity-100 text-text-muted hover:text-red text-[11px] ml-0.5 transition-opacity"
         >
           &times;
         </button>

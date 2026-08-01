@@ -183,6 +183,7 @@ Unchanged in spirit: `CustomThemeEditor.tsx` shows 12 color pickers, stored in `
 
 ## Key Patterns
 
+- **Hover-reveal**: secondary controls hide until hover ONLY behind the `can-hover:` variant (`index.css` `@custom-variant`, `(hover:hover) and (pointer:fine)`). Canonical recipe: `transition-opacity can-hover:opacity-0 can-hover:group-hover:opacity-100 focus-visible:opacity-100` (`focus-within:` when the hidden element wraps the focusable). Never write a bare `opacity-0 group-hover:opacity-100` — it makes the control unreachable on touch (Android/Tauri).
 - **Hook pattern**: `hooks/useEntity.ts` gives flat tables reactive CRUD for free (not-deleted filter, sort, create/update/remove via `db/repository.ts`). A hook that needs per-parent scoping or cascades (e.g. `useProjectTasks`, `useTaskBox`) stays bespoke on top of the same repository primitives instead of using `useEntity` directly.
 - **Cascade soft deletes**: still handled in hooks, not the DB (e.g. deleting a project soft-deletes its tasks). `db/repository.ts` deliberately does not own cross-table cascades.
 - **Recurrence spawn**: `db/taskOps.ts`'s `spawnNextOccurrence()` is the single implementation shared by both triggers that can complete a recurring task — the interactive toggle (`useProjectTasks`/`useTaskBox`'s `toggleProjectTask`) and the background catch-up scan (`useRecurringTaskCheck`, for tasks completed while the app wasn't running).
