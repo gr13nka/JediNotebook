@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Client-only productivity app: activity time tracking, projects/tasks with folders and time-boxing (today/week/later), inbox quick-capture, analytics, a staleness counter. Offline-first — Dexie (IndexedDB) is the only database. There is no backend server: the pre-refactor Express/REST-sync stack was deleted (`server/` and `client/src/sync/` no longer exist). The only sync mechanism left is Vault sync (Tauri-only, Obsidian-style file sync).
 
-**Tech Stack**: React 19, TypeScript 5.7, Vite 6, Tailwind CSS 4, Zustand 5, Dexie 4 (IndexedDB), Motion (animations), Recharts, React Router 7 | Tauri v2 (desktop + Android) | Vitest (144 tests) | Shared types in `/shared/`
+**Tech Stack**: React 19, TypeScript 5.7, Vite 6, Tailwind CSS 4, Zustand 5, Dexie 4 (IndexedDB), Motion (animations), Recharts, React Router 7 | Tauri v2 (desktop + Android) | Vitest (194 tests) | Shared types in `/shared/`
 
 > **History**: `.planning/research/*.md` describe the codebase **before** the 2026-07 trim refactor — they still document habits, mind maps, Pomodoro, task timer, notes, PDF documents, fatigue check, review page, REST sync, gamification/XP, and 11 themes, all of which are now deleted. Treat them as historical background only, never as current fact. The refactor plan (what was cut and why) is at `docs/superpowers/plans/2026-07-21-refactor-trim-and-restructure.md`.
 
@@ -64,28 +64,28 @@ client/src/
 │   ├── activities/          # ActivityCard, ActivityForm, ActivityList, ActivityMenu
 │   ├── analytics/           # DailyView, WeeklyView, MonthlyView, StreaksView — rendered inside SettingsPage, not a route
 │   ├── inbox/                # InboxView
-│   ├── layout/               # AppShell, Sidebar, BottomNav, DesktopBottomNav, DropdownNav
+│   ├── layout/               # AppShell, Sidebar, BottomNav, DesktopBottomNav, DropdownNav, navItems.tsx (shared nav registry: icons + ALL_NAV_ITEMS + NAV_ITEM_MAP)
 │   ├── progress/             # ProgressBar, CircularBar, SegmentedBar, ThickLinearBar
-│   ├── projects/             # ProjectsView, ProjectTabs, ProjectTaskList, TaskItem, FileTree, RecurrenceEditor, ProjectDraftEditor, folder/project modals
+│   ├── projects/             # ProjectsView, ProjectTabs, ProjectTaskList, TaskItem, FileTree, RecurrenceEditor, ProjectDraftEditor, ProjectGrid, ProjectSelector, useProjectCardLayout.ts (lives here, not hooks/), folder/project modals
 │   ├── settings/             # ThemeToggle, CustomThemeEditor, BarStylePicker, NavPositionPicker, BottomNavSettings, LanguagePicker, VaultSettings, + 6 more
 │   ├── taskSelection/        # TaskSelectionView (box tabs), TaskGroupCard, FolderGroupSection, SelectableTaskRow, StalenessCounter
 │   ├── timer/                # TimerDisplay, ManualEntry
 │   ├── today/                # TodayTaskCard
-│   └── ui/                   # Button, Card, Input, Modal, ConfirmModal, ConfirmDialog, BottomSheet, ContextMenu, InfoTooltip, RotaryDial, EmojiPicker, FolderBrowserModal, InlineTextEdit, VaultSetupModal, Toggle
+│   └── ui/                   # Button, Card, Input, Modal, ConfirmModal, ConfirmDialog, BottomSheet, ContextMenu, InfoTooltip, RotaryDial, EmojiPicker, FolderBrowserModal, InlineTextEdit, VaultSetupModal, Toggle, CompletionBurst, CelebrationConfetti, TaskTextArea
 ├── db/
-│   ├── index.ts              # Dexie schema (v14) + clearAllTables/snapshotAllTables/restoreFromSnapshot (vault-switch only)
+│   ├── index.ts              # Dexie schema (v17) + clearAllTables/snapshotAllTables/restoreFromSnapshot (vault-switch only)
 │   ├── repository.ts         # Single owner of the record envelope + soft delete (newRecord/updateRecord/softDelete/notDeleted)
 │   ├── taskOps.ts            # Cross-project ProjectTask ops: create/delete/toggle, box-order bookkeeping, recurrence spawn
 │   ├── rollover.ts           # computeRollover — pure box-move rules, no I/O
 │   ├── migrations.ts         # classifyTimeBoxForMigration — v10 upgrade's one-shot classifier
 │   └── seed.ts
-├── hooks/                    # 17 hooks — see Key Patterns
+├── hooks/                    # 20 hooks — see Key Patterns
 ├── i18n/                     # translations.ts (en, ru only), useTranslation.ts
 ├── pages/                    # HomePage, ProjectsPage, TaskSelectionPage, TodayPage, InboxPage, SettingsPage — one per route
 ├── stores/                   # timerStore, settingsStore, projectUIStore (+ inline useSidebarStore in Sidebar.tsx)
 ├── theme/                    # themes.ts (PREBUILT_THEMES data), applyTheme.ts
 ├── vault/                    # vaultStore, vaultSync, vaultLayout.ts, vaultKinds.ts, serializers.ts, conflictResolver/threeWayMerge/vaultBase, tauriBackend/memoryBackend/platform, writeQueue/writeGuard/pollingWatcher/fileIndex (Tauri-only file sync)
-├── utils/                    # uuid, time, colors, shadows, recurrence, markdown, taskDnd
+├── utils/                    # uuid, time, colors, shadows, recurrence, markdown, taskDnd, taskSwipe, taskText, todayReorder, textUndo
 └── workers/                  # timer.worker.ts (only worker left — no Pomodoro worker)
 shared/
 ├── types.ts                  # All entity interfaces; UserSettings is the single settings roster
@@ -115,7 +115,7 @@ There is no `server/` directory and no root `package.json` — this is a client-
 - **Theming — single data table**: `theme/themes.ts` defines each prebuilt theme's 12 color tokens once (`PREBUILT_THEMES`); `theme/applyTheme.ts` is the only code that writes them onto `<html>` as inline CSS custom properties. `useThemeColors.ts` (Recharts palette) and `ThemeToggle.tsx` (swatch UI) both read `PREBUILT_THEMES` instead of hardcoding colors.
 - **Time-boxing** (replaces the old date-scoped `todayTasks` table): every `ProjectTask` carries `timeBox` (`'today' | 'week' | 'later'`), an optional `scheduledDate` pin, and a cross-project `timeBoxOrder`. `hooks/useTaskBox.ts` is the live-query + move/reorder/toggle surface for one box; `/today` (`TodayPage`) is `useTaskBox('today')`, and `/tasks` (`TaskSelectionView`) has box tabs (`today`/`week`/`later`/`all`, defaulting to **week**). `hooks/useTaskRollover.ts` runs `db/rollover.ts`'s `computeRollover()` on mount and on tab-visibility-regain: it demotes everything left in `'today'` (incomplete → `week`, completed → `later`) and promotes any task whose `scheduledDate` is due, all inside one Dexie transaction that also stamps `settings.lastRolloverDate` (the idempotency guard).
 - **Routing**: React Router 7, 6 routes, `AnimatePresence` page transitions (y-slide + fade, 200ms).
-- **Navigation**: three modes via `navPosition` (`'left'` sidebar / `'bottom'` desktop bar / `'dropdown'` FAB+menu), still hand-duplicated across `Sidebar.tsx`, `BottomNav.tsx`, `DesktopBottomNav.tsx`, `DropdownNav.tsx` (the last also needs its own `iconMap`) — any nav-item change touches all four. `BottomNav` itself has two layouts (classic 4-tabs-+-More vs. a scrollable paged variant), switched by the `bottomNavScrollable` setting.
+- **Navigation**: three modes via `navPosition` (`'left'` sidebar / `'bottom'` desktop bar / `'dropdown'` FAB+menu). Nav item data (icons, routes, labels) lives once in `components/layout/navItems.tsx` (`ALL_NAV_ITEMS` + `NAV_ITEM_MAP`); tab visibility/order/reorder/context-menu logic lives in `hooks/useNavTabs.ts`; the four components (`Sidebar.tsx`, `BottomNav.tsx`, `DesktopBottomNav.tsx`, `DropdownNav.tsx`) and `BottomNavSettings.tsx` only render. Adding or changing a nav item = `navItems.tsx` + translations. `BottomNav` additionally filters by its own `bottomNavTabs`/`bottomNavPages` settings, and has two layouts (classic 4-tabs-+-More vs. a scrollable paged variant), switched by the `bottomNavScrollable` setting.
 - **Workers**: only `timer.worker.ts` remains (module-level singleton, survives HMR/StrictMode). No Pomodoro worker.
 - **Soft deletes**: every entity uses `deletedAt`; never hard-deleted except the vault's whole-vault `clearAllTables`/`restoreFromSnapshot` pair (`db/index.ts`), used only around a vault switch.
 - **Logical date**: `getLogicalDate(dayStartHour, reference?)` (`utils/time.ts`) builds the date from **local** date components (not `toISOString()`, which is UTC) after rolling back one day if the local hour is before `dayStartHour`. Used for `TimeEntry.date`, rollover's `today`, and recurrence-completion dating.
@@ -137,11 +137,11 @@ There is no `server/` directory and no root `package.json` — this is a client-
 
 ## Database
 
-**Dexie (client-only) — schema version 14.** 16 tables are declared, but several are retired-legacy:
+**Dexie (client-only) — schema version 17.** 10 tables are declared: `activities`, `timeEntries`, `settings`, `deviceSettings`, `projects`, `projectTasks`, `todayTasks`, `projectFolders`, `inboxItems`, `vaultBase`.
 
 - **Active**: `activities`, `timeEntries`, `settings`, `projects`, `projectTasks`, `projectFolders`, `inboxItems`.
-- **Device-local (never vault-synced)**: `deviceSettings` (vault paths, appearance, language, navigation) and `vaultBase` (v14 — the last-agreed content of each vault file, keyed by path; the common ancestor for conflict merging). Neither has a `vaultLayout` entry, which is what keeps them off the vault.
-- **Legacy — declared for data-safety only, no code anywhere reads or writes them**: `habits`, `habitEntries`, `notes`, `pomodoroPresets`, `mindMaps`, `pdfDocuments`. Any pre-existing rows sit untouched in IndexedDB; nothing creates new ones.
+- **Device-local (never vault-synced)**: `deviceSettings` (vault paths, appearance, language, navigation) and `vaultBase` (added in v14 — the last-agreed content of each vault file, keyed by path; the common ancestor for conflict merging). Neither has a `vaultLayout` entry, which is what keeps them off the vault.
+- **Legacy stores dropped**: schema v17 (2026-08) dropped the six retired-legacy stores (`habits`, `habitEntries`, `notes`, `pomodoroPresets`, `mindMaps`, `pdfDocuments`) outright — a delta `.stores()` call with nulls; any pre-refactor rows were discarded, since no code could read them anyway.
 - **`todayTasks`**: no longer written by the app's own UI (superseded by `timeBox` on `projectTasks`), but still declared and still round-tripped by vault sync for backward compatibility with vaults written by older builds.
 
 All records carry: `id` (UUID v7), `createdAt`, `updatedAt`, `deletedAt`, `deviceId` — except the `settings` row, a fixed-id (`'default'`) singleton with no `createdAt`/`deletedAt`.
@@ -190,6 +190,7 @@ Unchanged in spirit: `CustomThemeEditor.tsx` shows 12 color pickers, stored in `
 - **Settings pipeline**: add a field to `UserSettings` (`shared/types.ts`) → add its default to `DEFAULT_SETTINGS` (`shared/constants.ts`, enforced by `satisfies PersistedSettings`) → build UI in `components/settings/` calling `settingsStore.getState().update({ myField: value })` or a dedicated action. No separate "handle missing field in `load()`" step is needed unless the new field needs a non-default migration — `pickKnownSettings` + the `...DEFAULT_SETTINGS` spread already covers "missing".
 - **Worker singleton**: `useTimer` keeps `timer.worker.ts` as a module-level singleton to survive HMR/StrictMode double-mounts.
 - **Drag-and-drop**: `utils/taskDnd.ts` + `hooks/useReorderList.ts` are the shared primitives behind every draggable list (project tasks, box tabs, task selection rows) — payload encode/decode, copy-vs-move modifier detection, and the drag-index/hit-test bookkeeping for row reordering.
+- **Note undo**: `utils/textUndo.ts` — pure undo/redo history with 500ms typing coalescing, module-level per-project Map; wired into `ProjectDraftEditor`.
 - **Animation springs**: `stiffness: 400, damping: 25–30` standard; toggle thumb `500/30`.
 
 ## Features
@@ -215,7 +216,7 @@ Unchanged in spirit: `CustomThemeEditor.tsx` shows 12 color pickers, stored in `
 1. **`client/src/pages/MyPage.tsx`** — page component.
 2. **`client/src/App.tsx`** — add the `<Route>`.
 3. **`AppShell.tsx`** — add to `WIDE_PAGES`/`FULL_BLEED_PAGES` if needed.
-4. **`Sidebar.tsx`**, **`BottomNav.tsx`**, **`DesktopBottomNav.tsx`**, **`DropdownNav.tsx`** — add the nav item to each (`DropdownNav` also needs an `iconMap` entry). SVG icons are duplicated across all four — any icon change repeats 4 times.
+4. **`components/layout/navItems.tsx`** — add one entry to `ALL_NAV_ITEMS` (icon + labelKey); the four nav components and `BottomNavSettings` pick it up automatically.
 5. **`i18n/translations.ts`** — add `'nav.mypage'` to both `en` and `ru`.
 
 ### New Dexie Table
