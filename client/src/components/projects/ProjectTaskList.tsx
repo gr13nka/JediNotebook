@@ -21,7 +21,7 @@ interface ProjectTaskListProps {
 
 export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTaskListProps) {
   const { t } = useTranslation();
-  const { tasks, createTask, updateTask, toggleTask, deleteTask, reorderTasks, updateRecurrence } = useProjectTasks(projectId);
+  const { tasks, createTask, updateTask, toggleTask, deleteTask, unarchiveTask, reorderTasks, updateRecurrence } = useProjectTasks(projectId);
   const maxTasks = useSettingsStore((s) => s.maxTasksPerProject);
   // Draft lives in the store, not local state: this subtree is keyed by project
   // id in ProjectsView, so switching project or route would otherwise discard
@@ -32,9 +32,13 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
   const setNewTitle = (text: string) => setTaskDraft(projectId, text);
   const [newTaskRule, setNewTaskRule] = useState<RecurrenceRule | null>(null);
   const [showNewRecurrence, setShowNewRecurrence] = useState(false);
+  const [archiveCollapsed, setArchiveCollapsed] = useState(true);
 
   const incompleteTasks = tasks.filter((t) => !t.isCompleted);
-  const completedTasks = tasks.filter((t) => t.isCompleted);
+  const completedTasks = tasks.filter((t) => t.isCompleted && !t.archivedAt);
+  const archivedTasks = tasks
+    .filter((t) => !!t.archivedAt)
+    .sort((a, b) => b.archivedAt!.localeCompare(a.archivedAt!));
   const canAdd = incompleteTasks.length < maxTasks;
 
   const handleAdd = async () => {
@@ -189,6 +193,68 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
           ))}
         </div>
       )}
+
+      {archivedTasks.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-text-muted/10">
+          <button
+            onClick={() => setArchiveCollapsed((p) => !p)}
+            className="flex items-center gap-2 mb-1 text-[10px] uppercase tracking-wider text-text-muted/60 hover:text-text-secondary transition-colors"
+          >
+            <svg
+              className="w-3 h-3 transition-transform duration-200"
+              style={{ transform: archiveCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+            </svg>
+            <span>{t('projectTasks.archived')}</span>
+            <span className="tabular-nums">{archivedTasks.length}</span>
+          </button>
+          {!archiveCollapsed &&
+            archivedTasks.map((task) => (
+              <ArchivedTaskRow
+                key={task.id}
+                task={task}
+                onRestore={() => unarchiveTask(task.id)}
+                onDelete={() => deleteTask(task.id)}
+              />
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Archived rows are read-only remnants — no checkbox, rename, or recurrence
+// (that's TaskItem's job for live rows). Just restore or delete.
+function ArchivedTaskRow({
+  task,
+  onRestore,
+  onDelete,
+}: {
+  task: ProjectTask;
+  onRestore: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-start gap-1.5 py-1.5">
+      <span className="min-w-0 flex-1 text-sm leading-snug line-through text-text-muted break-words [overflow-wrap:anywhere]">
+        {task.title}
+      </span>
+      <button
+        onClick={onRestore}
+        className="shrink-0 text-xs text-text-muted hover:text-text-secondary px-1 transition-colors"
+      >
+        {t('projectTasks.restore')}
+      </button>
+      <button
+        onClick={onDelete}
+        className="shrink-0 text-text-muted hover:text-red text-xs px-1 transition-colors"
+      >
+        &times;
+      </button>
     </div>
   );
 }

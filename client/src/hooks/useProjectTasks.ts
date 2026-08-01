@@ -38,6 +38,11 @@ export function useProjectTasks(projectId: string | null) {
 
   const deleteTask = (id: string) => deleteProjectTask(id);
 
+  // Restore from the archive back to the Completed section — only clears
+  // archivedAt; completion state is untouched.
+  const unarchiveTask = (id: string) =>
+    updateRecord(db.projectTasks, id, { archivedAt: null });
+
   const reorderTasks = async (orderedIds: string[]) => {
     for (let i = 0; i < orderedIds.length; i++) {
       await updateRecord(db.projectTasks, orderedIds[i], { sortOrder: i });
@@ -50,6 +55,7 @@ export function useProjectTasks(projectId: string | null) {
     updateTask,
     toggleTask,
     deleteTask,
+    unarchiveTask,
     reorderTasks,
     updateRecurrence,
   };

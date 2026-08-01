@@ -198,6 +198,7 @@ Unchanged in spirit: `CustomThemeEditor.tsx` shows 12 color pickers, stored in `
 - **Activity Time Tracking**: core timer (`HomePage`), manual entry, daily budgets.
 - **Projects & Tasks**: folder hierarchy, tabbed project editor (`ProjectsView`/`ProjectTabs`), recurrence (daily/weekly/monthly), drag-reorder, `maxTasksPerProject` limit.
 - **Time-boxing**: today/week/later boxes on every task (`ProjectTask.timeBox`), manual promote/demote, optional `scheduledDate` pin, automatic daily rollover. Replaces the old date-scoped Today List.
+- **Task archive**: completed → `archivedAt` stamped after `archiveCompletedAfterDays` logical days (0 = at completion; `autoArchiveCompleted`, default on/1 day) → soft-deleted `deleteArchivedAfterDays` days after archival (`autoDeleteArchived`, default off). The sweep runs in the daily rollover; recurring tasks are never auto-deleted. Archived tasks live in a collapsed Archive section of the project task list with restore (clears `archivedAt`) and delete.
 - **Inbox**: quick-capture, sort into projects, soft-delete with an explicit undelete ("Undo") path.
 - **Analytics**: daily/weekly/monthly summaries + per-activity streaks (Recharts), embedded as a tab inside `/settings` (not its own route).
 - **Staleness Counter**: quadratic incomplete-task-age score, visibility toggle (`pointsCounterVisible`).
