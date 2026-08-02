@@ -1,13 +1,15 @@
 import './testSupport';
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Activity } from '@shared/types';
+import type { Activity, Project, ProjectTask, TimeEntry } from '@shared/types';
 import { resetDb } from './testSupport';
 import { db } from '../db';
 import { exportAllToDisk, importAllFromDisk, handleExternalChange, fileIndex } from './vaultSync';
 import { resolveConflicts } from './conflictResolver';
-import { readBase } from './vaultBase';
-import { serializeActivity } from './serializers';
+import { readBase, recordBase } from './vaultBase';
+import { serializeActivity, serializeTimeEntries, serializeProjectTasksFile } from './serializers';
+import { stringifyFrontmatter } from './frontmatter';
+import { PROJECT_TASKS, TIME_LOG } from './vaultLayout';
 import { MemoryBackend } from './memoryBackend';
 
 beforeEach(async () => {
@@ -17,6 +19,11 @@ beforeEach(async () => {
 const T0 = '2026-07-01T00:00:00.000Z';
 const T1 = '2026-07-15T00:00:00.000Z';
 const ACTIVITY_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const ENTRY_E1_ID = '555555000000000000000000000005';
+const ENTRY_E2_ID = '666666000000000000000000000006';
+const PROJECT_CORRUPT_ID = 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
+const PROJECT_FINE_ID = 'b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2';
+const TASK_FINE_ID = 'c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3';
 
 function buildActivity(overrides: Partial<Activity> = {}): Activity {
   return {
@@ -26,6 +33,64 @@ function buildActivity(overrides: Partial<Activity> = {}): Activity {
     dailyBudgetMinutes: 60,
     isBreak: false,
     sortOrder: 0,
+    createdAt: T0,
+    updatedAt: T0,
+    deletedAt: null,
+    deviceId: 'device-a',
+    ...overrides,
+  };
+}
+
+function buildTimeEntry(overrides: Partial<TimeEntry> = {}): TimeEntry {
+  return {
+    id: 'entry-default',
+    activityId: 'activity-default',
+    startedAt: T0,
+    endedAt: T0,
+    durationSeconds: 60,
+    isManual: true,
+    date: '2026-07-15',
+    createdAt: T0,
+    updatedAt: T0,
+    deletedAt: null,
+    deviceId: 'device-a',
+    ...overrides,
+  };
+}
+
+function buildProject(overrides: Partial<Project> = {}): Project {
+  return {
+    id: 'proj-default',
+    name: 'Project',
+    description: '',
+    color: '#2BA89E',
+    icon: '',
+    sortOrder: 0,
+    isArchived: false,
+    folderId: null,
+    linkedActivityId: null,
+    createdAt: T0,
+    updatedAt: T0,
+    deletedAt: null,
+    deviceId: 'device-a',
+    ...overrides,
+  };
+}
+
+function buildTask(overrides: Partial<ProjectTask> = {}): ProjectTask {
+  return {
+    id: 'task-default',
+    projectId: 'proj-default',
+    title: 'Task',
+    sortOrder: 0,
+    isCompleted: false,
+    completedAt: null,
+    archivedAt: null,
+    recurrenceRule: null,
+    lastRecurredDate: null,
+    timeBox: 'later',
+    scheduledDate: null,
+    timeBoxOrder: 0,
     createdAt: T0,
     updatedAt: T0,
     deletedAt: null,
@@ -147,5 +212,143 @@ describe('handleExternalChange — conflict copies (C8)', () => {
     expect(stored!.updatedAt).toBe(T0);
     expect(await readBase(conflictPath)).toBeNull();
     expect(fileIndex.getId(conflictPath)).toBeUndefined();
+  });
+});
+
+describe('importAllFromDisk — deletion inferred from base (C12)', () => {
+  it('soft-deletes a row that a peer removed from a rewritten date file, and the next export does not resurrect it', async () => {
+    const backend = new MemoryBackend();
+    const date = '2026-07-15';
+    const activityNames = new Map<string, string>();
+
+    const e1 = buildTimeEntry({ id: ENTRY_E1_ID, date, updatedAt: T0 });
+    const e2 = buildTimeEntry({ id: ENTRY_E2_ID, date, updatedAt: T0 });
+    await db.timeEntries.bulkPut([e1, e2]);
+
+    // First export: writes the date file with both entries and records the
+    // base both devices now agree on.
+    await exportAllToDisk(backend);
+    const path = TIME_LOG.buildPath(date);
+    const exported = await backend.readFile(path);
+    expect(exported).toContain(ENTRY_E1_ID);
+    expect(exported).toContain(ENTRY_E2_ID);
+
+    // The peer device deleted E2 locally and its own export rewrote the file
+    // with only E1 — real serializer, no hand-written frontmatter.
+    const peerContent = serializeTimeEntries(date, [e1], activityNames).content;
+    await backend.writeFile(path, peerContent);
+
+    const result = await importAllFromDisk(backend);
+    expect(result.errors).toEqual([]);
+
+    // Existence-first: a missing row and a soft-deleted row are both falsy on
+    // `.deletedAt`, so assert the row was found before checking its state.
+    const storedE1 = await db.timeEntries.get(ENTRY_E1_ID);
+    expect(storedE1).toBeTruthy();
+    expect(storedE1!.deletedAt).toBeFalsy();
+
+    const storedE2 = await db.timeEntries.get(ENTRY_E2_ID);
+    expect(storedE2).toBeTruthy();
+    expect(storedE2!.deletedAt).toBeTruthy();
+
+    // No resurrection: exporting again must not bring E2 back into the file.
+    await exportAllToDisk(backend);
+    const afterExport = await backend.readFile(path);
+    expect(afterExport).toContain(ENTRY_E1_ID);
+    expect(afterExport).not.toContain(ENTRY_E2_ID);
+  });
+
+  it('keeps a row the peer file has that the base never recorded, instead of treating it as deleted', async () => {
+    const backend = new MemoryBackend();
+    const date = '2026-07-16';
+    const activityNames = new Map<string, string>();
+
+    const e1 = buildTimeEntry({ id: ENTRY_E1_ID, date, updatedAt: T0 });
+    await db.timeEntries.put(e1);
+    await exportAllToDisk(backend); // base recorded for the E1-only file
+
+    const path = TIME_LOG.buildPath(date);
+    // Peer added a brand-new entry: base never had it, so its absence from
+    // our own prior state is not what proves deletion — its presence here
+    // must be honored as new, active data.
+    const e2 = buildTimeEntry({ id: ENTRY_E2_ID, date, updatedAt: T0 });
+    const peerContent = serializeTimeEntries(date, [e1, e2], activityNames).content;
+    await backend.writeFile(path, peerContent);
+
+    const result = await importAllFromDisk(backend);
+    expect(result.errors).toEqual([]);
+
+    const storedE2 = await db.timeEntries.get(ENTRY_E2_ID);
+    expect(storedE2).toBeTruthy();
+    expect(storedE2!.deletedAt).toBeFalsy();
+  });
+
+  it('infers nothing for a path with no recorded base (fresh import, union-keeps preserved)', async () => {
+    const backend = new MemoryBackend();
+    const date = '2026-07-17';
+    const activityNames = new Map<string, string>();
+
+    // A row already local (e.g. from a prior local-only session) that this
+    // date file's on-disk content has never mentioned.
+    const e2 = buildTimeEntry({ id: ENTRY_E2_ID, date, updatedAt: T0 });
+    await db.timeEntries.put(e2);
+
+    const path = TIME_LOG.buildPath(date);
+    const e1 = buildTimeEntry({ id: ENTRY_E1_ID, date, updatedAt: T0 });
+    await backend.writeFile(path, serializeTimeEntries(date, [e1], activityNames).content);
+
+    expect(await readBase(path)).toBeNull();
+
+    const result = await importAllFromDisk(backend);
+    expect(result.errors).toEqual([]);
+
+    const storedE2 = await db.timeEntries.get(ENTRY_E2_ID);
+    expect(storedE2).toBeTruthy();
+    expect(storedE2!.deletedAt).toBeFalsy();
+  });
+});
+
+describe('importAllFromDisk — prune guard on partial failure (C12)', () => {
+  it('does not evict another path\'s recorded base when a different path in the same kind fails to parse', async () => {
+    const backend = new MemoryBackend();
+
+    // "AAA Corrupt" sorts before "ZZZ Fine" (MemoryBackend.listDirs returns
+    // sorted paths), so its tasks.md is read first and its throw aborts the
+    // rest of projectTasks' per-path loop before ZZZ Fine's tasks.md is ever
+    // reached this run.
+    // A wholly unrelated kind that succeeds, so `total > 0` and import's
+    // "everything failed" guard (`total === 0 && errors.length > 0`) doesn't
+    // throw before returning — orthogonal to the prune guard under test here.
+    const real = buildActivity({ updatedAt: T0 });
+    const activityFile = serializeActivity(real);
+    await backend.writeFile(activityFile.path, activityFile.content);
+
+    const corruptProject = buildProject({ id: PROJECT_CORRUPT_ID, name: 'AAA Corrupt' });
+    const corruptPath = PROJECT_TASKS.buildPath(corruptProject.name, corruptProject.id);
+    // Valid frontmatter delimiters — parseFrontmatter never throws on bad
+    // YAML — but `tasks` is not an array, so deserializeProjectTasks's
+    // `.map` call throws a TypeError instead of quietly returning `[]`. Same
+    // trigger as conflictResolver.e2e.test.ts's C7 regression case.
+    const corruptContent = stringifyFrontmatter({ projectId: corruptProject.id, updatedAt: T0, tasks: 42 }, '');
+    await backend.writeFile(corruptPath, corruptContent);
+
+    const fineProject = buildProject({ id: PROJECT_FINE_ID, name: 'ZZZ Fine' });
+    const fineTask = buildTask({ id: TASK_FINE_ID, projectId: PROJECT_FINE_ID, updatedAt: T0 });
+    const finePath = PROJECT_TASKS.buildPath(fineProject.name, fineProject.id);
+    const fineContent = serializeProjectTasksFile(fineProject, [fineTask]).content;
+    await backend.writeFile(finePath, fineContent);
+    // Simulates a prior successful sync: this path's base is already agreed.
+    await recordBase(finePath, fineContent);
+
+    const result = await importAllFromDisk(backend);
+
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some(e => e.includes('projectTasks'))).toBe(true);
+
+    // Without the guard, pruneBases(seen) still runs after the loop and
+    // "ZZZ Fine"'s tasks.md — never reached this run because "AAA Corrupt"'s
+    // throw aborted the loop first — is missing from `seen`, so its base
+    // gets wrongly forgotten even though the file itself is untouched.
+    expect(await readBase(finePath)).toBe(fineContent);
   });
 });

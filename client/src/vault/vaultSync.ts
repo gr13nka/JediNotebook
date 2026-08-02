@@ -3,7 +3,7 @@ import type { VaultBackend } from './vaultBackend';
 import { fileIndex } from './fileIndex';
 import { VAULT_KINDS, KIND_BY_TABLE, type VaultExportContext } from './vaultKinds';
 import { vaultDirs, tableFromPath } from './vaultLayout';
-import { recordBase, forgetBase, pruneBases } from './vaultBase';
+import { recordBase, forgetBase, pruneBases, readBase } from './vaultBase';
 import { conflictTargetPath } from './conflictPaths';
 
 const VAULT_VERSION = 1;
@@ -80,6 +80,33 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
         if (conflictTargetPath(path)) continue;
         const content = await backend.readFile(path);
         const parsed = kind.parseFile(path, content);
+
+        // A row present in the last-agreed base but missing from this file is
+        // a deletion — the same rule mergeRowSets already applies for a
+        // conflict copy, so an ordinary file resolves identically whether or
+        // not it happens to arrive as one. Deletion wins over a concurrent
+        // local edit (no updatedAt comparison here): Syncthing's own file
+        // versioning is the recovery net for that case.
+        if (kind.softDeleteRow) {
+          const baseRaw = await readBase(path);
+          if (baseRaw !== null) {
+            try {
+              const baseIds = new Set(
+                kind.parseFile(path, baseRaw).rows.map(r => r.id as string).filter(Boolean),
+              );
+              const fileIds = new Set(parsed.rows.map(r => r.id as string));
+              for (const id of baseIds) {
+                if (!fileIds.has(id)) await kind.softDeleteRow(id);
+              }
+            } catch {
+              // A corrupt stored base must not break import — skip inference
+              // for this path. The current file already parsed fine above,
+              // so it still imports normally; a real error reading/parsing
+              // *it* still falls through to the per-kind catch below.
+            }
+          }
+        }
+
         for (const row of parsed.rows) {
           await kind.mergeRow(row, 'reconcile');
         }
@@ -95,7 +122,13 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
     }
   }
 
-  await pruneBases(seen);
+  // A kind that errored leaves its unprocessed paths out of `seen` even
+  // though their files may be untouched on disk — pruning now would wrongly
+  // forget those paths' recorded bases. Skip pruning entirely on any error;
+  // it resumes on the next clean run.
+  if (errors.length === 0) {
+    await pruneBases(seen);
+  }
 
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   if (errors.length > 0) {
