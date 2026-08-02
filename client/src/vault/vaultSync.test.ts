@@ -1,12 +1,13 @@
 import './testSupport';
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Activity, InboxItem, Project, ProjectTask, TimeEntry, UserSettings } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { resetDb } from './testSupport';
 import { db } from '../db';
 import { exportAllToDisk, importAllFromDisk, handleExternalChange, writeEntityToDisk, fileIndex } from './vaultSync';
 import { resolveConflicts } from './conflictResolver';
+import { KIND_BY_TABLE } from './vaultKinds';
 import { readBase, recordBase } from './vaultBase';
 import {
   serializeActivity, serializeTimeEntries, serializeProjectTasksFile,
@@ -29,6 +30,7 @@ const ENTRY_E2_ID = '666666000000000000000000000006';
 const PROJECT_CORRUPT_ID = 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
 const PROJECT_FINE_ID = 'b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2';
 const TASK_FINE_ID = 'c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3';
+const TASK_REMOVED_ID = 'c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4';
 const INBOX_ITEM_ID = 'd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4';
 
 function buildActivity(overrides: Partial<Activity> = {}): Activity {
@@ -378,6 +380,76 @@ describe('importAllFromDisk — prune guard on partial failure (C12)', () => {
     // throw aborted the loop first — is missing from `seen`, so its base
     // gets wrongly forgotten even though the file itself is untouched.
     expect(await readBase(finePath)).toBe(fineContent);
+  });
+});
+
+describe('applyBaseDiffDeletions — corrupt base and soft-delete failures (IMPORTANT 4)', () => {
+  it('skips inference for a path whose recorded base fails to parse, but still imports the file and re-records its base', async () => {
+    const backend = new MemoryBackend();
+    const project = buildProject({ id: PROJECT_FINE_ID, name: 'ZZZ Fine' });
+    await db.projects.put(project);
+    const path = PROJECT_TASKS.buildPath(project.name, project.id);
+
+    // Unparseable stored base — same corruption trigger as the prune-guard
+    // test above (`tasks: 42` makes deserializeProjectTasks's `.map` throw).
+    const corruptBase = stringifyFrontmatter({ projectId: project.id, updatedAt: T0, tasks: 42 }, '');
+    await recordBase(path, corruptBase);
+
+    const task = buildTask({ id: TASK_FINE_ID, projectId: project.id, updatedAt: T0 });
+    const validContent = serializeProjectTasksFile(project, [task]).content;
+    await backend.writeFile(path, validContent);
+
+    const result = await importAllFromDisk(backend);
+
+    expect(result.errors).toEqual([]);
+    const stored = await db.projectTasks.get(TASK_FINE_ID);
+    expect(stored).toBeTruthy();
+    expect(stored!.deletedAt).toBeFalsy();
+
+    // The corrupt base is replaced by the freshly imported, valid content —
+    // import proceeds normally despite the unreadable ancestor.
+    expect(await readBase(path)).toBe(validContent);
+  });
+
+  it('propagates a softDeleteRow failure instead of recording a new base for that path', async () => {
+    const backend = new MemoryBackend();
+
+    // A wholly unrelated kind that succeeds, so `total > 0` and import's
+    // "everything failed" guard (`total === 0 && errors.length > 0`) doesn't
+    // throw before returning — orthogonal to the failure under test here,
+    // same as the prune-guard scenario above.
+    const real = buildActivity({ updatedAt: T0 });
+    const activityFile = serializeActivity(real);
+    await backend.writeFile(activityFile.path, activityFile.content);
+
+    const project = buildProject({ id: PROJECT_FINE_ID, name: 'ZZZ Fine' });
+    await db.projects.put(project);
+    const path = PROJECT_TASKS.buildPath(project.name, project.id);
+
+    const staying = buildTask({ id: TASK_FINE_ID, projectId: project.id, title: 'Stays', sortOrder: 0, updatedAt: T0 });
+    const removed = buildTask({ id: TASK_REMOVED_ID, projectId: project.id, title: 'Removed', sortOrder: 1, updatedAt: T0 });
+    const agreedContent = serializeProjectTasksFile(project, [staying, removed]).content;
+    await recordBase(path, agreedContent);
+    await db.projectTasks.bulkPut([staying, removed]);
+
+    // The peer's rewrite drops `removed` — base-diff would normally
+    // soft-delete it, but softDeleteRow is stubbed to blow up instead.
+    const rewritten = serializeProjectTasksFile(project, [staying]).content;
+    await backend.writeFile(path, rewritten);
+
+    const spy = vi.spyOn(KIND_BY_TABLE.projectTasks, 'softDeleteRow').mockRejectedValue(new Error('boom'));
+    try {
+      const result = await importAllFromDisk(backend);
+      expect(result.errors.some(e => e.includes('projectTasks'))).toBe(true);
+
+      // The failure must abort before recordBase runs for this path — the
+      // old base (with `removed` still in it) survives, not the rewritten
+      // content, so a later clean run can still prove the deletion instead
+      // of silently losing the evidence.
+      expect(await readBase(path)).toBe(agreedContent);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

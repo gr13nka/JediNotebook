@@ -82,19 +82,27 @@ async function applyBaseDiffDeletions(
   if (!kind.softDeleteRow) return;
   const baseRaw = await readBase(path);
   if (baseRaw === null) return;
+
+  // Only base *parsing* is guarded: a corrupt stored base must not break
+  // import, and there is nothing to diff against once it fails to parse.
+  // The current file already parsed fine above (parseFile succeeded before
+  // this call ran), so it still imports normally either way.
+  let baseIds: Set<string>;
   try {
-    const baseIds = new Set(
+    baseIds = new Set(
       kind.parseFile(path, baseRaw).rows.map(r => r.id as string).filter(Boolean),
     );
-    const fileIds = new Set(parsedRows.map(r => r.id as string));
-    for (const id of baseIds) {
-      if (!fileIds.has(id)) await kind.softDeleteRow(id);
-    }
   } catch {
-    // A corrupt stored base must not break import — skip inference for this
-    // path. The current file already parsed fine above, so it still imports
-    // normally; a real error reading/parsing *it* still falls through to the
-    // per-kind catch below.
+    return;
+  }
+
+  // A softDeleteRow failure, by contrast, must propagate — swallowing it
+  // here would let the caller record the new base anyway, permanently
+  // discarding the one piece of evidence (the old base) a retry would need
+  // to prove the same deletion again.
+  const fileIds = new Set(parsedRows.map(r => r.id as string));
+  for (const id of baseIds) {
+    if (!fileIds.has(id)) await kind.softDeleteRow(id);
   }
 }
 
