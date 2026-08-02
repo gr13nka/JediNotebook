@@ -37,6 +37,42 @@ won on timestamp.
 > timestamp from the data being serialized. A serializer must be a pure function
 > of its input, or the sync layer sees changes that never happened.
 
+`serializeProjectTasksFile` was just the first one caught. `serializeTimeEntries`,
+`serializeTodayTasks`, and `serializeInbox` had the identical bug and now share
+the fix through the same helper, `maxUpdatedAt` (`serializers.ts`): the file's
+stamp is the latest `updatedAt` actually present among the rows being written,
+never the wall clock.
+
+## No separate write-loop guard
+
+A third fix might seem missing from the two above: something to suppress the
+file-watcher event that fires when the app observes its *own* write. There
+isn't one — `writeGuard.ts`, a per-path TTL map, was deleted rather than wired
+in properly.
+
+It was already dead code: `mark()`, the method that would have started a
+path's TTL, was never called from anywhere, so the guard had been inert since
+it shipped. It also could not have worked as designed even if it were wired
+up — its 2-second TTL is shorter than `PollingWatcher`'s 5-second interval
+(`POLL_INTERVAL_MS`), the fallback used wherever native file-watching isn't
+available (e.g. Android external storage), so a slow poll cycle could let the
+guard expire before the self-write's own event arrived. A timing-based guard
+that expires too early lets the self-write back in; one that expires too late
+can just as easily suppress a genuine external edit landing in the same
+window. Either failure loses data, which a merge rule cannot.
+
+The protections actually in place don't have that problem, because neither
+depends on timing. `TauriVaultBackend.writeFile` skips a write whose content
+already matches what's on disk, so the app's own re-write of unchanged data
+never touches mtime and never looks like a change to begin with. And every
+ordinary merge (`mergeEntity` in `vaultKinds.ts`, `SETTINGS_KIND.mergeRow`)
+applies only on a strict `incoming.updatedAt > existing.updatedAt` — a
+self-write that does get re-observed and re-imported ties on `updatedAt` and
+simply fails to apply, correct no matter how the watcher and an export happen
+to interleave. `vaultSync.test.ts` pins exactly this loop: re-importing the
+file the app just wrote for an activity leaves Dexie byte-for-byte unchanged,
+with no suppression involved at all.
+
 ## Three-way merge
 
 Combining two versions requires a common ancestor. Without one, "the other
@@ -54,10 +90,14 @@ Given `base`, an item is dropped only when `base` proves it existed and one side
 removed it. Anything absent from `base` is genuinely new on whichever side has
 it, and is kept.
 
-With `base === null` — nothing recorded yet, e.g. the first run after upgrading
-— both merges degrade to a union. No deletion can be proven, so nothing is
-dropped. That errs toward keeping too much, which a user can fix by hand, rather
-than losing text, which they cannot.
+With `base === null` — nothing recorded yet, because this device has never
+synced this path before — both merges degrade to a union. That is not only a
+one-time event: `vaultBase` is device-local and gets wiped along with every
+other synced table by `switchVault`'s `clearAllTables` (`db/index.ts`), so a
+device sees `base === null` again for a whole vault every time it switches to
+a different one, not just on its first-ever sync. No deletion can be proven in
+that state, so nothing is dropped. That errs toward keeping too much, which a
+user can fix by hand, rather than losing text, which they cannot.
 
 ## Module layout
 
@@ -66,6 +106,7 @@ than losing text, which they cannot.
 | `threeWayMerge.ts` | Pure merge algorithms: `mergeTextBodies` (paragraphs), `mergeRowSets` (id-keyed rows). No I/O. |
 | `vaultBase.ts` | Records, reads and prunes the agreed-state snapshot per path. |
 | `conflictResolver.ts` | Finds conflict copies, plans the merge (`planMerge`, pure), persists it, deletes the copy. |
+| `conflictPaths.ts` | Recognizes a conflict-copy path and the file it belongs to (`conflictTargetPath`) — the one place that owns the `.sync-conflict-<date>-<time>-<device>` naming convention. |
 
 `resolveConflicts()` runs from `vaultStore.enable` and `vaultStore.syncNow`,
 **before** the import — and against the *real* backend. The import reads from
@@ -74,6 +115,54 @@ disk.
 
 It is safe to run repeatedly: a copy is deleted only after its content has
 reached Dexie, so an interrupted run leaves the rest for the next pass.
+
+`conflictTargetPath` lives in its own module rather than in
+`conflictResolver.ts` (which still re-exports it for existing callers) because
+`vaultSync.ts` needs it too, and `conflictResolver.ts` already imports
+`writeEntityToDisk` from `vaultSync.ts` — importing it back the other way
+would make the two modules mutually dependent.
+
+**A conflict copy is never treated as an ordinary file.** Both
+`importAllFromDisk` and `handleExternalChange` (`vaultSync.ts`) check
+`conflictTargetPath` before touching a path. Without that check, a kind's
+loose prefix/extension matching (`discoverPaths`) would happily import a
+`.sync-conflict-*` copy as an extra row of the same kind — bypassing the
+three-way merge entirely and polluting `fileIndex`/`vaultBase` with a path
+that `resolveConflicts()` is about to delete. `resolveConflicts()` is the only
+code allowed to read and then delete a conflict copy. One that arrives while
+the app is already running — via the file watcher started in
+`vaultStore.enable` — skips the 60-second periodic reconcile and triggers
+`syncNow()` immediately instead (unless a sync is already in flight), so it
+gets folded in within moments rather than sitting on disk until the next
+scheduled pass.
+
+**A failed resolution leaves everything exactly as it found it.** If the copy
+is unreadable, its content doesn't parse, or the rewrite-to-disk step below
+throws, `resolveOne` returns early without deleting the copy or touching the
+recorded base — the next pass retries against the same ancestor. There used
+to be a `forgetBase` call in this failure path; dropping the base made the
+*next* attempt after a real failure degrade to a union merge (see "Three-way
+merge" above) instead of retrying with the same information it already had.
+
+**Every successful merge is written back to disk and its base recorded before
+`resolveOne` returns — for every kind, not only the entity-scoped ones**
+(activities, projects) whose file is named directly after the row. An
+aggregate kind's target (`tasks.md`, a time-log date, the inbox, folders, even
+`settings.json`'s non-keyed branch below) is re-resolved through the same
+`writeEntityToDisk` a live edit would use, keyed off any row the merge left
+standing — or, if the merge deleted every row, one of the ids it just proved
+deleted. This works because `gatherWriteSet` already knows how to turn any one
+row's id into "regenerate the whole owning file" for these kinds. Without it,
+a merge could be correct in Dexie yet never reach disk until an unrelated
+write happened to trigger a re-export — leaving the conflict copy deleted and
+the merged content nowhere a peer's next sync could see it.
+
+`vault.json` is the one vault-relative path with no `VaultKind` at all:
+`exportAllToDisk` writes it once, guarded by an `exists` check, and nothing
+ever reads its content back. `resolveConflicts()` handles it separately, after
+the per-kind loop — it lists the vault root directly and deletes any
+`vault.json.sync-conflict-*` copy outright. Deleting the copy *is* the
+resolution; there is no target to merge into.
 
 ## Per-kind behaviour
 
@@ -100,6 +189,38 @@ logic in the registry rather than in the resolver:
   file has no keyed rows at all — its one row is merged field-by-field
   instead (below), not soft-deleted a row at a time.
 
+A kind that sets `softDeleteRow` needs it for more than an actual Syncthing
+conflict — **ordinary import applies the identical rule.** `importAllFromDisk`
+(`vaultSync.ts`) diffs each incoming file's row ids against this device's last
+recorded base for that path; an id that was in the base but is missing from
+the file is soft-deleted immediately, with no comparison to the local row's
+own `updatedAt`. Deletion wins over a concurrent local edit unconditionally —
+deliberate, and consistent with `mergeRowSets`, which already resolves a
+base-had-it, now-missing row as a deletion the same way, so an ordinary file
+must resolve identically whether or not it happens to arrive alongside an
+actual conflict copy. The cost is that editing a row at the same moment
+another device deletes it can lose the edit outright; Syncthing's own file
+versioning (see `docs/vault-sync.md`) is the recovery net for that case, not
+the app.
+
+`pruneBases` — the sweep that drops a `vaultBase` entry once its path is no
+longer live — is skipped for the whole import whenever any kind errored.
+`importAllFromDisk` only marks a path as `seen` once it fully imports; a kind
+that failed partway leaves some of its live paths unmarked even though the
+files on disk are untouched, and pruning on that run would forget their
+recorded bases for no reason. Pruning simply resumes on the next clean run.
+
+`inbox.md` relies on the same base-diff rule to express the one case a plain
+file-delete can't: deleting the last inbox item no longer deletes the file.
+`INBOX_KIND.collectFiles` keeps writing an empty-list `inbox.md` once the
+inbox has ever held a row (soft-deleted rows count), mirroring the same
+"ever had rows" rule `FOLDERS_KIND` already applies. An aggregate file has no
+`fileIndex` entry, so if the file itself vanished, a peer's external-change
+handler would have no id to soft-delete and its own next export would simply
+resurrect the item. An empty file, by contrast, is an ordinary MODIFY — a row
+missing from a file that still exists — which the base-diff rule above
+already reads correctly as a deletion.
+
 Structured rows always resolve by `id` + `updatedAt` — the same rule
 `mergeEntity` applies — so a conflict copy can never resolve differently than
 the file would have if it had arrived without conflicting.
@@ -116,6 +237,19 @@ settings while disconnected converge with both changes intact, instead of one
 device's entire settings row winning and silently discarding the other's
 edit. Any shape the merge can't reason about (no target file yet, more than
 one row on some side) falls back to the previous whole-row LWW hand-off.
+
+That field-wise reconciliation only happens inside an actual conflict
+resolution, where a base is available to arbitrate. Outside one,
+`SETTINGS_KIND.mergeRow` handles both whole-vault import and a live external
+file-change event with one single rule: apply the incoming row only if no
+local row exists yet or the incoming row's `updatedAt` is strictly newer. The
+two call sites used to differ — the external-change path did an unconditional
+`put`, selected via a `MergeSource` parameter threaded through `mergeRow` —
+which let a stale file delivered late, or the app's own just-written file
+re-observed by the watcher, clobber newer local settings. Both sources are
+strict now, `MergeSource` has been deleted along with the distinction it
+existed to carry, and a self-re-imported file is a provable no-op: its
+`updatedAt` equals the stored row's, so it never re-applies.
 
 ## The `updatedAt` bump
 
@@ -138,6 +272,13 @@ spurious stamps on *unchanged* data; here the content genuinely changed.
 `conflictResolver.test.ts` guards this specific failure. Both bump assertions
 fail if the bump is removed — verified by removing it.
 
+The non-keyed (settings) branch bumps for the identical reason: `resolveOne`
+advances `updatedAt` whenever the field-wise merge (`mergeFlatRecord`)
+produces a row that differs from `ours`, using the same `changedFromOurs`
+signal the merge already returns. Without it, a settings conflict this
+device's values happen to win would compute correctly and then fail to
+persist for the same tie-on-`updatedAt` reason as above.
+
 ## Testing
 
 `planMerge` is pure and exported precisely so the shipped decision logic can be
@@ -155,3 +296,22 @@ scenario also pins format fidelity, and it exercises the discovery path (a
 kind's directories, the vault root for singletons) rather than only the merge
 decision. Subsequent fix-tasks extend this suite with a regression scenario
 each rather than adding a parallel one.
+
+Two narrower contract tests guard failure modes that don't look like a
+merge-logic bug at all, which is exactly why they need their own test rather
+than relying on the scenarios above to catch them. `backendContract.test.ts`
+runs the same listing contract — `listFiles`/`listDirs` return clean,
+leading-slash-free, direct-children-only paths — against every `VaultBackend`
+implementation via the shared `joinChildPath` helper (`vaultBackend.ts`). A
+leading slash at the vault root once made `conflictTargetPath` never match a
+root singleton's conflict copy on a real Tauri backend, so
+`settings.json`/`folders.json`/`inbox.md` conflict copies silently piled up
+while `MemoryBackend`-only tests stayed green throughout. `capabilities.test.ts`
+reads the Tauri capability file's granted `fs:allow-*` permissions directly —
+not through Tauri — and checks it against every permission the vault layer
+actually calls, including `fs:allow-stat`: `PollingWatcher`'s mtime snapshot
+depends on `stat()`, and an ungranted permission used to fail silently (a
+caught exception, frozen mtimes, no visible symptom) rather than surface as
+the missing-permission bug it was. The watcher now also warns once via
+`console.warn` when `stat()` fails, so the degradation is visible instead of
+silent even before the permission is fixed.
