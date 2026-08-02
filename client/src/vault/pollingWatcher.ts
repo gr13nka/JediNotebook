@@ -20,6 +20,7 @@ export class PollingWatcher {
   private callback: WatchCallback;
   private visibilityHandler: (() => void) | null = null;
   private polling = false;
+  private statWarningLogged = false;
 
   constructor(basePath: string, callback: WatchCallback) {
     this.basePath = basePath;
@@ -31,12 +32,16 @@ export class PollingWatcher {
 
     this.intervalId = setInterval(() => this.poll(), intervalMs);
 
-    this.visibilityHandler = () => {
-      if (document.visibilityState === 'visible') {
-        this.poll();
-      }
-    };
-    document.addEventListener('visibilitychange', this.visibilityHandler);
+    // No `document` outside a browser/webview (e.g. Node test environment) —
+    // the resume-on-visible behavior is an enhancement, not a requirement.
+    if (typeof document !== 'undefined') {
+      this.visibilityHandler = () => {
+        if (document.visibilityState === 'visible') {
+          this.poll();
+        }
+      };
+      document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
   }
 
   stop(): void {
@@ -111,7 +116,14 @@ export class PollingWatcher {
           try {
             const info = await stat(`${this.basePath}/${relativePath}`);
             mtime = info.mtime ? new Date(info.mtime).getTime() : 0;
-          } catch {
+          } catch (err) {
+            if (!this.statWarningLogged) {
+              this.statWarningLogged = true;
+              console.warn(
+                '[vault] Polling watcher: stat() failed — modification detection is degraded (reusing the previous mtime) until the "fs:allow-stat" permission is granted.',
+                err,
+              );
+            }
             // Unreadable file — treat as unchanged rather than churning events.
             mtime = this.snapshot.get(relativePath) ?? 0;
           }
