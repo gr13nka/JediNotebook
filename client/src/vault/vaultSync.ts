@@ -28,11 +28,14 @@ async function loadExportContext(): Promise<VaultExportContext> {
 }
 
 export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
-  // Write vault marker
-  await backend.writeFile('vault.json', JSON.stringify({
-    version: VAULT_VERSION,
-    exportedAt: new Date().toISOString(),
-  }, null, 2) + '\n');
+  // Write the vault marker once. Nothing reads its content back, so an
+  // `exportedAt` timestamp only made this file differ on every export,
+  // manufacturing a Syncthing conflict on every export pair between two
+  // devices. Constant content + an exists-guard means existing vaults keep
+  // whatever vault.json they already have, untouched.
+  if (!(await backend.exists('vault.json'))) {
+    await backend.writeFile('vault.json', JSON.stringify({ version: VAULT_VERSION }, null, 2) + '\n');
+  }
 
   // Ensure directories exist
   for (const dir of vaultDirs()) {

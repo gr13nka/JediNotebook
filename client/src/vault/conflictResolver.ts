@@ -267,6 +267,32 @@ export async function resolveConflicts(backend: VaultBackend): Promise<ConflictR
     }
   }
 
+  // vault.json's content is never read back (see vaultSync.ts), so no
+  // VaultKind's `matchesPath` ever claims it and the loop above never sees
+  // its conflict copies. There is nothing to merge — deleting the copy *is*
+  // the resolution.
+  try {
+    const rootEntries = await backend.listFiles('');
+    for (const path of rootEntries) {
+      if (conflictTargetPath(path) !== 'vault.json') continue;
+      try {
+        await backend.deleteFile(path);
+        results.push({
+          conflictPath: path, targetPath: 'vault.json', resolved: true,
+          added: 0, removed: 0, unionFallback: false,
+        });
+      } catch (err) {
+        results.push({
+          conflictPath: path, targetPath: 'vault.json', resolved: false,
+          added: 0, removed: 0, unionFallback: false, error: String(err),
+        });
+      }
+    }
+  } catch {
+    // A failed listing must not break the resolver — the per-kind conflicts
+    // resolved above still stand.
+  }
+
   for (const r of results) {
     if (!r.resolved) await forgetBase(r.targetPath).catch(() => {});
   }
