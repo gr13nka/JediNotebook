@@ -60,8 +60,9 @@ export interface ParsedFile {
  * (`importAllFromDisk`, which must not clobber a newer local edit — LWW)
  * vs. a single external file-change event (`handleExternalChange`
  * create/modify — the file the user or another synced device just touched
- * is authoritative). Every kind but settings applies the same LWW policy to
- * both; settings does not — see `SETTINGS_KIND.mergeRow`'s doc comment.
+ * is authoritative). Every kind applies the same strict LWW policy to both
+ * sources — see `SETTINGS_KIND.mergeRow`'s doc comment for why settings in
+ * particular needs this to hold for `external` too.
  */
 export type MergeSource = 'reconcile' | 'external';
 
@@ -96,7 +97,7 @@ export interface VaultKind {
   /** Whole-vault import / external change: one file's content -> rows. */
   parseFile(path: string, content: string): ParsedFile;
 
-  /** Write one parsed row into Dexie (LWW-merge — settings is the exception). */
+  /** Write one parsed row into Dexie (LWW-merge for both `source` values). */
   mergeRow(row: Record<string, unknown>, source: MergeSource): Promise<void>;
 
   /**
@@ -504,20 +505,17 @@ const SETTINGS_KIND: VaultKind = {
   },
 
   /**
-   * Settings predates a uniform LWW policy and keeps its own, pre-3.1b:
-   * a whole-vault reconcile only takes the file if settings don't exist
-   * locally yet or the file is newer (settings has no `deletedAt`, so this
-   * can't reuse the generic `mergeEntity`); a live external file-change
-   * event is unconditional — the file was just touched by the user or
-   * another synced device, so it always wins. Preserved as-is here, not
-   * introduced by this refactor.
+   * Both sources take the same strict-`>` LWW rule (settings has no
+   * `deletedAt`, so this can't reuse the generic `mergeEntity`): apply the
+   * imported row only if no local row exists yet or the imported row is
+   * strictly newer. A live external file-change event used to be
+   * unconditional, which let a stale file delivered late — or the app's own
+   * just-written file re-observed by the watcher — clobber newer local
+   * settings. Under strict `>`, a self-re-imported file is a provable no-op:
+   * its updatedAt equals the stored row's, so it never re-applies.
    */
-  async mergeRow(row, source) {
+  async mergeRow(row) {
     const imported = row as Partial<UserSettings>;
-    if (source === 'external') {
-      await db.settings.put({ id: 'default', ...imported } as UserSettings);
-      return;
-    }
     const existing = await db.settings.get('default');
     if (!existing || (imported.updatedAt && imported.updatedAt > (existing.updatedAt || ''))) {
       await db.settings.put({ id: 'default', ...imported } as UserSettings);

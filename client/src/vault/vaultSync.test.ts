@@ -1,7 +1,8 @@
 import './testSupport';
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Activity, InboxItem, Project, ProjectTask, TimeEntry } from '@shared/types';
+import type { Activity, InboxItem, Project, ProjectTask, TimeEntry, UserSettings } from '@shared/types';
+import { DEFAULT_SETTINGS } from '@shared/constants';
 import { resetDb } from './testSupport';
 import { db } from '../db';
 import { exportAllToDisk, importAllFromDisk, handleExternalChange, writeEntityToDisk, fileIndex } from './vaultSync';
@@ -9,10 +10,10 @@ import { resolveConflicts } from './conflictResolver';
 import { readBase, recordBase } from './vaultBase';
 import {
   serializeActivity, serializeTimeEntries, serializeProjectTasksFile,
-  serializeInbox, deserializeInbox,
+  serializeInbox, deserializeInbox, serializeSettings,
 } from './serializers';
 import { stringifyFrontmatter } from './frontmatter';
-import { PROJECT_TASKS, TIME_LOG, INBOX } from './vaultLayout';
+import { PROJECT_TASKS, TIME_LOG, INBOX, SETTINGS } from './vaultLayout';
 import { MemoryBackend } from './memoryBackend';
 
 beforeEach(async () => {
@@ -21,6 +22,7 @@ beforeEach(async () => {
 
 const T0 = '2026-07-01T00:00:00.000Z';
 const T1 = '2026-07-15T00:00:00.000Z';
+const T2 = '2026-07-20T00:00:00.000Z';
 const ACTIVITY_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const ENTRY_E1_ID = '555555000000000000000000000005';
 const ENTRY_E2_ID = '666666000000000000000000000006';
@@ -98,6 +100,16 @@ function buildTask(overrides: Partial<ProjectTask> = {}): ProjectTask {
     createdAt: T0,
     updatedAt: T0,
     deletedAt: null,
+    deviceId: 'device-a',
+    ...overrides,
+  };
+}
+
+function buildSettings(overrides: Partial<UserSettings> = {}): UserSettings {
+  return {
+    id: 'default',
+    ...DEFAULT_SETTINGS,
+    updatedAt: T0,
     deviceId: 'device-a',
     ...overrides,
   };
@@ -428,5 +440,58 @@ describe('INBOX_KIND — inbox.md persists as an empty list (C13)', () => {
     await exportAllToDisk(backend);
 
     expect(await backend.exists(INBOX.path)).toBe(false);
+  });
+});
+
+describe('SETTINGS_KIND.mergeRow — external merge honors updatedAt (C14)', () => {
+  it('ignores a stale external settings.json when local settings are newer', async () => {
+    const backend = new MemoryBackend();
+    const local = buildSettings({ dayStartHour: 4, updatedAt: T2 });
+    await db.settings.put(local);
+
+    // A file arriving late (e.g. delivered out of order by Syncthing) with an
+    // older updatedAt and a different value — before this fix, the external
+    // source did an unconditional put and this stale value would clobber the
+    // newer local row.
+    const stale = buildSettings({ dayStartHour: 9, updatedAt: T1 });
+    await backend.writeFile(SETTINGS.path, serializeSettings(stale).content);
+
+    await handleExternalChange(backend, SETTINGS.path, 'modify');
+
+    const stored = await db.settings.get('default');
+    expect(stored).toBeTruthy();
+    expect(stored!.dayStartHour).toBe(4);
+    expect(stored!.updatedAt).toBe(T2);
+  });
+
+  it('applies a newer external settings.json over stale local settings', async () => {
+    const backend = new MemoryBackend();
+    const local = buildSettings({ dayStartHour: 4, updatedAt: T1 });
+    await db.settings.put(local);
+
+    const fresh = buildSettings({ dayStartHour: 9, updatedAt: T2 });
+    await backend.writeFile(SETTINGS.path, serializeSettings(fresh).content);
+
+    await handleExternalChange(backend, SETTINGS.path, 'modify');
+
+    const stored = await db.settings.get('default');
+    expect(stored).toBeTruthy();
+    expect(stored!.dayStartHour).toBe(9);
+    expect(stored!.updatedAt).toBe(T2);
+  });
+
+  it('leaves Dexie byte-identical when the watcher re-observes the file the app just wrote', async () => {
+    const backend = new MemoryBackend();
+    const local = buildSettings({ dayStartHour: 7, updatedAt: T1 });
+    await db.settings.put(local);
+
+    // Simulate the app's own write reaching disk, then the file watcher
+    // re-observing that same file — a self-write re-import loop. Its
+    // updatedAt equals the stored row's, so strict `>` must not re-apply it.
+    await writeEntityToDisk(backend, 'settings', 'default');
+    await handleExternalChange(backend, SETTINGS.path, 'modify');
+
+    const stored = await db.settings.get('default');
+    expect(stored).toEqual(local);
   });
 });
