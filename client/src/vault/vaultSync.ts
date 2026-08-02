@@ -108,7 +108,7 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
         }
 
         for (const row of parsed.rows) {
-          await kind.mergeRow(row, 'reconcile');
+          await kind.mergeRow(row);
         }
         // Accepting a file's content makes it the agreed state for this path.
         await recordBase(path, content);
@@ -207,7 +207,7 @@ export async function handleExternalChange(
   const content = await backend.readFile(filePath);
   const parsed = kind.parseFile(filePath, content);
   for (const row of parsed.rows) {
-    await kind.mergeRow(row, 'external');
+    await kind.mergeRow(row);
   }
   await recordBase(filePath, content);
   if (parsed.entityId) fileIndex.set(parsed.entityId, filePath);

@@ -212,9 +212,9 @@ async function resolveOne(
       // file was serialized from this device's own row, so an unbumped
       // timestamp could tie the stored row and silently fail to apply.
       if (changedFromOurs) row.updatedAt = new Date().toISOString();
-      await kind.mergeRow(row, 'reconcile');
+      await kind.mergeRow(row);
     } else {
-      for (const row of theirRows) await kind.mergeRow(row, 'reconcile');
+      for (const row of theirRows) await kind.mergeRow(row);
     }
 
     await backend.deleteFile(conflictPath);
@@ -237,7 +237,7 @@ async function resolveOne(
   const { added, removed } = plan;
 
   for (const row of plan.rows) {
-    await kind.mergeRow(row, 'reconcile');
+    await kind.mergeRow(row);
   }
 
   // Rows the merge proved deleted are soft-deleted through the kind's own

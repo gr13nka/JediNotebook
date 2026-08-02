@@ -55,16 +55,6 @@ export interface ParsedFile {
   entityId?: string;
 }
 
-/**
- * Distinguishes why `mergeRow` is being called: a full-vault reconcile
- * (`importAllFromDisk`, which must not clobber a newer local edit — LWW)
- * vs. a single external file-change event (`handleExternalChange`
- * create/modify — the file the user or another synced device just touched
- * is authoritative). Every kind applies the same strict LWW policy to both
- * sources — see `SETTINGS_KIND.mergeRow`'s doc comment for why settings in
- * particular needs this to hold for `external` too.
- */
-export type MergeSource = 'reconcile' | 'external';
 
 /**
  * Everything one entity kind (one row of vaultLayout.ts's `VAULT_LAYOUT`)
@@ -97,8 +87,8 @@ export interface VaultKind {
   /** Whole-vault import / external change: one file's content -> rows. */
   parseFile(path: string, content: string): ParsedFile;
 
-  /** Write one parsed row into Dexie (LWW-merge for both `source` values). */
-  mergeRow(row: Record<string, unknown>, source: MergeSource): Promise<void>;
+  /** Write one parsed row into Dexie (LWW-merge). */
+  mergeRow(row: Record<string, unknown>): Promise<void>;
 
   /**
    * Live sync (debounced from a Dexie hook): the on-disk delta for one
