@@ -16,3 +16,4 @@ client/src-tauri/gen/schemas/
 *.log
 .vite/
 .planning/intel/
+*.tsbuildinfo
