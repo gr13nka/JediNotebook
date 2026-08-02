@@ -17,3 +17,4 @@ client/src-tauri/gen/schemas/
 .vite/
 .planning/intel/
 *.tsbuildinfo
+.superpowers/
