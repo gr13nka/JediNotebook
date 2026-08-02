@@ -6,11 +6,6 @@ import { NEU } from '../../utils/shadows';
 import { useProjectCardLayout } from './useProjectCardLayout';
 import { PROJECT_CARD_GAP_PX, PROJECT_CARD_ROW_PX } from './projectCardLayout';
 
-interface ProjectCardMetrics {
-  total: number;
-  done: number;
-}
-
 interface ProjectGridActions {
   openProject: (projectId: string) => void;
   requestAddProject: (folderId: string | null) => void;
@@ -21,7 +16,8 @@ interface ProjectGridActions {
 interface ProjectGridProps {
   projects: Project[];
   folders: ProjectFolder[];
-  taskCounts?: Record<string, ProjectCardMetrics>;
+  /** Open (incomplete) task count per project id; the card badge hides at 0. */
+  taskCounts?: Record<string, number>;
   layout: ProjectGridLayout;
   onLayoutChange: (next: ProjectGridLayout) => void | Promise<void>;
   viewport: 'mobile' | 'desktop';
@@ -170,7 +166,7 @@ export function ProjectGrid({
                 } : undefined}
               >
                 {section.cards.map((card) => {
-                  const counts = taskCounts[card.project.id];
+                  const openCount = taskCounts[card.project.id] ?? 0;
                   const { style, ...rootProps } = card.rootProps;
                   const isActive = card.project.id === activeProjectId;
                   return (
@@ -212,9 +208,9 @@ export function ProjectGrid({
                           {card.project.name}
                         </span>
                       </div>
-                      {counts && (
+                      {openCount > 0 && (
                         <span className="text-[11px] text-text-muted tabular-nums">
-                          {counts.total}
+                          {openCount}
                         </span>
                       )}
 

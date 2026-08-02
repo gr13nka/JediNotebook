@@ -43,13 +43,13 @@ export function ProjectsView() {
     () => db.inboxItems.filter((i) => !i.deletedAt).count(),
     [],
   );
+  // Open-task count per project for the card badge. Completed (and therefore
+  // archived) tasks are excluded — the badge answers "how much is left here".
   const taskCounts = useLiveQuery(
-    () => db.projectTasks.filter(t => !t.deletedAt).toArray().then(tasks => {
-      const counts: Record<string, { total: number; done: number }> = {};
+    () => db.projectTasks.filter(t => !t.deletedAt && !t.isCompleted).toArray().then(tasks => {
+      const counts: Record<string, number> = {};
       for (const task of tasks) {
-        if (!counts[task.projectId]) counts[task.projectId] = { total: 0, done: 0 };
-        counts[task.projectId].total++;
-        if (task.completedAt) counts[task.projectId].done++;
+        counts[task.projectId] = (counts[task.projectId] ?? 0) + 1;
       }
       return counts;
     }),
