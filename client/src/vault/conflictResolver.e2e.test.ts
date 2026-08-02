@@ -34,6 +34,7 @@ const PROJECT_ALPHA_ID = 'aaaaaa0000000000000000000000a1';
 const PROJECT_BETA_ID = 'bbbbbb0000000000000000000000b1';
 const PROJECT_GAMMA_ID = 'cccccc0000000000000000000000c1';
 const PROJECT_DELTA_ID = 'dddddd0000000000000000000000d1';
+const PROJECT_GHOST_ID = 'eeeeee0000000000000000000000e1';
 const TASK_T1_ID = '111111000000000000000000000001';
 const TASK_T2_ID = '222222000000000000000000000002';
 const TASK_X_ID = '333333000000000000000000000003';
@@ -341,6 +342,44 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     const storedT2 = await db.projectTasks.get(TASK_T2_ID);
     expect(storedT2).toBeTruthy();
     expect(storedT2!.deletedAt).toBeTruthy();
+
+    expect(await backend.exists(conflictPath)).toBe(false);
+
+    await expectResolvedQuiescent(backend);
+  });
+
+  it('scans a per-entity dir that holds only a conflict copy, with no canonical file ever written (C9)', async () => {
+    const backend = new MemoryBackend();
+    const name = 'Ghost';
+    const targetPath = PROJECTS.buildPath(name, PROJECT_GHOST_ID);
+    const dir = PROJECTS.buildDirPath(name, PROJECT_GHOST_ID);
+    const conflictPath = `${dir}/${conflictCopyName('project', '.md')}`;
+
+    // No Dexie row, no recorded base, and — the point of this scenario — no
+    // project.md ever written either: Syncthing delivered only the loser
+    // (the winner was renamed away, or never arrived) into this directory.
+    // PROJECTS_KIND.discoverPaths only reports a directory once project.md
+    // exists there, so conflictDirs relying solely on discoverPaths for
+    // nested dirs never sees this directory at all — stranding it.
+    const theirs = buildProject({ id: PROJECT_GHOST_ID, name, description: 'From ghost', updatedAt: T1 });
+    await backend.writeFile(conflictPath, serializeProjectFile(theirs).content);
+
+    const results = await resolveConflicts(backend);
+
+    const resolution = results.find(r => r.conflictPath === conflictPath);
+    expect(resolution).toMatchObject({ targetPath, resolved: true });
+
+    const stored = await db.projects.get(PROJECT_GHOST_ID);
+    expect(stored).toBeTruthy();
+    expect(stored!.name).toBe(name);
+    expect(stored!.description).toBe('From ghost');
+
+    // Entity-scoped kinds rewrite the merged result to disk immediately —
+    // this is what proves the directory was actually scanned, not just that
+    // Dexie ended up with the row some other way.
+    expect(await backend.exists(targetPath)).toBe(true);
+    const onDisk = await backend.readFile(targetPath);
+    expect(onDisk).toContain('From ghost');
 
     expect(await backend.exists(conflictPath)).toBe(false);
 

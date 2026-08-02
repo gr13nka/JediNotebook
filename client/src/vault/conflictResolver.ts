@@ -46,7 +46,7 @@ export interface ConflictResolution {
  * its own path supplies the location instead.
  */
 async function conflictDirs(kind: VaultKind, backend: VaultBackend): Promise<string[]> {
-  const layout = kind.layout as { dir?: string; path?: string };
+  const layout = kind.layout as { kind?: string; dir?: string; path?: string };
   const dirs = new Set<string>();
   if (layout.dir !== undefined) dirs.add(layout.dir);
   if (layout.path !== undefined) {
@@ -56,6 +56,19 @@ async function conflictDirs(kind: VaultKind, backend: VaultBackend): Promise<str
   for (const path of await kind.discoverPaths(backend)) {
     const slash = path.lastIndexOf('/');
     if (slash !== -1) dirs.add(path.slice(0, slash));
+  }
+  // A perEntityDir kind's discoverPaths (vaultKinds.ts) only reports a
+  // directory once its canonical file (project.md, tasks.md) exists there —
+  // a directory holding *only* a conflict copy (the canonical file was
+  // renamed away as the loser, or never arrived) is otherwise never scanned
+  // and its data stranded. listDirs finds the directory regardless of what's
+  // inside it. A failed listing must not cost the dirs already found above.
+  if (layout.kind === 'perEntityDir' && layout.dir !== undefined) {
+    try {
+      for (const dir of await backend.listDirs(layout.dir)) dirs.add(dir);
+    } catch {
+      // fall through with whatever dirs were already found
+    }
   }
   return [...dirs];
 }
