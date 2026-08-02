@@ -246,8 +246,13 @@ describe('resolveConflicts — end-to-end orchestration', () => {
 
     const storedX = await db.projectTasks.get(TASK_X_ID);
     const storedY = await db.projectTasks.get(TASK_Y_ID);
-    expect(storedX?.deletedAt).toBeFalsy();
-    expect(storedY?.deletedAt).toBeFalsy();
+    // Assert existence before `.deletedAt` — `undefined?.deletedAt` is also
+    // falsy, so a plain `toBeFalsy()` here would pass even if the row never
+    // made it into Dexie at all.
+    expect(storedX).toBeTruthy();
+    expect(storedY).toBeTruthy();
+    expect(storedX!.deletedAt).toBeFalsy();
+    expect(storedY!.deletedAt).toBeFalsy();
 
     expect(await backend.exists(conflictPath)).toBe(false);
 
