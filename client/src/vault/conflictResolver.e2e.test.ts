@@ -411,7 +411,8 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     expect(resolution).toMatchObject({ targetPath: 'settings.json', resolved: true });
 
     // Settings has no row `id` on disk, so it takes resolveOne's non-keyed
-    // branch (plain LWW hand-off, not the keyed merge) — that branch must
+    // branch — here the field-wise merge (C16), since target and copy each
+    // parse to exactly one row and no base was recorded. That branch must
     // reach disk and record a fresh base too, same as the keyed branches.
     const onDisk = await expectMergedTargetPersisted(backend, 'settings.json');
     expect(onDisk).toContain('"dayStartHour": 9');
@@ -456,6 +457,35 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     const onDisk = await expectMergedTargetPersisted(backend, 'settings.json');
     expect(onDisk).toContain('"dayStartHour": 9');
     expect(onDisk).toContain('"maxTasksPerProject": 8');
+
+    expect(await backend.exists(conflictPath)).toBe(false);
+
+    await expectResolvedQuiescent(backend);
+  });
+
+  it('falls back to whole-row LWW when no target file exists yet to merge against (C16)', async () => {
+    const backend = new MemoryBackend();
+    const conflictPath = conflictCopyName('settings', '.json');
+
+    // No settings.json on disk yet and no Dexie row: this device has never
+    // seen settings before. `oursRaw` is null, so `ourRows` parses to `[]`
+    // and `canMergeFields` is false — there is no `ours` row to compare
+    // against, so the copy's row must simply apply via the pre-C16 LWW
+    // hand-off rather than the field-wise merge.
+    const theirs = buildSettings({ dayStartHour: 9, updatedAt: T2 });
+    await backend.writeFile(conflictPath, serializeSettings(theirs).content);
+
+    const results = await resolveConflicts(backend);
+
+    const resolution = results.find(r => r.conflictPath === conflictPath);
+    expect(resolution).toMatchObject({ targetPath: 'settings.json', resolved: true });
+
+    const stored = await db.settings.get('default');
+    expect(stored?.dayStartHour).toBe(9);
+
+    // The C11 rewrite-to-disk step still runs off the LWW branch too.
+    const onDisk = await expectMergedTargetPersisted(backend, 'settings.json');
+    expect(onDisk).toContain('"dayStartHour": 9');
 
     expect(await backend.exists(conflictPath)).toBe(false);
 

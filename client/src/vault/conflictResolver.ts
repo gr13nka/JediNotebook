@@ -191,9 +191,12 @@ async function resolveOne(
   // by field instead of handing the whole row to `mergeRow` as one atomic
   // LWW swap: two devices toggling *different* settings offline is the
   // common case, and whole-object LWW discards one side's change outright.
-  // Any other shape (no target file yet, more than one row, an unparseable
-  // base) falls back to the previous whole-row LWW hand-off unchanged — there
-  // is nothing keyed to merge field-wise against.
+  // A base (or target, or copy) that fails to *parse* already returned above,
+  // at the try/catch a few lines up — it never reaches here at all. What
+  // falls back to the previous whole-row LWW hand-off, unchanged, is a shape
+  // that parses fine but isn't one-row-per-side: no target file yet (so
+  // there's no `ours` to merge against), or more than one row on some side —
+  // there is nothing keyed to merge field-wise against either way.
   const keyed = theirRows.every(r => typeof r?.id === 'string');
   if (!keyed) {
     const canMergeFields =
