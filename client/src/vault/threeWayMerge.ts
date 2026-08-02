@@ -152,3 +152,92 @@ export function mergeRowSets<T extends { id: string; updatedAt: string }>(
 
   return { rows, deletedIds, added, unionFallback: base === null };
 }
+
+export interface FlatMergeResult<T> {
+  /** Merged row. */
+  row: T;
+  /**
+   * True when `row` differs from `ours` in at least one field — i.e. `theirs`
+   * contributed something. The caller needs this to decide whether the merge
+   * must actually be persisted (and its timestamp bumped to propagate) or
+   * whether `ours` already covered everything.
+   */
+  changedFromOurs: boolean;
+}
+
+/**
+ * Merge two versions of a flat scalar record (one settings.json row) against
+ * their common ancestor, field by field.
+ *
+ * Settings rows are plain scalars — strings, numbers, booleans, `null` —
+ * never nested objects or arrays, so `===` is sufficient equality; nothing
+ * here needs deep-equality.
+ *
+ * Per field (the union of `ours`' and `theirs`' keys; `updatedAt` itself is
+ * excluded — it's computed separately below):
+ *  - equal on both sides → keep the shared value;
+ *  - changed from `base` on exactly one side → take that side's value (the
+ *    other side never touched the field, so there's nothing to race);
+ *  - changed on both sides, or `base === null` (no ancestor recorded yet) →
+ *    a genuine race, resolved by the same strict-`>` LWW rule every other
+ *    merge in this codebase uses: `theirs` wins only if its `updatedAt` is
+ *    strictly newer, so a tie keeps `ours`;
+ *  - present on only one side (an older build wrote fewer fields) → keep the
+ *    side that has it. A missing key is never evidence of deletion here, and
+ *    a field must never resolve to `undefined` over a value either side
+ *    actually wrote.
+ *
+ * The result's `updatedAt` is the newer of the two inputs'. `changedFromOurs`
+ * is true iff any field of the merged row differs from `ours` — see
+ * `conflictResolver.ts`'s `resolveOne` for why the caller needs that to
+ * decide whether the result must be persisted with a bumped timestamp.
+ */
+export function mergeFlatRecord<T extends { updatedAt?: string }>(
+  base: T | null,
+  ours: T,
+  theirs: T,
+): FlatMergeResult<T> {
+  const theirsNewer = (theirs.updatedAt ?? '') > (ours.updatedAt ?? '');
+
+  const oursRec = ours as unknown as Record<string, unknown>;
+  const theirsRec = theirs as unknown as Record<string, unknown>;
+  const baseRec = base === null ? null : (base as unknown as Record<string, unknown>);
+
+  const keys = new Set<string>([...Object.keys(oursRec), ...Object.keys(theirsRec)]);
+  keys.delete('updatedAt');
+
+  const row: Record<string, unknown> = { ...oursRec };
+
+  for (const key of keys) {
+    const hasOurs = Object.prototype.hasOwnProperty.call(oursRec, key);
+    const hasTheirs = Object.prototype.hasOwnProperty.call(theirsRec, key);
+
+    if (!hasTheirs) continue; // only ours has it (already in `row`) — keep it
+    if (!hasOurs) { row[key] = theirsRec[key]; continue; } // only theirs has it
+
+    const ourVal = oursRec[key];
+    const theirVal = theirsRec[key];
+    if (ourVal === theirVal) continue;
+
+    if (baseRec === null) {
+      // No ancestor to prove who changed what — both sides count as having
+      // changed the field, so this is a per-field LWW race.
+      if (theirsNewer) row[key] = theirVal;
+      continue;
+    }
+
+    const baseVal = baseRec[key];
+    const ourChanged = ourVal !== baseVal;
+    const theirChanged = theirVal !== baseVal;
+
+    if (theirChanged && !ourChanged) row[key] = theirVal;
+    else if (theirChanged && ourChanged && theirsNewer) row[key] = theirVal;
+    // else: only ours changed (or ties resolve to ours) — already in `row`
+  }
+
+  row.updatedAt = theirsNewer ? theirs.updatedAt : ours.updatedAt;
+
+  const changedFromOurs = [...keys].some(key => row[key] !== oursRec[key]);
+
+  return { row: row as T, changedFromOurs };
+}

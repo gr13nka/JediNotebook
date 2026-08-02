@@ -1,6 +1,6 @@
 import type { VaultBackend } from './vaultBackend';
 import { VAULT_KINDS, type VaultKind } from './vaultKinds';
-import { mergeRowSets, mergeTextBodies } from './threeWayMerge';
+import { mergeFlatRecord, mergeRowSets, mergeTextBodies } from './threeWayMerge';
 import { readBase, recordBase } from './vaultBase';
 import { writeEntityToDisk } from './vaultSync';
 import { conflictTargetPath } from './conflictPaths';
@@ -186,11 +186,34 @@ async function resolveOne(
   }
 
   // Rows without an `id` (a singleton file such as settings.json) have no key
-  // to merge on; last-write-wins via the kind's own mergeRow is all that is
-  // available, so hand them straight over.
+  // to merge on. When exactly one row is available to compare on each side
+  // that has one at all — target, copy, and (if recorded) base — merge field
+  // by field instead of handing the whole row to `mergeRow` as one atomic
+  // LWW swap: two devices toggling *different* settings offline is the
+  // common case, and whole-object LWW discards one side's change outright.
+  // Any other shape (no target file yet, more than one row, an unparseable
+  // base) falls back to the previous whole-row LWW hand-off unchanged — there
+  // is nothing keyed to merge field-wise against.
   const keyed = theirRows.every(r => typeof r?.id === 'string');
   if (!keyed) {
-    for (const row of theirRows) await kind.mergeRow(row, 'reconcile');
+    const canMergeFields =
+      ourRows.length === 1 && theirRows.length === 1 && (baseRows === null || baseRows.length === 1);
+
+    if (canMergeFields) {
+      const { row, changedFromOurs } = mergeFlatRecord(
+        baseRows === null ? null : baseRows[0], ourRows[0], theirRows[0],
+      );
+      // Bump forward so the merge outranks both inputs and actually
+      // persists/propagates — same load-bearing rationale as `planMerge`'s
+      // bump above: `mergeRow` only writes on a strict `>`, and the target
+      // file was serialized from this device's own row, so an unbumped
+      // timestamp could tie the stored row and silently fail to apply.
+      if (changedFromOurs) row.updatedAt = new Date().toISOString();
+      await kind.mergeRow(row, 'reconcile');
+    } else {
+      for (const row of theirRows) await kind.mergeRow(row, 'reconcile');
+    }
+
     await backend.deleteFile(conflictPath);
 
     // Settings.json is the only kind that reaches this branch (see the

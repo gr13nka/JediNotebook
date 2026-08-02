@@ -97,11 +97,25 @@ logic in the registry rather than in the resolver:
   `PROJECTS_KIND` omit it because they are per-entity files: a row's deletion
   *is* the file's deletion, handled by `gatherWriteSet`'s `deletes` list
   rather than a row-level soft-delete. `SETTINGS_KIND` omits it because its
-  file has no keyed rows at all — just one whole-row LWW swap.
+  file has no keyed rows at all — its one row is merged field-by-field
+  instead (below), not soft-deleted a row at a time.
 
 Structured rows always resolve by `id` + `updatedAt` — the same rule
 `mergeEntity` applies — so a conflict copy can never resolve differently than
 the file would have if it had arrived without conflicting.
+
+Settings is the one kind with no keyed rows: `settings.json` is a single flat
+record of a dozen or so scalar behavior settings, so id+updatedAt row merging
+doesn't apply. When target, copy, and (if recorded) base each parse to exactly
+one row, `resolveOne`'s non-keyed branch merges them field by field
+(`mergeFlatRecord` in `threeWayMerge.ts`) instead of swapping the whole row:
+each field takes whichever side changed it since `base`, and only a field
+changed on *both* sides falls back to the same strict-`>` LWW rule as
+everywhere else. This is what lets two devices that toggled different
+settings while disconnected converge with both changes intact, instead of one
+device's entire settings row winning and silently discarding the other's
+edit. Any shape the merge can't reason about (no target file yet, more than
+one row on some side) falls back to the previous whole-row LWW hand-off.
 
 ## The `updatedAt` bump
 

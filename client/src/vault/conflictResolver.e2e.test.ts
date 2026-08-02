@@ -382,9 +382,10 @@ describe('resolveConflicts — end-to-end orchestration', () => {
 
     // Settings rows have no `id` field on disk (deserializeSettings never
     // produces one), so resolveOne's keyed-row merge path doesn't apply here —
-    // it hands the parsed row straight to SETTINGS_KIND.mergeRow, which is a
-    // whole-row LWW swap rather than a per-field merge (current behavior;
-    // C16 adds field-wise merging).
+    // it takes the non-keyed branch's field-wise merge (C16) instead. Only
+    // one field differs in this fixture, so a whole-row LWW swap would have
+    // picked the same winner; the scenario below exercises the case where
+    // that distinction actually matters.
     const stored = await db.settings.get('default');
     expect(stored?.dayStartHour).toBe(9);
 
@@ -414,6 +415,47 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     // reach disk and record a fresh base too, same as the keyed branches.
     const onDisk = await expectMergedTargetPersisted(backend, 'settings.json');
     expect(onDisk).toContain('"dayStartHour": 9');
+
+    expect(await backend.exists(conflictPath)).toBe(false);
+
+    await expectResolvedQuiescent(backend);
+  });
+
+  it('merges settings.json field-wise, keeping different fields changed on each side (C16)', async () => {
+    const backend = new MemoryBackend();
+    const conflictPath = conflictCopyName('settings', '.json');
+
+    const ancestor = buildSettings({ dayStartHour: 6, maxTasksPerProject: 5, updatedAt: T0 });
+    await recordBase('settings.json', serializeSettings(ancestor).content);
+
+    // Ours changed dayStartHour only.
+    const ours = buildSettings({ dayStartHour: 9, maxTasksPerProject: 5, updatedAt: T1 });
+    await db.settings.put(ours);
+    await backend.writeFile('settings.json', serializeSettings(ours).content);
+
+    // The conflict copy changed a DIFFERENT field, with a newer updatedAt
+    // than ours. Whole-object LWW picks this row outright and silently
+    // drops ours's dayStartHour change — the bug this task fixes.
+    const theirs = buildSettings({ dayStartHour: 6, maxTasksPerProject: 8, updatedAt: T2 });
+    await backend.writeFile(conflictPath, serializeSettings(theirs).content);
+
+    const results = await resolveConflicts(backend);
+
+    const resolution = results.find(r => r.conflictPath === conflictPath);
+    expect(resolution).toMatchObject({ targetPath: 'settings.json', resolved: true });
+
+    const stored = await db.settings.get('default');
+    expect(stored?.dayStartHour).toBe(9);
+    expect(stored?.maxTasksPerProject).toBe(8);
+    // The merged row must outrank both inputs' updatedAt so the merge
+    // propagates to both other devices instead of losing to either one's
+    // still-equal-or-older local row.
+    expect(stored!.updatedAt > T2).toBe(true);
+    expect(stored!.updatedAt > T1).toBe(true);
+
+    const onDisk = await expectMergedTargetPersisted(backend, 'settings.json');
+    expect(onDisk).toContain('"dayStartHour": 9');
+    expect(onDisk).toContain('"maxTasksPerProject": 8');
 
     expect(await backend.exists(conflictPath)).toBe(false);
 

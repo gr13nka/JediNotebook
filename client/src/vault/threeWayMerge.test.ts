@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeTextBodies, mergeRowSets } from './threeWayMerge';
+import { mergeTextBodies, mergeRowSets, mergeFlatRecord } from './threeWayMerge';
 
 const paragraphs = (body: string) => body.split(/\n{2,}/).filter(Boolean);
 
@@ -151,5 +151,134 @@ describe('mergeRowSets', () => {
     expect(result.rows.map(r => r.id).sort()).toEqual(['a', 'b']);
     expect(result.deletedIds).toEqual([]);
     expect(result.unionFallback).toBe(true);
+  });
+});
+
+describe('mergeFlatRecord', () => {
+  const T0 = '2026-07-01T00:00:00.000Z';
+  const T1 = '2026-07-15T00:00:00.000Z';
+  const T2 = '2026-07-20T00:00:00.000Z';
+
+  it('keeps a field changed on only one side', () => {
+    const base = { dayStartHour: 6, maxTasksPerProject: 5, updatedAt: T0 };
+    const ours = { dayStartHour: 9, maxTasksPerProject: 5, updatedAt: T1 };
+    const theirs = { dayStartHour: 6, maxTasksPerProject: 5, updatedAt: T0 };
+
+    const result = mergeFlatRecord(base, ours, theirs);
+
+    expect(result.row.dayStartHour).toBe(9);
+    expect(result.changedFromOurs).toBe(false);
+  });
+
+  it('keeps changes to different fields made on each side', () => {
+    const base = { dayStartHour: 6, maxTasksPerProject: 5, updatedAt: T0 };
+    const ours = { dayStartHour: 9, maxTasksPerProject: 5, updatedAt: T1 };
+    const theirs = { dayStartHour: 6, maxTasksPerProject: 8, updatedAt: T2 };
+
+    const result = mergeFlatRecord(base, ours, theirs);
+
+    expect(result.row.dayStartHour).toBe(9);
+    expect(result.row.maxTasksPerProject).toBe(8);
+    expect(result.changedFromOurs).toBe(true);
+  });
+
+  it('resolves the same field changed on both sides by the newer updatedAt', () => {
+    const base = { dayStartHour: 6, updatedAt: T0 };
+    const ours = { dayStartHour: 9, updatedAt: T1 };
+    const theirs = { dayStartHour: 12, updatedAt: T2 };
+
+    const result = mergeFlatRecord(base, ours, theirs);
+
+    expect(result.row.dayStartHour).toBe(12);
+    expect(result.changedFromOurs).toBe(true);
+  });
+
+  it('keeps ours on a same-field tie — theirs wins only on strict >', () => {
+    const base = { dayStartHour: 6, updatedAt: T0 };
+    const ours = { dayStartHour: 9, updatedAt: T1 };
+    const theirs = { dayStartHour: 12, updatedAt: T1 };
+
+    const result = mergeFlatRecord(base, ours, theirs);
+
+    expect(result.row.dayStartHour).toBe(9);
+    expect(result.changedFromOurs).toBe(false);
+  });
+
+  it('resolves every differing field by newer updatedAt when no base is recorded', () => {
+    const ours = { dayStartHour: 9, maxTasksPerProject: 5, updatedAt: T1 };
+    const theirs = { dayStartHour: 9, maxTasksPerProject: 8, updatedAt: T2 };
+
+    const result = mergeFlatRecord(null, ours, theirs);
+
+    expect(result.row.maxTasksPerProject).toBe(8);
+    expect(result.changedFromOurs).toBe(true);
+  });
+
+  it('keeps ours on a same-field tie with no base recorded either', () => {
+    const ours = { dayStartHour: 9, updatedAt: T1 };
+    const theirs = { dayStartHour: 12, updatedAt: T1 };
+
+    const result = mergeFlatRecord(null, ours, theirs);
+
+    expect(result.row.dayStartHour).toBe(9);
+    expect(result.changedFromOurs).toBe(false);
+  });
+
+  it('takes a key theirs has and ours lacks, without discarding it', () => {
+    const base = { dayStartHour: 6, updatedAt: T0 } as Record<string, unknown>;
+    // Older build wrote fewer fields — `timezone` is absent, not deleted.
+    const ours = { dayStartHour: 6, updatedAt: T0 } as Record<string, unknown>;
+    const theirs = { dayStartHour: 6, timezone: 'UTC', updatedAt: T1 };
+
+    const result = mergeFlatRecord(base as any, ours as any, theirs as any);
+
+    expect(result.row.timezone).toBe('UTC');
+    expect(result.changedFromOurs).toBe(true);
+  });
+
+  it('keeps a key ours has and theirs lacks, never clobbering it with undefined', () => {
+    const base = { dayStartHour: 6, updatedAt: T0 } as Record<string, unknown>;
+    const ours = { dayStartHour: 6, timezone: 'UTC', updatedAt: T1 };
+    // Older build wrote fewer fields — `timezone` is absent, not deleted.
+    const theirs = { dayStartHour: 6, updatedAt: T0 } as Record<string, unknown>;
+
+    const result = mergeFlatRecord(base as any, ours as any, theirs as any);
+
+    expect(result.row.timezone).toBe('UTC');
+    expect(result.row.timezone).not.toBeUndefined();
+    expect(result.changedFromOurs).toBe(false);
+  });
+
+  it('reports changedFromOurs=false when theirs brings nothing new', () => {
+    const base = { dayStartHour: 6, maxTasksPerProject: 5, updatedAt: T0 };
+    const ours = { dayStartHour: 9, maxTasksPerProject: 5, updatedAt: T1 };
+    // Identical to base — theirs never actually touched anything.
+    const theirs = { dayStartHour: 6, maxTasksPerProject: 5, updatedAt: T0 };
+
+    const result = mergeFlatRecord(base, ours, theirs);
+
+    expect(result.row.dayStartHour).toBe(9);
+    expect(result.row.maxTasksPerProject).toBe(5);
+    expect(result.changedFromOurs).toBe(false);
+  });
+
+  it("takes the newer side's updatedAt as the merged row's updatedAt", () => {
+    const base = { dayStartHour: 6, maxTasksPerProject: 5, updatedAt: T0 };
+    const ours = { dayStartHour: 9, maxTasksPerProject: 5, updatedAt: T1 };
+    const theirs = { dayStartHour: 6, maxTasksPerProject: 8, updatedAt: T2 };
+
+    const result = mergeFlatRecord(base, ours, theirs);
+
+    expect(result.row.updatedAt).toBe(T2);
+  });
+
+  it("keeps ours's updatedAt when ours is the newer (or tying) side", () => {
+    const base = { dayStartHour: 6, updatedAt: T0 };
+    const ours = { dayStartHour: 9, updatedAt: T2 };
+    const theirs = { dayStartHour: 6, updatedAt: T1 };
+
+    const result = mergeFlatRecord(base, ours, theirs);
+
+    expect(result.row.updatedAt).toBe(T2);
   });
 });
