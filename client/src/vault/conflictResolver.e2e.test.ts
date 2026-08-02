@@ -9,6 +9,7 @@ import { MemoryBackend } from './memoryBackend';
 import { resolveConflicts, conflictTargetPath } from './conflictResolver';
 import { recordBase, readBase } from './vaultBase';
 import { serializeProjectFile, serializeProjectTasksFile, serializeSettings } from './serializers';
+import { stringifyFrontmatter } from './frontmatter';
 import { PROJECTS, PROJECT_TASKS } from './vaultLayout';
 
 /**
@@ -32,6 +33,7 @@ import { PROJECTS, PROJECT_TASKS } from './vaultLayout';
 const PROJECT_ALPHA_ID = 'aaaaaa0000000000000000000000a1';
 const PROJECT_BETA_ID = 'bbbbbb0000000000000000000000b1';
 const PROJECT_GAMMA_ID = 'cccccc0000000000000000000000c1';
+const PROJECT_DELTA_ID = 'dddddd0000000000000000000000d1';
 const TASK_T1_ID = '111111000000000000000000000001';
 const TASK_T2_ID = '222222000000000000000000000002';
 const TASK_X_ID = '333333000000000000000000000003';
@@ -285,6 +287,60 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     // C16 adds field-wise merging).
     const stored = await db.settings.get('default');
     expect(stored?.dayStartHour).toBe(9);
+
+    expect(await backend.exists(conflictPath)).toBe(false);
+
+    await expectResolvedQuiescent(backend);
+  });
+
+  it('keeps the recorded base after a failed resolution, so a later valid copy can still prove a deletion (C7)', async () => {
+    const backend = new MemoryBackend();
+    const name = 'Delta';
+    const project = buildProject({ id: PROJECT_DELTA_ID, name });
+    const targetPath = PROJECT_TASKS.buildPath(name, PROJECT_DELTA_ID);
+    const dir = PROJECT_TASKS.buildDirPath(name, PROJECT_DELTA_ID);
+    const conflictPath = `${dir}/${conflictCopyName('tasks', '.md')}`;
+
+    const t1 = buildTask({ id: TASK_T1_ID, projectId: PROJECT_DELTA_ID, title: 'Task One', sortOrder: 0, updatedAt: T0 });
+    const t2 = buildTask({ id: TASK_T2_ID, projectId: PROJECT_DELTA_ID, title: 'Task Two', sortOrder: 1, updatedAt: T0 });
+    const agreedContent = serializeProjectTasksFile(project, [t1, t2]).content;
+    await recordBase(targetPath, agreedContent);
+    await db.projectTasks.bulkPut([t1, t2]);
+    await backend.writeFile(targetPath, agreedContent);
+
+    // Unparseable copy: valid frontmatter delimiters — parseFrontmatter never
+    // throws on bad YAML, it swallows the error and falls back to an empty
+    // body — but `tasks` is not an array, so deserializeProjectTasks's
+    // `.map` call throws a TypeError instead of quietly returning `[]`.
+    const unparseable = stringifyFrontmatter({ projectId: PROJECT_DELTA_ID, updatedAt: T0, tasks: 42 }, '');
+    await backend.writeFile(conflictPath, unparseable);
+
+    const firstRun = await resolveConflicts(backend);
+    const firstResolution = firstRun.find(r => r.conflictPath === conflictPath);
+    expect(firstResolution).toBeTruthy();
+    expect(firstResolution!.resolved).toBe(false);
+
+    // Regression: resolveConflicts used to call forgetBase for every
+    // unresolved result, wiping the three-way ancestor. The copy is left in
+    // place for retry by design, so `expectResolvedQuiescent` does not apply
+    // between this run and the next — only the base's survival is asserted
+    // here.
+    expect(await readBase(targetPath)).toBe(agreedContent);
+    expect(await backend.exists(conflictPath)).toBe(true);
+
+    // The other device's real edit arrives: T2 is genuinely gone. With the
+    // base intact this proves a deletion; with a wiped base (the bug) it
+    // would fall back to a union and T2 would survive.
+    const t1Theirs = buildTask({ id: TASK_T1_ID, projectId: PROJECT_DELTA_ID, title: 'Task One', sortOrder: 0, updatedAt: T0 });
+    await backend.writeFile(conflictPath, serializeProjectTasksFile(project, [t1Theirs]).content);
+
+    const secondRun = await resolveConflicts(backend);
+    const secondResolution = secondRun.find(r => r.conflictPath === conflictPath);
+    expect(secondResolution).toMatchObject({ targetPath, resolved: true });
+
+    const storedT2 = await db.projectTasks.get(TASK_T2_ID);
+    expect(storedT2).toBeTruthy();
+    expect(storedT2!.deletedAt).toBeTruthy();
 
     expect(await backend.exists(conflictPath)).toBe(false);
 

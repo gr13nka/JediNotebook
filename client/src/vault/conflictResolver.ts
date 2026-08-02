@@ -1,7 +1,7 @@
 import type { VaultBackend } from './vaultBackend';
 import { VAULT_KINDS, type VaultKind } from './vaultKinds';
 import { mergeRowSets, mergeTextBodies } from './threeWayMerge';
-import { readBase, recordBase, forgetBase } from './vaultBase';
+import { readBase, recordBase } from './vaultBase';
 import { writeEntityToDisk } from './vaultSync';
 
 /**
@@ -291,10 +291,6 @@ export async function resolveConflicts(backend: VaultBackend): Promise<ConflictR
   } catch {
     // A failed listing must not break the resolver — the per-kind conflicts
     // resolved above still stand.
-  }
-
-  for (const r of results) {
-    if (!r.resolved) await forgetBase(r.targetPath).catch(() => {});
   }
 
   const merged = results.filter(r => r.resolved).length;
