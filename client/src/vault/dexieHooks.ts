@@ -1,6 +1,5 @@
 import type Dexie from 'dexie';
 import { writeQueue } from './writeQueue';
-import { writeGuard } from './writeGuard';
 import { TABLE_TO_TYPE } from './vaultLayout';
 
 /**

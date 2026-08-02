@@ -5,7 +5,6 @@ import { importAllFromDisk, handleExternalChange } from './vaultSync';
 import { resolveConflicts } from './conflictResolver';
 import { conflictTargetPath } from './conflictPaths';
 import { writeQueue } from './writeQueue';
-import { writeGuard } from './writeGuard';
 import { registerVaultMiddleware } from './dexieHooks';
 import { db, clearAllTables, snapshotAllTables, restoreFromSnapshot } from '../db';
 import { seedDatabase } from '../db/seed';
@@ -159,7 +158,6 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       try {
         const unwatchFs = await backend.watch((events) => {
           for (const event of events) {
-            if (writeGuard.isGuarded(event.path)) continue;
             // A conflict copy delivered mid-session (Syncthing writes
             // whenever it likes) needs the full resolver, not the ordinary
             // per-file merge — handleExternalChange only no-ops for these.
@@ -216,7 +214,6 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     // Flush any pending vault writes before dropping the backend
     await writeQueue.flush();
     writeQueue.setBackend(null);
-    writeGuard.clear();
     set({
       isEnabled: false,
       vaultPath: '',

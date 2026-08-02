@@ -495,3 +495,22 @@ describe('SETTINGS_KIND.mergeRow — external merge honors updatedAt (C14)', () 
     expect(stored).toEqual(local);
   });
 });
+
+describe('ACTIVITIES_KIND.mergeRow — self-write no-op with no watch-suppression guard (C15)', () => {
+  it('leaves Dexie byte-identical when the watcher re-observes the file the app just wrote', async () => {
+    const backend = new MemoryBackend();
+    const activity = buildActivity({ updatedAt: T1 });
+    await db.activities.put(activity);
+
+    // Simulate the app's own write reaching disk, then the file watcher
+    // re-observing that same file — a self-write re-import loop. Nothing
+    // suppresses this event before it reaches the merge; strict `>` LWW must
+    // no-op it instead, since its updatedAt equals the stored row's.
+    await writeEntityToDisk(backend, 'activities', activity.id);
+    const { path } = serializeActivity(activity);
+    await handleExternalChange(backend, path, 'modify');
+
+    const stored = await db.activities.get(activity.id);
+    expect(stored).toEqual(activity);
+  });
+});
