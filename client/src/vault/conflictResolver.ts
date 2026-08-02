@@ -3,7 +3,7 @@ import type { VaultBackend } from './vaultBackend';
 import { VAULT_KINDS, type VaultKind } from './vaultKinds';
 import { mergeFlatRecord, mergeRowSets, mergeTextBodies } from './threeWayMerge';
 import { readBase, recordBase } from './vaultBase';
-import { writeEntityToDisk } from './vaultSync';
+import { writeEntityToDisk, idsInOtherFilesOfKind } from './vaultSync';
 import { conflictTargetPath } from './conflictPaths';
 
 // Re-exported for existing callers/tests — the regex + doc comment now live
@@ -256,15 +256,26 @@ async function resolveOne(
 
   // Rows the merge proved deleted are soft-deleted through the kind's own
   // table, keeping the `deletedAt` convention rather than hard-removing —
-  // unless the live row has actually moved to a different file of this same
-  // kind since the base (moveTaskToProject, a TimeEntry's date edit): both
-  // sides here only ever describe THIS target file, so a row missing from
-  // both looks identical whether it was deleted or relocated. See
-  // vaultSync.ts's `applyBaseDiffDeletions`, which guards the same way.
+  // unless the row has actually moved to a different file of this same kind
+  // since the base (moveTaskToProject, a TimeEntry's date edit): both sides
+  // here only ever describe THIS target file, so a row missing from both
+  // looks identical whether it was deleted or relocated. Two signals, either
+  // one enough to skip the delete — see vaultSync.ts's
+  // `applyBaseDiffDeletions`, which guards the exact same way for the
+  // import/watcher paths:
+  //  - the LIVE Dexie row's own current scope no longer matches this file's
+  //    (this device already knows about the move); or
+  //  - the id turns up in another file of the kind on the backend RIGHT NOW
+  //    (the move's destination file has already arrived — resolveConflicts
+  //    runs before importAllFromDisk in the sync flow, so Dexie's live rows
+  //    here are still pre-import and can't be trusted alone).
+  let elsewhereOnDisk: Set<string> | null = null;
   for (const id of plan.deletedIds) {
     if (kind.rowBelongsTo) {
       const liveRow = await (db as any)[kind.layout.table]?.get(id);
       if (liveRow && !kind.rowBelongsTo(liveRow, ownerId)) continue;
+      elsewhereOnDisk ??= await idsInOtherFilesOfKind(kind, backend, targetPath);
+      if (elsewhereOnDisk.has(id)) continue;
     }
     await kind.softDeleteRow?.(id);
   }

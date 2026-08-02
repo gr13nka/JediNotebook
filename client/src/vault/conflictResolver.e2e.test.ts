@@ -38,6 +38,8 @@ const PROJECT_DELTA_ID = 'dddddd0000000000000000000000d1';
 const PROJECT_GHOST_ID = 'eeeeee0000000000000000000000e1';
 const PROJECT_EPSILON_ID = 'ababab0000000000000000000000a5';
 const PROJECT_ZETA_ID = 'cdcdcd0000000000000000000000a6';
+const PROJECT_ETA_ID = 'efefef0000000000000000000000e7';
+const PROJECT_THETA_ID = '070707000000000000000000000008';
 const TASK_T1_ID = '111111000000000000000000000001';
 const TASK_T2_ID = '222222000000000000000000000002';
 const TASK_X_ID = '333333000000000000000000000003';
@@ -633,6 +635,60 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     const onDisk = await expectMergedTargetPersisted(backend, targetPath);
     expect(onDisk).toContain('Stays');
     expect(onDisk).not.toContain('Moved');
+
+    await expectResolvedQuiescent(backend);
+  });
+
+  it('does not soft-delete a task via conflict resolution when its move destination file is already on the backend, even before this device has learned about the move (CRITICAL 2 reopened, resolver path)', async () => {
+    const backend = new MemoryBackend();
+    const moveSourceName = 'Eta';
+    const moveSource = buildProject({ id: PROJECT_ETA_ID, name: moveSourceName });
+    const moveTarget = buildProject({ id: PROJECT_THETA_ID, name: 'Theta' });
+    await db.projects.bulkPut([moveSource, moveTarget]);
+    const filePath = PROJECT_TASKS.buildPath(moveSourceName, PROJECT_ETA_ID);
+    const dir = PROJECT_TASKS.buildDirPath(moveSourceName, PROJECT_ETA_ID);
+    const conflictPath = `${dir}/${conflictCopyName('tasks', '.md')}`;
+
+    // Base: T1 (stays) and T2 (about to move) both under Eta.
+    const stayerAncestor = buildTask({ id: TASK_T1_ID, projectId: PROJECT_ETA_ID, title: 'Stays', sortOrder: 0, updatedAt: T0 });
+    const movedAncestor = buildTask({ id: TASK_T2_ID, projectId: PROJECT_ETA_ID, title: 'Moved', sortOrder: 1, updatedAt: T0 });
+    await recordBase(filePath, serializeProjectTasksFile(moveSource, [stayerAncestor, movedAncestor]).content);
+
+    // This device hasn't learned about the move yet — resolveConflicts runs
+    // BEFORE import in the sync flow, so Dexie's live rows are still
+    // pre-move at this point.
+    await db.projectTasks.bulkPut([stayerAncestor, movedAncestor]);
+
+    // "ours" (the file currently at the target path) is this device's own
+    // unrelated concurrent edit (renaming T1) — it won whatever raw
+    // Syncthing byte-race happened, so T2 is still there, pre-move.
+    const stayerOurs = buildTask({ id: TASK_T1_ID, projectId: PROJECT_ETA_ID, title: 'Stays Renamed', sortOrder: 0, updatedAt: T1 });
+    const movedOurs = buildTask({ id: TASK_T2_ID, projectId: PROJECT_ETA_ID, title: 'Moved', sortOrder: 1, updatedAt: T0 });
+    await backend.writeFile(filePath, serializeProjectTasksFile(moveSource, [stayerOurs, movedOurs]).content);
+
+    // "theirs" (the conflict copy) is the peer's ALREADY-moved-away version
+    // of Eta's tasks.md — T2 is simply gone from it, which is what makes
+    // mergeRowSets conclude (correctly, from ITS point of view) that T2 was
+    // deleted: base had it, neither side of THIS FILE's conflict has it.
+    const stayerTheirs = buildTask({ id: TASK_T1_ID, projectId: PROJECT_ETA_ID, title: 'Stays', sortOrder: 0, updatedAt: T0 });
+    await backend.writeFile(conflictPath, serializeProjectTasksFile(moveSource, [stayerTheirs]).content);
+
+    // The move's destination file is ALSO already on the backend, in the
+    // same sync batch — this is the evidence the resolver-path fix must
+    // consult instead of trusting Dexie's not-yet-caught-up live row.
+    const targetFilePath = PROJECT_TASKS.buildPath('Theta', PROJECT_THETA_ID);
+    const movedAtMoveTime = buildTask({ id: TASK_T2_ID, projectId: PROJECT_THETA_ID, title: 'Moved', sortOrder: 0, updatedAt: T1 });
+    await backend.writeFile(targetFilePath, serializeProjectTasksFile(moveTarget, [movedAtMoveTime]).content);
+
+    const results = await resolveConflicts(backend);
+    const resolution = results.find(r => r.conflictPath === conflictPath);
+    expect(resolution).toMatchObject({ targetPath: filePath, resolved: true });
+
+    const storedMoved = await db.projectTasks.get(TASK_T2_ID);
+    expect(storedMoved).toBeTruthy();
+    expect(storedMoved!.deletedAt).toBeFalsy();
+
+    expect(await backend.exists(conflictPath)).toBe(false);
 
     await expectResolvedQuiescent(backend);
   });
