@@ -274,7 +274,12 @@ strictly more informative than Dexie's possibly-stale state either way.
 
 **Residual risk (accepted, not fully closable from application code):** the
 on-demand scan only helps if the move's destination file has already
-reached the backend by the time the scan runs. In the ordinary case it has —
+reached the backend by the time the scan runs. The same limit applies to
+`importAllFromDisk`'s batch union: the evidence in every path is whatever
+is locally on disk at scan time, so a destination file Syncthing has not
+yet delivered leaves all three paths equally exposed — "closing the
+batch-order race" above refers to the processing order of files already
+present, not to files still in transit from a peer. In the ordinary case it has —
 a real move writes both files together, and neither Syncthing nor the local
 filesystem waits for one device to finish reacting to one file before
 delivering the next — but a genuine write-timing race (the destination file
