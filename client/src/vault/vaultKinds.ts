@@ -437,10 +437,18 @@ const TODAY_KIND: VaultKind = {
 const INBOX_KIND: VaultKind = {
   layout: INBOX,
 
+  // Once the inbox has ever had a row (including soft-deleted ones),
+  // inbox.md keeps existing as a valid empty-items file rather than being
+  // deleted — same "ever had rows" rule FOLDERS_KIND already applies below.
+  // A deleted last item must show up to a peer as a row missing from an
+  // existing file (a MODIFY the C12 base-diff can infer as a deletion), not
+  // as the file itself disappearing: an aggregate file has no `fileIndex`
+  // entry, so a peer's delete-event handler has nothing to act on and its
+  // own next export simply resurrects the item. Only a table that has never
+  // held a row at all (a vault that was never used) emits nothing.
   collectFiles(ctx) {
-    const activeItems = ctx.inboxItems.filter(i => !i.deletedAt);
-    if (activeItems.length === 0) return [];
-    const { path, content } = serializeInbox(activeItems);
+    if (ctx.inboxItems.length === 0) return [];
+    const { path, content } = serializeInbox(ctx.inboxItems);
     return [{ path, content }];
   },
 
@@ -462,14 +470,16 @@ const INBOX_KIND: VaultKind = {
     await softDelete(db.inboxItems, id);
   },
 
-  async gatherWriteSet(backend, _entityId) {
+  // No zero-rows guard: unlike collectFiles (which runs over a whole-vault
+  // snapshot that can legitimately be empty), this only ever runs from a
+  // dexieHooks creating/updating callback (queued with the row's own id) or
+  // from conflictResolver's post-merge rewrite (whose id is either a
+  // surviving row or one just proven deleted via softDeleteRow, which still
+  // leaves it in the table) — every caller's entityId names a row that
+  // exists, so `allItems` can never actually be empty here.
+  async gatherWriteSet(_backend, _entityId) {
     const allItems = await db.inboxItems.toArray();
-    const activeItems = allItems.filter(i => !i.deletedAt);
-    if (activeItems.length === 0) {
-      const has = await backend.exists(INBOX.path);
-      return { writes: [], deletes: has ? [INBOX.path] : [] };
-    }
-    const { path, content } = serializeInbox(activeItems);
+    const { path, content } = serializeInbox(allItems);
     return { writes: [{ path, content }], deletes: [] };
   },
 };

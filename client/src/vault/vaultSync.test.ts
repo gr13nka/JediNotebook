@@ -1,15 +1,18 @@
 import './testSupport';
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Activity, Project, ProjectTask, TimeEntry } from '@shared/types';
+import type { Activity, InboxItem, Project, ProjectTask, TimeEntry } from '@shared/types';
 import { resetDb } from './testSupport';
 import { db } from '../db';
-import { exportAllToDisk, importAllFromDisk, handleExternalChange, fileIndex } from './vaultSync';
+import { exportAllToDisk, importAllFromDisk, handleExternalChange, writeEntityToDisk, fileIndex } from './vaultSync';
 import { resolveConflicts } from './conflictResolver';
 import { readBase, recordBase } from './vaultBase';
-import { serializeActivity, serializeTimeEntries, serializeProjectTasksFile } from './serializers';
+import {
+  serializeActivity, serializeTimeEntries, serializeProjectTasksFile,
+  serializeInbox, deserializeInbox,
+} from './serializers';
 import { stringifyFrontmatter } from './frontmatter';
-import { PROJECT_TASKS, TIME_LOG } from './vaultLayout';
+import { PROJECT_TASKS, TIME_LOG, INBOX } from './vaultLayout';
 import { MemoryBackend } from './memoryBackend';
 
 beforeEach(async () => {
@@ -24,6 +27,7 @@ const ENTRY_E2_ID = '666666000000000000000000000006';
 const PROJECT_CORRUPT_ID = 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
 const PROJECT_FINE_ID = 'b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2';
 const TASK_FINE_ID = 'c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3';
+const INBOX_ITEM_ID = 'd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4';
 
 function buildActivity(overrides: Partial<Activity> = {}): Activity {
   return {
@@ -91,6 +95,18 @@ function buildTask(overrides: Partial<ProjectTask> = {}): ProjectTask {
     timeBox: 'later',
     scheduledDate: null,
     timeBoxOrder: 0,
+    createdAt: T0,
+    updatedAt: T0,
+    deletedAt: null,
+    deviceId: 'device-a',
+    ...overrides,
+  };
+}
+
+function buildInboxItem(overrides: Partial<InboxItem> = {}): InboxItem {
+  return {
+    id: INBOX_ITEM_ID,
+    text: 'Buy milk',
     createdAt: T0,
     updatedAt: T0,
     deletedAt: null,
@@ -350,5 +366,67 @@ describe('importAllFromDisk — prune guard on partial failure (C12)', () => {
     // throw aborted the loop first — is missing from `seen`, so its base
     // gets wrongly forgotten even though the file itself is untouched.
     expect(await readBase(finePath)).toBe(fineContent);
+  });
+});
+
+describe('INBOX_KIND — inbox.md persists as an empty list (C13)', () => {
+  it('deleting the last item leaves inbox.md on disk as an empty list rather than deleting it', async () => {
+    const backend = new MemoryBackend();
+    const item = buildInboxItem();
+    await db.inboxItems.put(item);
+
+    await exportAllToDisk(backend);
+    const exported = await backend.readFile(INBOX.path);
+    expect(exported).toContain(item.id);
+
+    // Soft-delete the only item, then run the same write path a dexieHooks
+    // 'updating' callback would trigger.
+    await db.inboxItems.update(item.id, { deletedAt: T1, updatedAt: T1 });
+    await writeEntityToDisk(backend, 'inboxItems', item.id);
+
+    // Before this fix, gatherWriteSet returned inbox.md in `deletes` once no
+    // *active* item remained, deleting the file outright.
+    expect(await backend.exists(INBOX.path)).toBe(true);
+    const content = await backend.readFile(INBOX.path);
+    expect(deserializeInbox(content)).toEqual([]);
+  });
+
+  it('a peer importing the resulting empty file soft-deletes its own row, and a following export does not resurrect it', async () => {
+    const backend = new MemoryBackend();
+    const item = buildInboxItem();
+    await db.inboxItems.put(item);
+    // Base recorded from the one-item file both devices agreed on.
+    await exportAllToDisk(backend);
+
+    // The other device deleted its last item; per this fix, its own write
+    // path persisted inbox.md as a valid empty-items file instead of
+    // deleting it — simulated directly with the real serializer.
+    await backend.writeFile(INBOX.path, serializeInbox([]).content);
+
+    const result = await importAllFromDisk(backend);
+    expect(result.errors).toEqual([]);
+
+    // Existence-first: a missing row and a soft-deleted row are both falsy
+    // on `.deletedAt`, so assert the row was found before checking its state.
+    const stored = await db.inboxItems.get(item.id);
+    expect(stored).toBeTruthy();
+    expect(stored!.deletedAt).toBeTruthy();
+
+    // C12's base-diff inference is what actually soft-deletes the row above;
+    // what this fix contributes is that inbox.md exists at all for import to
+    // read in the first place. Without it, the deleting device's own export
+    // removes the file, so this peer never sees a change to react to and its
+    // own next export resurrects the item instead.
+    await exportAllToDisk(backend);
+    const afterExport = await backend.readFile(INBOX.path);
+    expect(afterExport).not.toContain(item.text);
+  });
+
+  it('a never-used inbox does not write inbox.md on export', async () => {
+    const backend = new MemoryBackend();
+
+    await exportAllToDisk(backend);
+
+    expect(await backend.exists(INBOX.path)).toBe(false);
   });
 });
