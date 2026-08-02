@@ -4,6 +4,7 @@ import { fileIndex } from './fileIndex';
 import { VAULT_KINDS, KIND_BY_TABLE, type VaultExportContext } from './vaultKinds';
 import { vaultDirs, tableFromPath } from './vaultLayout';
 import { recordBase, forgetBase, pruneBases } from './vaultBase';
+import { conflictTargetPath } from './conflictPaths';
 
 const VAULT_VERSION = 1;
 
@@ -72,6 +73,11 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
       const paths = await kind.discoverPaths(backend);
       let n = 0;
       for (const path of paths) {
+        // Loose prefix/extension matching (discoverPaths) treats a Syncthing
+        // conflict copy as an ordinary file of the same kind. Skip it here —
+        // one choke point — rather than tightening every kind's matchesPath.
+        // resolveConflicts() is what actually folds these in.
+        if (conflictTargetPath(path)) continue;
         const content = await backend.readFile(path);
         const parsed = kind.parseFile(path, content);
         for (const row of parsed.rows) {
@@ -135,6 +141,11 @@ export async function handleExternalChange(
   eventType: 'create' | 'modify' | 'delete',
 ): Promise<void> {
   if (eventType === 'delete') {
+    // No explicit conflict-copy guard needed here: a conflict path is never
+    // given a fileIndex entry (import and the create/modify branch below
+    // both skip it before any `fileIndex.set` call), so `getId` is always
+    // undefined for one and the soft-delete block below never runs. Deleting
+    // the copy is `resolveConflicts`'s job, not this handler's.
     const entityId = fileIndex.getId(filePath);
     if (entityId) {
       // Soft delete in Dexie — determine table from path
@@ -150,6 +161,11 @@ export async function handleExternalChange(
     await forgetBase(filePath);
     return;
   }
+
+  // A Syncthing conflict copy delivered mid-session must go through
+  // resolveConflicts (three-way merge), never be imported as an ordinary
+  // file — see importAllFromDisk's matching guard above.
+  if (conflictTargetPath(filePath)) return;
 
   // create or modify — find the owning kind and re-read + merge
   const kind = VAULT_KINDS.find(k => k.layout.matchesPath(filePath));

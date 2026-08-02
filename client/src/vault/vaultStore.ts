@@ -3,6 +3,7 @@ import type { VaultBackend } from './vaultBackend';
 import { getPlatform } from './platform';
 import { importAllFromDisk, handleExternalChange } from './vaultSync';
 import { resolveConflicts } from './conflictResolver';
+import { conflictTargetPath } from './conflictPaths';
 import { writeQueue } from './writeQueue';
 import { writeGuard } from './writeGuard';
 import { registerVaultMiddleware } from './dexieHooks';
@@ -159,6 +160,16 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         const unwatchFs = await backend.watch((events) => {
           for (const event of events) {
             if (writeGuard.isGuarded(event.path)) continue;
+            // A conflict copy delivered mid-session (Syncthing writes
+            // whenever it likes) needs the full resolver, not the ordinary
+            // per-file merge — handleExternalChange only no-ops for these.
+            // Kick off an immediate syncNow (which runs resolveConflicts)
+            // instead of waiting for the 60s reconcile, unless one is
+            // already in flight.
+            if (event.type !== 'delete' && conflictTargetPath(event.path)) {
+              if (!get().isSyncing) get().syncNow().catch(() => {});
+              continue;
+            }
             handleExternalChange(backend, event.path, event.type).catch(err => {
               console.error('[vault] External change handling failed:', err);
             });

@@ -3,6 +3,12 @@ import { VAULT_KINDS, type VaultKind } from './vaultKinds';
 import { mergeRowSets, mergeTextBodies } from './threeWayMerge';
 import { readBase, recordBase } from './vaultBase';
 import { writeEntityToDisk } from './vaultSync';
+import { conflictTargetPath } from './conflictPaths';
+
+// Re-exported for existing callers/tests — the regex + doc comment now live
+// in conflictPaths.ts so vaultSync.ts can import it without a cycle (see
+// that module's doc comment for why).
+export { conflictTargetPath };
 
 /**
  * Folds Syncthing conflict copies back into the file they came from.
@@ -18,22 +24,6 @@ import { writeEntityToDisk } from './vaultSync';
  * undone: a row or paragraph only disappears if the base proves it existed
  * before one side removed it.
  */
-
-/**
- * `project.sync-conflict-20260724-153258-YZWMYOO.md` -> stem `project`, ext `.md`.
- * The device suffix is Syncthing's short device ID; the timestamp is local to
- * whichever device detected the conflict, so neither is used for ordering —
- * `updatedAt` inside the file is the only ordering signal trusted here.
- */
-const CONFLICT_NAME = /^(.+)\.sync-conflict-\d{8}-\d{6}-[A-Z0-9]+(\.[^./]+)$/;
-
-/** The path a conflict copy belongs to, or `null` if `path` is not one. */
-export function conflictTargetPath(path: string): string | null {
-  const slash = path.lastIndexOf('/');
-  const dir = slash === -1 ? '' : path.slice(0, slash + 1);
-  const match = CONFLICT_NAME.exec(path.slice(slash + 1));
-  return match ? `${dir}${match[1]}${match[2]}` : null;
-}
 
 export interface ConflictResolution {
   /** The conflict copy that was processed. */
