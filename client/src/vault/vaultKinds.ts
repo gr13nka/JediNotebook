@@ -362,6 +362,12 @@ const TIME_LOG_KIND: VaultKind = {
     await mergeEntity(db.timeEntries, row);
   },
 
+  // A date file lists a whole day's entries, so one entry can vanish from the
+  // file while the file itself stays — same shape as PROJECT_TASKS_KIND.
+  async softDeleteRow(id) {
+    await softDelete(db.timeEntries, id);
+  },
+
   async gatherWriteSet(_backend, entityId) {
     const e = await db.timeEntries.get(entityId);
     if (!e) return { writes: [], deletes: [] };
@@ -409,6 +415,12 @@ const TODAY_KIND: VaultKind = {
     await mergeEntity(db.todayTasks, row);
   },
 
+  // Same shape as PROJECT_TASKS_KIND/TIME_LOG_KIND: a date file aggregates a
+  // whole day's tasks, so one task can vanish from the file while it stays.
+  async softDeleteRow(id) {
+    await softDelete(db.todayTasks, id);
+  },
+
   async gatherWriteSet(_backend, entityId) {
     const t = await db.todayTasks.get(entityId);
     if (!t) return { writes: [], deletes: [] };
@@ -442,6 +454,12 @@ const INBOX_KIND: VaultKind = {
 
   async mergeRow(row) {
     await mergeEntity(db.inboxItems, row);
+  },
+
+  // inbox.md lists every item in one file, so one item can vanish from it
+  // while the file itself stays — same shape as PROJECT_TASKS_KIND.
+  async softDeleteRow(id) {
+    await softDelete(db.inboxItems, id);
   },
 
   async gatherWriteSet(backend, _entityId) {
@@ -525,6 +543,12 @@ const FOLDERS_KIND: VaultKind = {
 
   async mergeRow(row) {
     await mergeEntity(db.projectFolders, row);
+  },
+
+  // folders.json lists every folder in one file, so one folder can vanish
+  // from it while the file itself stays — same shape as PROJECT_TASKS_KIND.
+  async softDeleteRow(id) {
+    await softDelete(db.projectFolders, id);
   },
 
   async gatherWriteSet(_backend, _entityId) {

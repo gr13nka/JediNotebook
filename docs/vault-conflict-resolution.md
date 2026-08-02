@@ -87,10 +87,17 @@ logic in the registry rather than in the resolver:
   LWW would discard one wholesale. Kinds whose rows are entirely structured omit
   it — per-row LWW is already correct for them.
 - **`softDeleteRow`** — for kinds whose file can lose an individual row while the
-  file itself survives. Only `PROJECT_TASKS_KIND` sets it: `tasks.md` lists a
-  whole project's tasks, so one task can vanish from an otherwise intact file.
-  Elsewhere deletion is encoded by a file's absence, which needs no row-level
-  handler.
+  file itself survives. `PROJECT_TASKS_KIND`, `TIME_LOG_KIND`, `TODAY_KIND`,
+  `INBOX_KIND`, and `FOLDERS_KIND` all set it: each aggregates several rows
+  into one file (a project's tasks, a day's time entries or today-tasks, the
+  whole inbox, the whole folder list), so one row can vanish from an otherwise
+  intact file — and without a handler, the merge correctly proves the
+  deletion but has nowhere to record it, leaving the local row active until
+  the next export resurrects it in the file. `ACTIVITIES_KIND` and
+  `PROJECTS_KIND` omit it because they are per-entity files: a row's deletion
+  *is* the file's deletion, handled by `gatherWriteSet`'s `deletes` list
+  rather than a row-level soft-delete. `SETTINGS_KIND` omits it because its
+  file has no keyed rows at all — just one whole-row LWW swap.
 
 Structured rows always resolve by `id` + `updatedAt` — the same rule
 `mergeEntity` applies — so a conflict copy can never resolve differently than

@@ -1,16 +1,16 @@
 import './testSupport';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Project, ProjectTask, UserSettings } from '@shared/types';
+import type { Project, ProjectTask, TimeEntry, UserSettings } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { resetDb } from './testSupport';
 import { db } from '../db';
 import { MemoryBackend } from './memoryBackend';
 import { resolveConflicts, conflictTargetPath } from './conflictResolver';
 import { recordBase, readBase } from './vaultBase';
-import { serializeProjectFile, serializeProjectTasksFile, serializeSettings } from './serializers';
+import { serializeProjectFile, serializeProjectTasksFile, serializeSettings, serializeTimeEntries } from './serializers';
 import { stringifyFrontmatter } from './frontmatter';
-import { PROJECTS, PROJECT_TASKS } from './vaultLayout';
+import { PROJECTS, PROJECT_TASKS, TIME_LOG } from './vaultLayout';
 
 /**
  * End-to-end coverage of `resolveConflicts`/`resolveOne` — the orchestration
@@ -39,6 +39,8 @@ const TASK_T1_ID = '111111000000000000000000000001';
 const TASK_T2_ID = '222222000000000000000000000002';
 const TASK_X_ID = '333333000000000000000000000003';
 const TASK_Y_ID = '444444000000000000000000000004';
+const ENTRY_E1_ID = '555555000000000000000000000005';
+const ENTRY_E2_ID = '666666000000000000000000000006';
 
 const T0 = '2026-07-01T00:00:00.000Z';
 const T1 = '2026-07-15T00:00:00.000Z';
@@ -77,6 +79,23 @@ function buildTask(overrides: Partial<ProjectTask> = {}): ProjectTask {
     timeBox: 'later',
     scheduledDate: null,
     timeBoxOrder: 0,
+    createdAt: T0,
+    updatedAt: T0,
+    deletedAt: null,
+    deviceId: 'device-a',
+    ...overrides,
+  };
+}
+
+function buildTimeEntry(overrides: Partial<TimeEntry> = {}): TimeEntry {
+  return {
+    id: 'entry-default',
+    activityId: 'activity-default',
+    startedAt: T0,
+    endedAt: T0,
+    durationSeconds: 60,
+    isManual: true,
+    date: '2026-07-15',
     createdAt: T0,
     updatedAt: T0,
     deletedAt: null,
@@ -220,6 +239,53 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     // rewrite-to-disk step never fires for this kind today — only
     // entity-scoped kinds (projects) get that. C11 changes this. Until then,
     // deliberately no assertion on tasks.md's on-disk content here.
+
+    await expectResolvedQuiescent(backend);
+  });
+
+  it('soft-deletes a base-proven removal from a time-log day file (C10)', async () => {
+    const backend = new MemoryBackend();
+    const date = '2026-07-15';
+    const targetPath = TIME_LOG.buildPath(date);
+    const conflictPath = `${TIME_LOG.dir}/${conflictCopyName(date, '.md')}`;
+    const activityNames = new Map<string, string>();
+
+    const e1Ancestor = buildTimeEntry({ id: ENTRY_E1_ID, date, updatedAt: T0 });
+    const e2Ancestor = buildTimeEntry({ id: ENTRY_E2_ID, date, updatedAt: T0 });
+    await recordBase(targetPath, serializeTimeEntries(date, [e1Ancestor, e2Ancestor], activityNames).content);
+
+    const e1Ours = buildTimeEntry({ id: ENTRY_E1_ID, date, updatedAt: T0 });
+    const e2Ours = buildTimeEntry({ id: ENTRY_E2_ID, date, updatedAt: T0 });
+    await db.timeEntries.bulkPut([e1Ours, e2Ours]);
+    await backend.writeFile(targetPath, serializeTimeEntries(date, [e1Ours, e2Ours], activityNames).content);
+
+    // The other device's file no longer has E2 at all: base proves it
+    // existed, so its absence here is a deletion, not a union.
+    const e1Theirs = buildTimeEntry({ id: ENTRY_E1_ID, date, updatedAt: T0 });
+    await backend.writeFile(conflictPath, serializeTimeEntries(date, [e1Theirs], activityNames).content);
+
+    const results = await resolveConflicts(backend);
+
+    const resolution = results.find(r => r.conflictPath === conflictPath);
+    expect(resolution).toMatchObject({ targetPath, resolved: true });
+
+    // Assert existence before `.deletedAt` — see the union-fallback scenario
+    // below for why a plain falsy check on the row itself isn't enough.
+    const storedE1 = await db.timeEntries.get(ENTRY_E1_ID);
+    expect(storedE1).toBeTruthy();
+    expect(storedE1!.deletedAt).toBeFalsy();
+
+    const storedE2 = await db.timeEntries.get(ENTRY_E2_ID);
+    expect(storedE2).toBeTruthy();
+    expect(storedE2!.deletedAt).toBeTruthy();
+
+    expect(await backend.exists(conflictPath)).toBe(false);
+
+    // TIME_LOG_KIND.parseFile returns no `entityId` (a date file aggregates a
+    // whole day's entries rather than naming one entity), so resolveOne's
+    // rewrite-to-disk step never fires for this kind today — only
+    // entity-scoped kinds (projects) get that. C11 changes this. Until then,
+    // deliberately no assertion on the date file's on-disk content here.
 
     await expectResolvedQuiescent(backend);
   });
