@@ -1,4 +1,5 @@
 import type { VaultBackend, WatchCallback, FileEvent } from './vaultBackend';
+import { joinChildPath } from './vaultBackend';
 import type { WatchEventKind } from '@tauri-apps/plugin-fs';
 
 /**
@@ -57,7 +58,7 @@ export class TauriVaultBackend implements VaultBackend {
       const entries = await readDir(this.resolve(dir));
       let files = entries
         .filter(e => !e.isDirectory)
-        .map(e => `${dir}/${e.name}`);
+        .map(e => joinChildPath(dir, e.name));
       if (extension) {
         files = files.filter((f: string) => f.endsWith(extension));
       }
@@ -74,7 +75,7 @@ export class TauriVaultBackend implements VaultBackend {
       const entries = await readDir(this.resolve(dir));
       return entries
         .filter(e => e.isDirectory)
-        .map(e => `${dir}/${e.name}`)
+        .map(e => joinChildPath(dir, e.name))
         .sort();
     } catch (err) {
       console.warn(`[vault] listDirs failed for "${this.resolve(dir)}":`, err);
