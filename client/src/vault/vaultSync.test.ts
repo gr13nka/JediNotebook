@@ -453,6 +453,46 @@ describe('applyBaseDiffDeletions — corrupt base and soft-delete failures (IMPO
   });
 });
 
+describe('handleExternalChange — deletion inference runs on the watcher path (CRITICAL 1)', () => {
+  it('soft-deletes a row a peer removed from a rewritten date file delivered via the watcher, and updates the base', async () => {
+    const backend = new MemoryBackend();
+    const date = '2026-07-18';
+    const activityNames = new Map<string, string>();
+
+    const e1 = buildTimeEntry({ id: ENTRY_E1_ID, date, updatedAt: T0 });
+    const e2 = buildTimeEntry({ id: ENTRY_E2_ID, date, updatedAt: T0 });
+    await db.timeEntries.bulkPut([e1, e2]);
+
+    // First export: writes the date file with both entries and records the
+    // base both devices now agree on.
+    await exportAllToDisk(backend);
+    const path = TIME_LOG.buildPath(date);
+    const exported = await backend.readFile(path);
+    expect(exported).toContain(ENTRY_E1_ID);
+    expect(exported).toContain(ENTRY_E2_ID);
+
+    // The peer deleted E2 and its own export rewrote the file with only E1
+    // — delivered here as a watcher 'modify' event, NOT via importAllFromDisk.
+    const peerContent = serializeTimeEntries(date, [e1], activityNames).content;
+    await backend.writeFile(path, peerContent);
+
+    await handleExternalChange(backend, path, 'modify');
+
+    const storedE1 = await db.timeEntries.get(ENTRY_E1_ID);
+    expect(storedE1).toBeTruthy();
+    expect(storedE1!.deletedAt).toBeFalsy();
+
+    const storedE2 = await db.timeEntries.get(ENTRY_E2_ID);
+    expect(storedE2).toBeTruthy();
+    expect(storedE2!.deletedAt).toBeTruthy();
+
+    // The base must move to the peer's rewritten content — left at the
+    // stale two-entry version, a later reconcile could never re-derive
+    // this same deletion from fresh evidence.
+    expect(await readBase(path)).toBe(peerContent);
+  });
+});
+
 describe('INBOX_KIND — inbox.md persists as an empty list (C13)', () => {
   it('deleting the last item leaves inbox.md on disk as an empty list rather than deleting it', async () => {
     const backend = new MemoryBackend();

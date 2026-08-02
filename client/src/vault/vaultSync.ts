@@ -227,6 +227,14 @@ export async function handleExternalChange(
 
   const content = await backend.readFile(filePath);
   const parsed = kind.parseFile(filePath, content);
+
+  // A row a peer removed from this aggregate file arrives here exactly like
+  // it does during a whole-vault import — as a MODIFY with the row simply
+  // absent — so it needs the identical base-diff inference before the new
+  // base is recorded, or the deletion is never applied and the evidence to
+  // catch it later (the old base) is gone the moment recordBase runs below.
+  await applyBaseDiffDeletions(kind, filePath, parsed.rows);
+
   for (const row of parsed.rows) {
     await kind.mergeRow(row);
   }
