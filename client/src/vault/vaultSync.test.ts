@@ -31,6 +31,9 @@ const PROJECT_CORRUPT_ID = 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
 const PROJECT_FINE_ID = 'b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2';
 const TASK_FINE_ID = 'c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3';
 const TASK_REMOVED_ID = 'c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4';
+const TASK_MOVED_ID = 'c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5';
+const PROJECT_SOURCE_ID = 'e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5';
+const PROJECT_TARGET_ID = 'f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6';
 const INBOX_ITEM_ID = 'd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4';
 
 function buildActivity(overrides: Partial<Activity> = {}): Activity {
@@ -490,6 +493,56 @@ describe('handleExternalChange — deletion inference runs on the watcher path (
     // stale two-entry version, a later reconcile could never re-derive
     // this same deletion from fresh evidence.
     expect(await readBase(path)).toBe(peerContent);
+  });
+});
+
+describe('importAllFromDisk — deletion inference skips a row that moved to another file (CRITICAL 2)', () => {
+  it('does not soft-delete a task whose live row moved to another project, even though the base proves it left this file', async () => {
+    const backend = new MemoryBackend();
+    const source = buildProject({ id: PROJECT_SOURCE_ID, name: 'Source' });
+    const target = buildProject({ id: PROJECT_TARGET_ID, name: 'Target' });
+    await db.projects.bulkPut([source, target]);
+    const sourcePath = PROJECT_TASKS.buildPath(source.name, source.id);
+
+    // Base: both devices last agreed the task belonged to Source.
+    const preMove = buildTask({ id: TASK_MOVED_ID, projectId: source.id, title: 'Moving Task', updatedAt: T0 });
+    await recordBase(sourcePath, serializeProjectTasksFile(source, [preMove]).content);
+
+    // This device already applied moveTaskToProject: the live Dexie row now
+    // belongs to Target, and Source's own tasks.md on disk reflects that —
+    // it has no tasks left at all (Source's file, base-diffed against
+    // itself, would otherwise "prove" the task was deleted).
+    const moved = buildTask({ id: TASK_MOVED_ID, projectId: target.id, title: 'Moving Task', updatedAt: T1 });
+    await db.projectTasks.put(moved);
+    await backend.writeFile(sourcePath, serializeProjectTasksFile(source, []).content);
+
+    const result = await importAllFromDisk(backend);
+    expect(result.errors).toEqual([]);
+
+    const stored = await db.projectTasks.get(TASK_MOVED_ID);
+    expect(stored).toBeTruthy();
+    expect(stored!.deletedAt).toBeFalsy();
+    expect(stored!.projectId).toBe(target.id);
+  });
+
+  it('still soft-deletes a task the base proves left this file when it was actually deleted, not moved', async () => {
+    const backend = new MemoryBackend();
+    const source = buildProject({ id: PROJECT_SOURCE_ID, name: 'Source' });
+    await db.projects.put(source);
+    const sourcePath = PROJECT_TASKS.buildPath(source.name, source.id);
+
+    const preDelete = buildTask({ id: TASK_MOVED_ID, projectId: source.id, title: 'Deleted Task', updatedAt: T0 });
+    await recordBase(sourcePath, serializeProjectTasksFile(source, [preDelete]).content);
+    // The live row still belongs to Source — never moved, genuinely deleted.
+    await db.projectTasks.put(preDelete);
+    await backend.writeFile(sourcePath, serializeProjectTasksFile(source, []).content);
+
+    const result = await importAllFromDisk(backend);
+    expect(result.errors).toEqual([]);
+
+    const stored = await db.projectTasks.get(TASK_MOVED_ID);
+    expect(stored).toBeTruthy();
+    expect(stored!.deletedAt).toBeTruthy();
   });
 });
 

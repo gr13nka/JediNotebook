@@ -5,6 +5,7 @@ import { db } from '../db';
 import { softDelete } from '../db/repository';
 import type { VaultBackend } from './vaultBackend';
 import { fileIndex } from './fileIndex';
+import { parseFrontmatter } from './frontmatter';
 import {
   ACTIVITIES, PROJECTS, PROJECT_TASKS, TIME_LOG, TODAY, INBOX, SETTINGS, FOLDERS,
 } from './vaultLayout';
@@ -53,6 +54,15 @@ export interface ParsedFile {
   rows: Record<string, unknown>[];
   /** Mirrors `VaultFile.entityId` — set only for a kind's self-named file. */
   entityId?: string;
+  /**
+   * The scope this AGGREGATE file belongs to — a project id for `tasks.md`,
+   * a calendar date for a per-date log — set by a kind whose `rowBelongsTo`
+   * needs to know the file's own scope even when `rows` is empty (every row
+   * moved or was deleted away). Unlike `entityId`, this file isn't *the*
+   * file for this id; it's *scoped* to it. Read straight from the file's own
+   * frontmatter/JSON, never from a row, so it survives an empty `rows`.
+   */
+  ownerId?: string;
 }
 
 
@@ -114,6 +124,29 @@ export interface VaultKind {
    * singleton, a per-entity file that vanishes as a whole) don't need it.
    */
   softDeleteRow?(id: string): Promise<void>;
+
+  /**
+   * Membership check for a `softDeleteRow` kind whose rows can move to a
+   * DIFFERENT file of the same kind — a `ProjectTask` reassigned to another
+   * project (`moveTaskToProject`), a `TimeEntry`/`TodayTask` whose `date`
+   * changed. Without it, a base-diff ("id was in the base for this path,
+   * missing from this file") can't tell a genuine deletion from a row that
+   * simply lives on somewhere else now — both look identical from one
+   * file's point of view.
+   *
+   * `liveRow` is the row currently in Dexie for an id the base-diff found
+   * missing from this file; `ownerId` is this file's own scope
+   * (`ParsedFile.ownerId` — the project id or date the file is FOR, read
+   * from its own content, not from any row). Returns false ("this row
+   * migrated, it wasn't deleted") to skip the soft-delete for it.
+   *
+   * Optional: absent for a kind whose rows never move between files of that
+   * kind (aggregates with exactly one live file — `INBOX_KIND`,
+   * `FOLDERS_KIND`) or that has no `softDeleteRow` at all, where every
+   * caller treats an absent hook as "proceed with the soft-delete", i.e.
+   * the pre-CRITICAL-2 behavior.
+   */
+  rowBelongsTo?(liveRow: Record<string, unknown>, ownerId: string | undefined): boolean;
 }
 
 /**
@@ -287,7 +320,13 @@ const PROJECT_TASKS_KIND: VaultKind = {
   },
 
   parseFile(_path, content) {
-    return { rows: deserializeProjectTasks(content) };
+    // `ownerId` reads `projectId` straight from the frontmatter rather than
+    // from `deserializeProjectTasks`'s rows (which carry the same value per
+    // row, copied from this same field) so it survives a file with zero
+    // active tasks — the shape a project takes on once every task has moved
+    // away or been deleted, which `rowBelongsTo` below must still resolve.
+    const { meta } = parseFrontmatter(content);
+    return { rows: deserializeProjectTasks(content), ownerId: meta.projectId as string };
   },
 
   async mergeRow(row) {
@@ -312,6 +351,14 @@ const PROJECT_TASKS_KIND: VaultKind = {
     const task = await db.projectTasks.get(entityId);
     if (!task) return { writes: [], deletes: [] };
     return PROJECTS_KIND.gatherWriteSet(backend, task.projectId);
+  },
+
+  // moveTaskToProject (db/taskOps.ts) reassigns a task's projectId, which
+  // moves it to a DIFFERENT project's tasks.md. A base-diff against its old
+  // project's file alone can't distinguish that from a genuine deletion —
+  // the live row's current projectId is the only thing that can.
+  rowBelongsTo(liveRow, ownerId) {
+    return (liveRow as { projectId?: string }).projectId === ownerId;
   },
 };
 
@@ -345,8 +392,13 @@ const TIME_LOG_KIND: VaultKind = {
   },
 
   parseFile(_path, content) {
-    const { entries } = deserializeTimeLog(content);
-    return { rows: entries };
+    // `ownerId` (the date) comes straight from `deserializeTimeLog`'s own
+    // return value, not from a row, so it survives a file with zero active
+    // entries — the shape a date takes on once every entry has moved to
+    // another date or been deleted, which `rowBelongsTo` below must still
+    // resolve.
+    const { date, entries } = deserializeTimeLog(content);
+    return { rows: entries, ownerId: date };
   },
 
   async mergeRow(row) {
@@ -367,6 +419,13 @@ const TIME_LOG_KIND: VaultKind = {
     const activityNames = new Map(activities.map(a => [a.id, a.name] as const));
     const { path, content } = serializeTimeEntries(e.date, allForDate, activityNames);
     return { writes: [{ path, content }], deletes: [] };
+  },
+
+  // A TimeEntry's `date` can change (editing a manual entry), moving it to a
+  // different date file — same "moved, not deleted" hazard as a task's
+  // projectId. See PROJECT_TASKS_KIND.rowBelongsTo.
+  rowBelongsTo(liveRow, ownerId) {
+    return (liveRow as { date?: string }).date === ownerId;
   },
 };
 
@@ -398,8 +457,10 @@ const TODAY_KIND: VaultKind = {
   },
 
   parseFile(_path, content) {
-    const { tasks } = deserializeTodayTasks(content);
-    return { rows: tasks };
+    // See TIME_LOG_KIND.parseFile: `ownerId` comes from the parsed date
+    // itself so it survives a file with zero active tasks.
+    const { date, tasks } = deserializeTodayTasks(content);
+    return { rows: tasks, ownerId: date };
   },
 
   async mergeRow(row) {
@@ -420,6 +481,12 @@ const TODAY_KIND: VaultKind = {
     const taskTitles = new Map(allProjectTasks.map(pt => [pt.id, pt.title] as const));
     const { path, content } = serializeTodayTasks(t.date, allForDate, taskTitles);
     return { writes: [{ path, content }], deletes: [] };
+  },
+
+  // Same "moved, not deleted" hazard as TIME_LOG_KIND, for a TodayTask's own
+  // `date` field.
+  rowBelongsTo(liveRow, ownerId) {
+    return (liveRow as { date?: string }).date === ownerId;
   },
 };
 

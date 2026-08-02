@@ -36,6 +36,8 @@ const PROJECT_BETA_ID = 'bbbbbb0000000000000000000000b1';
 const PROJECT_GAMMA_ID = 'cccccc0000000000000000000000c1';
 const PROJECT_DELTA_ID = 'dddddd0000000000000000000000d1';
 const PROJECT_GHOST_ID = 'eeeeee0000000000000000000000e1';
+const PROJECT_EPSILON_ID = 'ababab0000000000000000000000a5';
+const PROJECT_ZETA_ID = 'cdcdcd0000000000000000000000a6';
 const TASK_T1_ID = '111111000000000000000000000001';
 const TASK_T2_ID = '222222000000000000000000000002';
 const TASK_X_ID = '333333000000000000000000000003';
@@ -580,6 +582,57 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     expect(onDisk).toContain('From ghost');
 
     expect(await backend.exists(conflictPath)).toBe(false);
+
+    await expectResolvedQuiescent(backend);
+  });
+
+  it('does not soft-delete a task that moved to another project just because a stale conflict copy still lists it here (CRITICAL 2)', async () => {
+    const backend = new MemoryBackend();
+    const name = 'Epsilon';
+    const project1 = buildProject({ id: PROJECT_EPSILON_ID, name });
+    const project2 = buildProject({ id: PROJECT_ZETA_ID, name: 'Zeta' });
+    await db.projects.bulkPut([project1, project2]);
+    const targetPath = PROJECT_TASKS.buildPath(name, PROJECT_EPSILON_ID);
+    const dir = PROJECT_TASKS.buildDirPath(name, PROJECT_EPSILON_ID);
+    const conflictPath = `${dir}/${conflictCopyName('tasks', '.md')}`;
+
+    // T1 stays in Epsilon throughout. T2 started in Epsilon (base and the
+    // peer's stale conflict copy both still show it there) but this device
+    // already applied moveTaskToProject: its live row now belongs to Zeta.
+    const stayerAncestor = buildTask({ id: TASK_T1_ID, projectId: PROJECT_EPSILON_ID, title: 'Stays', sortOrder: 0, updatedAt: T0 });
+    const movedAncestor = buildTask({ id: TASK_T2_ID, projectId: PROJECT_EPSILON_ID, title: 'Moved', sortOrder: 1, updatedAt: T0 });
+    await recordBase(targetPath, serializeProjectTasksFile(project1, [stayerAncestor, movedAncestor]).content);
+
+    // Our own on-disk copy of Epsilon's tasks.md already reflects the move —
+    // T2 is gone from it, same as Dexie.
+    const stayerOurs = buildTask({ id: TASK_T1_ID, projectId: PROJECT_EPSILON_ID, title: 'Stays', sortOrder: 0, updatedAt: T0 });
+    const movedLive = buildTask({ id: TASK_T2_ID, projectId: PROJECT_ZETA_ID, title: 'Moved', sortOrder: 0, updatedAt: T1 });
+    await db.projectTasks.bulkPut([stayerOurs, movedLive]);
+    await backend.writeFile(targetPath, serializeProjectTasksFile(project1, [stayerOurs]).content);
+
+    // A peer's stale conflict copy of Epsilon's tasks.md hasn't heard about
+    // the move yet — it still lists T2 under Epsilon.
+    const stayerTheirs = buildTask({ id: TASK_T1_ID, projectId: PROJECT_EPSILON_ID, title: 'Stays', sortOrder: 0, updatedAt: T0 });
+    const movedTheirs = buildTask({ id: TASK_T2_ID, projectId: PROJECT_EPSILON_ID, title: 'Moved', sortOrder: 1, updatedAt: T0 });
+    await backend.writeFile(conflictPath, serializeProjectTasksFile(project1, [stayerTheirs, movedTheirs]).content);
+
+    const results = await resolveConflicts(backend);
+
+    const resolution = results.find(r => r.conflictPath === conflictPath);
+    expect(resolution).toMatchObject({ targetPath, resolved: true });
+
+    // T2 must survive, untouched, under its new project — not soft-deleted
+    // just because the stale conflict copy still shows it under the old one.
+    const storedMoved = await db.projectTasks.get(TASK_T2_ID);
+    expect(storedMoved).toBeTruthy();
+    expect(storedMoved!.deletedAt).toBeFalsy();
+    expect(storedMoved!.projectId).toBe(PROJECT_ZETA_ID);
+
+    expect(await backend.exists(conflictPath)).toBe(false);
+
+    const onDisk = await expectMergedTargetPersisted(backend, targetPath);
+    expect(onDisk).toContain('Stays');
+    expect(onDisk).not.toContain('Moved');
 
     await expectResolvedQuiescent(backend);
   });

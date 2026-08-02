@@ -1,7 +1,7 @@
 import { db } from '../db';
 import type { VaultBackend } from './vaultBackend';
 import { fileIndex } from './fileIndex';
-import { VAULT_KINDS, KIND_BY_TABLE, type VaultExportContext, type VaultKind } from './vaultKinds';
+import { VAULT_KINDS, KIND_BY_TABLE, type VaultExportContext, type VaultKind, type ParsedFile } from './vaultKinds';
 import { vaultDirs, tableFromPath } from './vaultLayout';
 import { recordBase, forgetBase, pruneBases, readBase } from './vaultBase';
 import { conflictTargetPath } from './conflictPaths';
@@ -77,7 +77,7 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
 async function applyBaseDiffDeletions(
   kind: VaultKind,
   path: string,
-  parsedRows: Record<string, unknown>[],
+  parsed: ParsedFile,
 ): Promise<void> {
   if (!kind.softDeleteRow) return;
   const baseRaw = await readBase(path);
@@ -100,9 +100,20 @@ async function applyBaseDiffDeletions(
   // here would let the caller record the new base anyway, permanently
   // discarding the one piece of evidence (the old base) a retry would need
   // to prove the same deletion again.
-  const fileIds = new Set(parsedRows.map(r => r.id as string));
+  const fileIds = new Set(parsed.rows.map(r => r.id as string));
   for (const id of baseIds) {
-    if (!fileIds.has(id)) await kind.softDeleteRow(id);
+    if (fileIds.has(id)) continue;
+    if (kind.rowBelongsTo) {
+      // The id vanished from THIS file, but it may simply have moved to a
+      // different file of the same kind (moveTaskToProject, a TimeEntry's
+      // date edit) — check where the LIVE row actually is now before
+      // treating its absence here as proof it was deleted. No live row at
+      // all isn't a "moved" case to protect; fall through and let
+      // softDeleteRow's own no-op-on-missing-id behavior handle it.
+      const liveRow = await (db as any)[kind.layout.table].get(id);
+      if (liveRow && !kind.rowBelongsTo(liveRow, parsed.ownerId)) continue;
+    }
+    await kind.softDeleteRow(id);
   }
 }
 
@@ -126,7 +137,7 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
         const content = await backend.readFile(path);
         const parsed = kind.parseFile(path, content);
 
-        await applyBaseDiffDeletions(kind, path, parsed.rows);
+        await applyBaseDiffDeletions(kind, path, parsed);
 
         for (const row of parsed.rows) {
           await kind.mergeRow(row);
@@ -233,7 +244,7 @@ export async function handleExternalChange(
   // absent — so it needs the identical base-diff inference before the new
   // base is recorded, or the deletion is never applied and the evidence to
   // catch it later (the old base) is gone the moment recordBase runs below.
-  await applyBaseDiffDeletions(kind, filePath, parsed.rows);
+  await applyBaseDiffDeletions(kind, filePath, parsed);
 
   for (const row of parsed.rows) {
     await kind.mergeRow(row);

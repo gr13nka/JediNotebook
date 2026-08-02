@@ -1,3 +1,4 @@
+import { db } from '../db';
 import type { VaultBackend } from './vaultBackend';
 import { VAULT_KINDS, type VaultKind } from './vaultKinds';
 import { mergeFlatRecord, mergeRowSets, mergeTextBodies } from './threeWayMerge';
@@ -172,15 +173,28 @@ async function resolveOne(
   const oursRaw = await readIfPresent(backend, targetPath);
   const baseRaw = await readBase(targetPath);
 
-  const parse = (content: string) => kind.parseFile(targetPath, content).rows as any[];
+  const parse = (content: string) => kind.parseFile(targetPath, content);
 
   let ourRows: any[] = [];
   let theirRows: any[] = [];
   let baseRows: any[] | null = null;
+  // The scope this target file is FOR (a project id, a date) — read from
+  // whichever side parsed, preferring theirs (guaranteed present; see the
+  // `theirsRaw === null` guard above) and falling back to ours only if
+  // theirs' own parse didn't set one. Needed by the `rowBelongsTo` guard
+  // below, since `plan.deletedIds` alone can't tell "deleted" from "moved to
+  // another file of the same kind".
+  let ownerId: string | undefined;
   try {
-    theirRows = parse(theirsRaw);
-    ourRows = oursRaw === null ? [] : parse(oursRaw);
-    baseRows = baseRaw === null ? null : parse(baseRaw);
+    const theirs = parse(theirsRaw);
+    theirRows = theirs.rows as any[];
+    ownerId = theirs.ownerId;
+    if (oursRaw !== null) {
+      const ours = parse(oursRaw);
+      ourRows = ours.rows as any[];
+      if (ownerId === undefined) ownerId = ours.ownerId;
+    }
+    baseRows = baseRaw === null ? null : parse(baseRaw).rows as any[];
   } catch (err) {
     return { ...base, error: `parse failed: ${err}` };
   }
@@ -241,8 +255,17 @@ async function resolveOne(
   }
 
   // Rows the merge proved deleted are soft-deleted through the kind's own
-  // table, keeping the `deletedAt` convention rather than hard-removing.
+  // table, keeping the `deletedAt` convention rather than hard-removing —
+  // unless the live row has actually moved to a different file of this same
+  // kind since the base (moveTaskToProject, a TimeEntry's date edit): both
+  // sides here only ever describe THIS target file, so a row missing from
+  // both looks identical whether it was deleted or relocated. See
+  // vaultSync.ts's `applyBaseDiffDeletions`, which guards the same way.
   for (const id of plan.deletedIds) {
+    if (kind.rowBelongsTo) {
+      const liveRow = await (db as any)[kind.layout.table]?.get(id);
+      if (liveRow && !kind.rowBelongsTo(liveRow, ownerId)) continue;
+    }
     await kind.softDeleteRow?.(id);
   }
 
