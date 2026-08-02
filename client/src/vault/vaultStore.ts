@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { VaultBackend } from './vaultBackend';
 import { getPlatform } from './platform';
 import { importAllFromDisk, handleExternalChange } from './vaultSync';
-import { resolveConflicts } from './conflictResolver';
+import { resolveConflicts, type ConflictResolution } from './conflictResolver';
 import { conflictTargetPath } from './conflictPaths';
 import { writeQueue } from './writeQueue';
 import { registerVaultMiddleware } from './dexieHooks';
@@ -68,6 +68,28 @@ async function scanToMemoryBackend(vaultPath: string): Promise<VaultBackend> {
     throw new Error(`Vault scan failed: found ${dirCount} directories but 0 files. This usually means storage permission was not granted. Please enable "All files access" in Android settings.`);
   }
   return mem;
+}
+
+/**
+ * Runs `resolveConflicts` and turns a rejection or any `resolved: false`
+ * entry into a concise error message for the store's `error` field — a
+ * permanently unparseable copy otherwise only reached `console.error`/`.log`
+ * and accumulated invisibly. Returns `null` when every conflict copy
+ * resolved cleanly, so callers only need `set({ error })` when this is
+ * non-null; both `enable` and `syncNow` already clear `error` earlier in the
+ * same run, so a clean result here leaves it cleared.
+ */
+async function resolveConflictsReportingFailures(backend: VaultBackend): Promise<string | null> {
+  let results: ConflictResolution[];
+  try {
+    results = await resolveConflicts(backend);
+  } catch (err) {
+    console.error('[vault] conflict resolution failed (non-fatal):', err);
+    return `Conflict resolution failed: ${err}`;
+  }
+  const failed = results.filter(r => !r.resolved);
+  if (failed.length === 0) return null;
+  return `Conflict resolution failed for ${failed.length} file(s): ${failed[0].conflictPath}`;
 }
 
 interface VaultState {
@@ -136,8 +158,8 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       // Fold in any Syncthing conflict copies first, against the real backend
       // (the memory scan below is a read-only snapshot and cannot delete the
       // copies), so the import that follows sees one merged file per entity.
-      await resolveConflicts(backend).catch(err =>
-        console.error('[vault] conflict resolution failed (non-fatal):', err));
+      const conflictError = await resolveConflictsReportingFailures(backend);
+      if (conflictError) set({ error: conflictError });
       const readBackend = await scanToMemoryBackend(vaultPath);
       const result = await importAllFromDisk(readBackend);
       importCount = result.total;
@@ -226,14 +248,15 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   },
 
   syncNow: async () => {
+    if (get().isSyncing) return;
     const { backend, vaultPath } = get();
     if (!backend) return;
 
     try {
       set({ isSyncing: true, error: null });
       await writeQueue.flush();
-      await resolveConflicts(backend).catch(err =>
-        console.error('[vault] conflict resolution failed (non-fatal):', err));
+      const conflictError = await resolveConflictsReportingFailures(backend);
+      if (conflictError) set({ error: conflictError });
       const readBackend = await scanToMemoryBackend(vaultPath);
       const result = await importAllFromDisk(readBackend);
       if (result.errors.length > 0) {
