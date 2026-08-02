@@ -645,6 +645,34 @@ describe('SETTINGS_KIND.mergeRow — external merge honors updatedAt (C14)', () 
     expect(stored!.updatedAt).toBe(T2);
   });
 
+  it('preserves a local-only field absent from an older, newer-updatedAt file instead of wiping it (IMPORTANT 3)', async () => {
+    const backend = new MemoryBackend();
+    const local = buildSettings({ dayStartHour: 4, pointsCounterVisible: true, updatedAt: T1 });
+    await db.settings.put(local);
+
+    // Hand-rolled, not `serializeSettings` — the current serializer always
+    // writes every `DEFAULT_SETTINGS` key, a shape it can no longer produce.
+    // An older build's settings.json is leaner: it never learned about
+    // `pointsCounterVisible` at all, even though its `updatedAt` is newer
+    // (a rollout where an older build's device wrote last).
+    const olderShapeButNewer = JSON.stringify({
+      updatedAt: T2,
+      deviceId: 'device-b',
+      dayStartHour: 9,
+    }, null, 2) + '\n';
+    await backend.writeFile(SETTINGS.path, olderShapeButNewer);
+
+    await handleExternalChange(backend, SETTINGS.path, 'modify');
+
+    const stored = await db.settings.get('default');
+    expect(stored).toBeTruthy();
+    // Applied from the incoming file.
+    expect(stored!.dayStartHour).toBe(9);
+    expect(stored!.updatedAt).toBe(T2);
+    // NOT reset just because the file never mentioned it.
+    expect(stored!.pointsCounterVisible).toBe(true);
+  });
+
   it('leaves Dexie byte-identical when the watcher re-observes the file the app just wrote', async () => {
     const backend = new MemoryBackend();
     const local = buildSettings({ dayStartHour: 7, updatedAt: T1 });

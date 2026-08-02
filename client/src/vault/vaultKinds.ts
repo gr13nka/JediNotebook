@@ -65,7 +65,6 @@ export interface ParsedFile {
   ownerId?: string;
 }
 
-
 /**
  * Everything one entity kind (one row of vaultLayout.ts's `VAULT_LAYOUT`)
  * needs to plug into vaultSync's four fan-outs.
@@ -570,12 +569,19 @@ const SETTINGS_KIND: VaultKind = {
    * just-written file re-observed by the watcher — clobber newer local
    * settings. Under strict `>`, a self-re-imported file is a provable no-op:
    * its updatedAt equals the stored row's, so it never re-applies.
+   *
+   * The put merges over `existing` rather than replacing it outright: an
+   * older build's settings.json only ever carries the fields that build
+   * knew about, so `imported` can be missing a field a newer local build
+   * added. Without the spread, that field would vanish from the stored row
+   * entirely (not fall back to a default — Dexie's `put` is a full
+   * replace) the moment such a file's `updatedAt` happens to win.
    */
   async mergeRow(row) {
     const imported = row as Partial<UserSettings>;
     const existing = await db.settings.get('default');
     if (!existing || (imported.updatedAt && imported.updatedAt > (existing.updatedAt || ''))) {
-      await db.settings.put({ id: 'default', ...imported } as UserSettings);
+      await db.settings.put({ ...existing, id: 'default', ...imported } as UserSettings);
     }
   },
 
