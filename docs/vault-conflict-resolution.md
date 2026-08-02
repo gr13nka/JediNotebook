@@ -126,6 +126,11 @@ project has no `fake-indexeddb`). Merge behaviour changes belong in
 and path parsing).
 
 Orchestration in `resolveOne`/`resolveConflicts` — backend reads, Dexie writes,
-copy deletion — is not currently covered. Adding `fake-indexeddb` would allow an
-end-to-end test through `memoryBackend`; until then, changes there deserve
-manual verification against a real vault.
+copy deletion, base recording — is covered end-to-end by
+`conflictResolver.e2e.test.ts`, running against `MemoryBackend` and the
+`fake-indexeddb` harness (`testSupport.ts`). It always produces on-disk bytes
+through the real serializers rather than hand-written frontmatter/JSON, so a
+scenario also pins format fidelity, and it exercises the discovery path (a
+kind's directories, the vault root for singletons) rather than only the merge
+decision. Subsequent fix-tasks extend this suite with a regression scenario
+each rather than adding a parallel one.
