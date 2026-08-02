@@ -17,7 +17,8 @@ import {
   insertLine,
 } from '../../utils/taskDnd';
 import {
-  recordEdit,
+  recordTyping,
+  recordSnapshot as pushSnapshot,
   undo,
   redo,
   getProjectHistory,
@@ -93,7 +94,7 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
   const recordSnapshot = useCallback(() => {
     setProjectHistory(
       projectId,
-      recordEdit(getProjectHistory(projectId), currentEntry(), Date.now(), 'snapshot')
+      pushSnapshot(getProjectHistory(projectId), currentEntry(), Date.now())
     );
   }, [projectId, currentEntry]);
 
@@ -179,11 +180,11 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
     const caretEnd = Math.min(e.target.selectionEnd, prevText.length);
     setProjectHistory(
       projectId,
-      recordEdit(
+      recordTyping(
         getProjectHistory(projectId),
         { text: prevText, caretStart, caretEnd },
-        Date.now(),
-        'typing'
+        e.target.value,
+        Date.now()
       )
     );
     localDescRef.current = e.target.value;
