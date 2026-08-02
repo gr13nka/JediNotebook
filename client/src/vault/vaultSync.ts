@@ -73,11 +73,23 @@ export async function exportAllToDisk(backend: VaultBackend): Promise<void> {
  * watcher's create/modify path) — whichever one reads a rewritten aggregate
  * file first must apply the same inference before recording the new base,
  * or the evidence a later pass would need to catch up is gone.
+ *
+ * `idsElsewhere`, when given, is consulted BEFORE the live-Dexie-row
+ * `rowBelongsTo` check below and can make the same "moved, not deleted"
+ * call from fresher evidence: a batch import already has every file of this
+ * kind in hand (see `importAllFromDisk`), so it can tell "this id lives in
+ * another file THIS RUN" without trusting Dexie to already reflect a move
+ * this device is only now learning about. Lazy (called at most once, only
+ * once a candidate deletion is actually found) so a caller for whom
+ * computing it means real I/O (the watcher's single-file case, scanning the
+ * rest of the kind's files on the backend) doesn't pay that cost on every
+ * ordinary edit.
  */
 async function applyBaseDiffDeletions(
   kind: VaultKind,
   path: string,
   parsed: ParsedFile,
+  idsElsewhere?: () => Promise<Set<string>>,
 ): Promise<void> {
   if (!kind.softDeleteRow) return;
   const baseRaw = await readBase(path);
@@ -101,8 +113,13 @@ async function applyBaseDiffDeletions(
   // discarding the one piece of evidence (the old base) a retry would need
   // to prove the same deletion again.
   const fileIds = new Set(parsed.rows.map(r => r.id as string));
+  let elsewhere: Set<string> | null = null;
   for (const id of baseIds) {
     if (fileIds.has(id)) continue;
+    if (idsElsewhere) {
+      elsewhere ??= await idsElsewhere();
+      if (elsewhere.has(id)) continue;
+    }
     if (kind.rowBelongsTo) {
       // The id vanished from THIS file, but it may simply have moved to a
       // different file of the same kind (moveTaskToProject, a TimeEntry's
@@ -127,7 +144,17 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
     const label = kind.layout.table;
     try {
       const paths = await kind.discoverPaths(backend);
-      let n = 0;
+
+      // Phase 1: read, parse, and merge EVERY path of this kind before any
+      // one path's deletion inference runs. A base-diff scoped to a single
+      // path can't tell "genuinely deleted" from "moved to a file this same
+      // run also happens to touch" (moveTaskToProject relocates a task to a
+      // DIFFERENT project's tasks.md) — reading everything up front means
+      // the full set of ids this run actually saw is known before any path
+      // decides an absence means a deletion, instead of that decision
+      // depending on which path happens to sort first.
+      const entries: { path: string; content: string; parsed: ParsedFile }[] = [];
+      const idsInBatch = new Set<string>();
       for (const path of paths) {
         // Loose prefix/extension matching (discoverPaths) treats a Syncthing
         // conflict copy as an ordinary file of the same kind. Skip it here —
@@ -136,12 +163,23 @@ export async function importAllFromDisk(backend: VaultBackend): Promise<{ total:
         if (conflictTargetPath(path)) continue;
         const content = await backend.readFile(path);
         const parsed = kind.parseFile(path, content);
-
-        await applyBaseDiffDeletions(kind, path, parsed);
-
+        entries.push({ path, content, parsed });
         for (const row of parsed.rows) {
+          if (typeof row.id === 'string') idsInBatch.add(row.id);
           await kind.mergeRow(row);
         }
+      }
+
+      // Phase 2: the whole batch is merged and its id union known, so each
+      // path can now safely decide its own deletions and hand its content
+      // over as the new agreed base.
+      let n = 0;
+      for (const { path, content, parsed } of entries) {
+        const idsElsewhere = new Set(idsInBatch);
+        for (const row of parsed.rows) {
+          if (typeof row.id === 'string') idsElsewhere.delete(row.id);
+        }
+        await applyBaseDiffDeletions(kind, path, parsed, async () => idsElsewhere);
         // Accepting a file's content makes it the agreed state for this path.
         await recordBase(path, content);
         seen.push(path);

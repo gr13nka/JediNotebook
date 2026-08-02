@@ -546,6 +546,72 @@ describe('importAllFromDisk — deletion inference skips a row that moved to ano
   });
 });
 
+describe('importAllFromDisk — deletion inference is order-independent within a kind (CRITICAL 2 reopened)', () => {
+  it('does not delete a task that moved to another project within the SAME import batch, even when the source file sorts first', async () => {
+    const backend = new MemoryBackend();
+    // Names chosen so Source's directory sorts before Target's
+    // (MemoryBackend.listDirs returns sorted paths — same technique as the
+    // prune-guard test's "AAA Corrupt"/"ZZZ Fine").
+    const source = buildProject({ id: PROJECT_SOURCE_ID, name: 'AAA Moving Source' });
+    const target = buildProject({ id: PROJECT_TARGET_ID, name: 'ZZZ Moving Target' });
+    await db.projects.bulkPut([source, target]);
+    const sourcePath = PROJECT_TASKS.buildPath(source.name, source.id);
+    const targetPath = PROJECT_TASKS.buildPath(target.name, target.id);
+
+    // Base: both devices last agreed T belonged to Source.
+    const preMove = buildTask({ id: TASK_MOVED_ID, projectId: source.id, title: 'Moving Task', updatedAt: T0 });
+    await recordBase(sourcePath, serializeProjectTasksFile(source, [preMove]).content);
+
+    // THIS device has NOT heard about the move yet — Dexie still has the
+    // PRE-move row. It's learning about the move via this exact import
+    // batch, which is the case the live-row-only `rowBelongsTo` guard
+    // cannot cover: at the moment Source's file (processed first, by sort
+    // order) is diffed against its base, the live row still says Source.
+    await db.projectTasks.put(preMove);
+
+    // On disk: the moving device's own export already dropped T from
+    // Source's file and added it to Target's, at the move's own updatedAt.
+    await backend.writeFile(sourcePath, serializeProjectTasksFile(source, []).content);
+    const movedAtMoveTime = buildTask({ id: TASK_MOVED_ID, projectId: target.id, title: 'Moving Task', updatedAt: T1 });
+    await backend.writeFile(targetPath, serializeProjectTasksFile(target, [movedAtMoveTime]).content);
+
+    const result = await importAllFromDisk(backend);
+    expect(result.errors).toEqual([]);
+
+    const stored = await db.projectTasks.get(TASK_MOVED_ID);
+    expect(stored).toBeTruthy();
+    expect(stored!.deletedAt).toBeFalsy();
+    expect(stored!.projectId).toBe(target.id);
+  });
+
+  it('still deletes a task absent from every file of the kind in the batch, not just this one', async () => {
+    const backend = new MemoryBackend();
+    const source = buildProject({ id: PROJECT_SOURCE_ID, name: 'AAA Moving Source' });
+    const other = buildProject({ id: PROJECT_TARGET_ID, name: 'ZZZ Unrelated Project' });
+    await db.projects.bulkPut([source, other]);
+    const sourcePath = PROJECT_TASKS.buildPath(source.name, source.id);
+    const otherPath = PROJECT_TASKS.buildPath(other.name, other.id);
+
+    const preDelete = buildTask({ id: TASK_MOVED_ID, projectId: source.id, title: 'Deleted Task', updatedAt: T0 });
+    await recordBase(sourcePath, serializeProjectTasksFile(source, [preDelete]).content);
+    await db.projectTasks.put(preDelete);
+    await backend.writeFile(sourcePath, serializeProjectTasksFile(source, []).content);
+
+    // A second, wholly unrelated file of the same kind in this batch —
+    // proves the union check doesn't just skip every deletion outright, it
+    // only protects an id that actually turns up in one of the OTHER files.
+    const unrelatedTask = buildTask({ id: TASK_FINE_ID, projectId: other.id, title: 'Unrelated', updatedAt: T0 });
+    await backend.writeFile(otherPath, serializeProjectTasksFile(other, [unrelatedTask]).content);
+
+    const result = await importAllFromDisk(backend);
+    expect(result.errors).toEqual([]);
+
+    const stored = await db.projectTasks.get(TASK_MOVED_ID);
+    expect(stored).toBeTruthy();
+    expect(stored!.deletedAt).toBeTruthy();
+  });
+});
+
 describe('INBOX_KIND — inbox.md persists as an empty list (C13)', () => {
   it('deleting the last item leaves inbox.md on disk as an empty list rather than deleting it', async () => {
     const backend = new MemoryBackend();
