@@ -175,8 +175,8 @@ resolution; there is no target to merge into.
 
 ## Per-kind behaviour
 
-Two optional members on `VaultKind` carry the per-kind differences, keeping the
-logic in the registry rather than in the resolver:
+Three optional members on `VaultKind` carry the per-kind differences, keeping
+the logic in the registry rather than in the resolver:
 
 - **`textField`** — names a row field holding free-form prose. Rows present on
   both sides get that field merged paragraph-wise instead of resolved by
@@ -197,20 +197,48 @@ logic in the registry rather than in the resolver:
   rather than a row-level soft-delete. `SETTINGS_KIND` omits it because its
   file has no keyed rows at all — its one row is merged field-by-field
   instead (below), not soft-deleted a row at a time.
+- **`rowBelongsTo`** — a membership check for a kind whose rows can move to a
+  DIFFERENT file of the same kind: `moveTaskToProject` (`db/taskOps.ts`)
+  reassigns a `ProjectTask`'s `projectId`, relocating it from one project's
+  `tasks.md` to another's, and a `TimeEntry`/`TodayTask`'s `date` can move it
+  between per-date files the same way. `PROJECT_TASKS_KIND`, `TIME_LOG_KIND`,
+  and `TODAY_KIND` set it; `INBOX_KIND`/`FOLDERS_KIND` don't need it (a single
+  file, nothing for a row to move to). See below for why it exists and how the
+  base-diff rule calls it.
 
 A kind that sets `softDeleteRow` needs it for more than an actual Syncthing
-conflict — **ordinary import applies the identical rule.** `importAllFromDisk`
-(`vaultSync.ts`) diffs each incoming file's row ids against this device's last
-recorded base for that path; an id that was in the base but is missing from
-the file is soft-deleted immediately, with no comparison to the local row's
-own `updatedAt`. Deletion wins over a concurrent local edit unconditionally —
-deliberate, and consistent with `mergeRowSets`, which already resolves a
-base-had-it, now-missing row as a deletion the same way, so an ordinary file
-must resolve identically whether or not it happens to arrive alongside an
-actual conflict copy. The cost is that editing a row at the same moment
-another device deletes it can lose the edit outright; Syncthing's own file
-versioning (see `docs/vault-sync.md`) is the recovery net for that case, not
-the app.
+conflict — **the identical rule also runs on an ordinary file change**, via a
+shared helper, `applyBaseDiffDeletions` (`vaultSync.ts`). It diffs an incoming
+file's row ids against this device's last recorded base for that path; an id
+that was in the base but is missing from the file is soft-deleted, with no
+comparison to the local row's own `updatedAt`. Deletion wins over a concurrent
+local edit unconditionally — deliberate, and consistent with `mergeRowSets`,
+which already resolves a base-had-it, now-missing row as a deletion the same
+way, so an ordinary file must resolve identically whether or not it happens to
+arrive alongside an actual conflict copy. The cost is that editing a row at
+the same moment another device deletes it can lose the edit outright;
+Syncthing's own file versioning (see `docs/vault-sync.md`) is the recovery net
+for that case, not the app.
+
+The helper runs from **both** places a rewritten file can reach this device:
+`importAllFromDisk`'s whole-vault scan, and `handleExternalChange`'s
+create/modify branch — the file watcher delivering a peer's change while the
+app is already running. Both call it before recording the file's new content
+as the base; recording first would erase the very evidence ("what did this id
+look like last time we agreed") the inference needs, so a deletion missed on
+one path could never be recovered on the other.
+
+Before soft-deleting an id the base-diff proves missing, the helper (and
+`resolveOne`'s own `plan.deletedIds` loop below, for the conflict-copy path)
+checks `rowBelongsTo`, when the kind sets it: the id vanished from THIS file,
+but a base-diff scoped to one path can't tell that apart from the row having
+simply moved to a different file of the same kind — a task reassigned to
+another project, a time entry re-dated to another day. It reads the LIVE
+Dexie row for that id and asks whether its current scope (`projectId`,
+`date`) still matches this file's own scope (`ParsedFile.ownerId`, read from
+the file's own frontmatter/JSON so it survives a file with zero rows left).
+A mismatch means the row migrated, not deleted — the soft-delete is skipped
+and the row is left exactly as it is, wherever it actually lives now.
 
 `pruneBases` — the sweep that drops a `vaultBase` entry once its path is no
 longer live — is skipped for the whole import whenever any kind errored.
