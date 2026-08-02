@@ -192,6 +192,18 @@ async function resolveOne(
   if (!keyed) {
     for (const row of theirRows) await kind.mergeRow(row, 'reconcile');
     await backend.deleteFile(conflictPath);
+
+    // Settings.json is the only kind that reaches this branch (see the
+    // doc comment above), and its gatherWriteSet ignores the id it's given
+    // entirely, so any constant resolves the singleton file.
+    try {
+      await writeEntityToDisk(backend, kind.layout.table, 'default');
+      const written = await readIfPresent(backend, targetPath);
+      if (written !== null) await recordBase(targetPath, written);
+    } catch (err) {
+      return { ...base, resolved: true, error: `rewrite failed: ${err}` };
+    }
+
     return { ...base, resolved: true };
   }
 
@@ -210,14 +222,24 @@ async function resolveOne(
 
   await backend.deleteFile(conflictPath);
 
-  // Re-serialize so the merged result reaches disk immediately. Only
-  // entity-scoped kinds can address a single file this way; for the rest
-  // Dexie now holds the merged truth and the next export writes it out.
-  const entityId = kind.parseFile(targetPath, theirsRaw).entityId;
-  if (entityId) {
+  // Re-serialize so the merged result reaches disk immediately. An
+  // entity-scoped kind's own id (projects, activities) addresses its file
+  // directly; every other kind's file aggregates many rows (tasks.md, a
+  // per-date log, a singleton), but `gatherWriteSet` resolves *any* row it's
+  // given to the whole owning file (parent project for a task, whole date
+  // for a per-date kind, whole singleton for inbox/folders regardless of
+  // id) — so a surviving row's id works just as well. If every row was
+  // deleted, fall back to one of the proven-deleted ids instead: the file
+  // itself is what needs regenerating (or removing), not any particular row.
+  const rewriteId = kind.parseFile(targetPath, theirsRaw).entityId
+    ?? plan.rows[0]?.id ?? plan.deletedIds[0];
+  if (rewriteId) {
     try {
-      await writeEntityToDisk(backend, kind.layout.table, entityId);
+      await writeEntityToDisk(backend, kind.layout.table, rewriteId);
       const written = await readIfPresent(backend, targetPath);
+      // A rewrite that deletes the file outright (every row now gone)
+      // already called forgetBase inside writeEntityToDisk; readIfPresent
+      // then returns null and there is nothing fresh left to record.
       if (written !== null) await recordBase(targetPath, written);
     } catch (err) {
       return { ...base, resolved: true, added, removed, unionFallback: plan.unionFallback, error: `rewrite failed: ${err}` };

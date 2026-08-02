@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project, ProjectTask, TimeEntry, UserSettings } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { resetDb } from './testSupport';
-import { db } from '../db';
+import { db, snapshotAllTables } from '../db';
 import { MemoryBackend } from './memoryBackend';
 import { resolveConflicts, conflictTargetPath } from './conflictResolver';
+import { importAllFromDisk } from './vaultSync';
 import { recordBase, readBase } from './vaultBase';
 import { serializeProjectFile, serializeProjectTasksFile, serializeSettings, serializeTimeEntries } from './serializers';
 import { stringifyFrontmatter } from './frontmatter';
@@ -139,17 +140,12 @@ describe('resolveConflicts — end-to-end orchestration', () => {
    *  1. no conflict-copy-named file remains on the backend.
    *  2. running `resolveConflicts` again is a no-op.
    *
-   * Base-freshness (every merged target's recorded base matches what's on
-   * disk) and import-convergence invariants are NOT checked here yet — C11
-   * makes every merged target rewrite to disk (today only entity-scoped
-   * kinds do, see the tasks.md scenario below), and that's what will make a
-   * generic freshness check meaningful for every kind. `skipBaseFreshnessFor`
-   * is reserved for that follow-up.
+   * Base-freshness and import-convergence are a separate, opt-in check —
+   * `expectMergedTargetPersisted` below — since not every scenario resolves
+   * a target worth checking (a failed resolution never rewrites; the union
+   * and ghost-dir scenarios already assert their on-disk content inline).
    */
-  async function expectResolvedQuiescent(
-    backend: MemoryBackend,
-    _opts?: { skipBaseFreshnessFor?: string[] },
-  ): Promise<void> {
+  async function expectResolvedQuiescent(backend: MemoryBackend): Promise<void> {
     const remainingConflicts = [...backend.getAll().keys()].filter(
       path => conflictTargetPath(path) !== null,
     );
@@ -157,6 +153,33 @@ describe('resolveConflicts — end-to-end orchestration', () => {
 
     const second = await resolveConflicts(backend);
     expect(second).toEqual([]);
+  }
+
+  /**
+   * C11: proves a merged target actually reached disk, not just Dexie — its
+   * recorded base already matches the fresh bytes (no debounced write needed
+   * to catch either up), and reimporting from that exact state leaves every
+   * entity table unchanged (nothing left to reconcile). `vaultBase` itself is
+   * excluded from the convergence comparison: `importAllFromDisk` calls
+   * `recordBase` unconditionally for every path it reads, which legitimately
+   * bumps `recordedAt` again even though the content doesn't change.
+   *
+   * Returns the on-disk bytes so a scenario can still assert on their
+   * specific content (a renamed title present, a deleted row's id absent).
+   */
+  async function expectMergedTargetPersisted(backend: MemoryBackend, targetPath: string): Promise<string> {
+    expect(await backend.exists(targetPath)).toBe(true);
+    const onDisk = await backend.readFile(targetPath);
+    expect(await readBase(targetPath)).toBe(onDisk);
+
+    const before = await snapshotAllTables();
+    before.delete('vaultBase');
+    await importAllFromDisk(backend);
+    const after = await snapshotAllTables();
+    after.delete('vaultBase');
+    expect(after).toEqual(before);
+
+    return onDisk;
   }
 
   it('merges a project description three-way (textField) and rewrites project.md', async () => {
@@ -203,6 +226,11 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     const backend = new MemoryBackend();
     const name = 'Beta';
     const project = buildProject({ id: PROJECT_BETA_ID, name });
+    // C11's rewrite delegates a task's write-set to its parent project
+    // (PROJECT_TASKS_KIND.gatherWriteSet -> PROJECTS_KIND.gatherWriteSet),
+    // which needs the project row in Dexie — true of every real project a
+    // task can belong to, so the fixture must persist it too.
+    await db.projects.put(project);
     const targetPath = PROJECT_TASKS.buildPath(name, PROJECT_BETA_ID);
     const dir = PROJECT_TASKS.buildDirPath(name, PROJECT_BETA_ID);
     const conflictPath = `${dir}/${conflictCopyName('tasks', '.md')}`;
@@ -235,10 +263,13 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     expect(await backend.exists(conflictPath)).toBe(false);
 
     // PROJECT_TASKS_KIND.parseFile returns no `entityId` (tasks.md aggregates
-    // a whole project's tasks rather than naming one entity), so resolveOne's
-    // rewrite-to-disk step never fires for this kind today — only
-    // entity-scoped kinds (projects) get that. C11 changes this. Until then,
-    // deliberately no assertion on tasks.md's on-disk content here.
+    // a whole project's tasks rather than naming one entity), but C11 made
+    // resolveOne's rewrite-to-disk step fall back to a surviving row's id —
+    // any row id in tasks.md resolves the same file — so the merged content
+    // still reaches disk immediately, same as an entity-scoped kind.
+    const onDisk = await expectMergedTargetPersisted(backend, targetPath);
+    expect(onDisk).toContain('Task One Renamed');
+    expect(onDisk).not.toContain('Task Two');
 
     await expectResolvedQuiescent(backend);
   });
@@ -282,10 +313,12 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     expect(await backend.exists(conflictPath)).toBe(false);
 
     // TIME_LOG_KIND.parseFile returns no `entityId` (a date file aggregates a
-    // whole day's entries rather than naming one entity), so resolveOne's
-    // rewrite-to-disk step never fires for this kind today — only
-    // entity-scoped kinds (projects) get that. C11 changes this. Until then,
-    // deliberately no assertion on the date file's on-disk content here.
+    // whole day's entries rather than naming one entity), but C11's fallback
+    // to a surviving row's id (E1's) resolves the same date file, so the
+    // merged content still reaches disk immediately.
+    const onDisk = await expectMergedTargetPersisted(backend, targetPath);
+    expect(onDisk).toContain(ENTRY_E1_ID);
+    expect(onDisk).not.toContain(ENTRY_E2_ID);
 
     await expectResolvedQuiescent(backend);
   });
@@ -354,6 +387,33 @@ describe('resolveConflicts — end-to-end orchestration', () => {
     // C16 adds field-wise merging).
     const stored = await db.settings.get('default');
     expect(stored?.dayStartHour).toBe(9);
+
+    expect(await backend.exists(conflictPath)).toBe(false);
+
+    await expectResolvedQuiescent(backend);
+  });
+
+  it('rewrites settings.json to disk and records its base after resolving a conflict (C11)', async () => {
+    const backend = new MemoryBackend();
+    const conflictPath = conflictCopyName('settings', '.json');
+
+    const seeded = buildSettings({ dayStartHour: 4, updatedAt: T0 });
+    await db.settings.put(seeded);
+    await backend.writeFile('settings.json', serializeSettings(seeded).content);
+
+    const theirs = buildSettings({ dayStartHour: 9, updatedAt: T2 });
+    await backend.writeFile(conflictPath, serializeSettings(theirs).content);
+
+    const results = await resolveConflicts(backend);
+
+    const resolution = results.find(r => r.conflictPath === conflictPath);
+    expect(resolution).toMatchObject({ targetPath: 'settings.json', resolved: true });
+
+    // Settings has no row `id` on disk, so it takes resolveOne's non-keyed
+    // branch (plain LWW hand-off, not the keyed merge) — that branch must
+    // reach disk and record a fresh base too, same as the keyed branches.
+    const onDisk = await expectMergedTargetPersisted(backend, 'settings.json');
+    expect(onDisk).toContain('"dayStartHour": 9');
 
     expect(await backend.exists(conflictPath)).toBe(false);
 
