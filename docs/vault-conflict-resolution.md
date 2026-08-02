@@ -116,6 +116,15 @@ disk.
 It is safe to run repeatedly: a copy is deleted only after its content has
 reached Dexie, so an interrupted run leaves the rest for the next pass.
 
+Discovery for a `perEntityDir` kind (projects, project tasks) does not depend
+on the canonical file existing: `discoverPaths` alone only reports a project
+directory once its `project.md`/`tasks.md` is present, so a directory whose
+canonical file was renamed away as the conflict loser — or never arrived at
+all — would otherwise be invisible to the scan. `conflictDirs` additionally
+lists every directory under the kind's own `dir` via `backend.listDirs()` for
+these two kinds, which finds a directory regardless of what's inside it, so
+one holding only a conflict copy is still scanned and its data recovered.
+
 `conflictTargetPath` lives in its own module rather than in
 `conflictResolver.ts` (which still re-exports it for existing callers) because
 `vaultSync.ts` needs it too, and `conflictResolver.ts` already imports
