@@ -41,3 +41,8 @@ export interface VaultBackend {
   writeBinaryFile?(path: string, data: Uint8Array): Promise<void>;
   watch?(callback: WatchCallback): Promise<() => void>;
 }
+
+/** Join a listing dir with an entry name. dir '' is the vault root and must NOT produce a leading slash. */
+export function joinChildPath(dir: string, name: string): string {
+  return dir ? `${dir}/${name}` : name;
+}

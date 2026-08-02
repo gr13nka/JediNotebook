@@ -1,4 +1,4 @@
-import type { VaultBackend } from './vaultBackend';
+import { joinChildPath, type VaultBackend } from './vaultBackend';
 
 export class MemoryBackend implements VaultBackend {
   private files = new Map<string, string>();
@@ -37,7 +37,7 @@ export class MemoryBackend implements VaultBackend {
       const rest = key.slice(prefix.length);
       if (rest.includes('/')) continue;
       if (extension && !rest.endsWith(extension)) continue;
-      results.push(key);
+      results.push(joinChildPath(norm, rest));
     }
     return results.sort();
   }
@@ -52,7 +52,7 @@ export class MemoryBackend implements VaultBackend {
       const rest = key.slice(prefix.length);
       const slashIdx = rest.indexOf('/');
       if (slashIdx !== -1) {
-        dirs.add(prefix + rest.slice(0, slashIdx));
+        dirs.add(joinChildPath(norm, rest.slice(0, slashIdx)));
       }
     }
     return [...dirs].sort();
