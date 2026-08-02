@@ -179,21 +179,36 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     if (backend.watch) {
       try {
         const unwatchFs = await backend.watch((events) => {
-          for (const event of events) {
-            // A conflict copy delivered mid-session (Syncthing writes
-            // whenever it likes) needs the full resolver, not the ordinary
-            // per-file merge — handleExternalChange only no-ops for these.
-            // Kick off an immediate syncNow (which runs resolveConflicts)
-            // instead of waiting for the 60s reconcile, unless one is
-            // already in flight.
-            if (event.type !== 'delete' && conflictTargetPath(event.path)) {
-              if (!get().isSyncing) get().syncNow().catch(() => {});
-              continue;
+          // `WatchCallback` returns void — the backend can't be made to
+          // await this batch — so the work runs in a detached async IIFE.
+          // Inside it, events are handled SEQUENTIALLY (in delivery order),
+          // not fire-and-forget: a cross-project task move (moveTaskToProject)
+          // delivers one modify event for the source file and one for the
+          // target, and unbounded concurrency let the source event's
+          // deletion inference race the target event's merge in either
+          // order — nondeterministic on top of already being one-sided (see
+          // handleExternalChange's own idsInOtherFilesOfKind check for the
+          // half of that race application code can actually close).
+          void (async () => {
+            for (const event of events) {
+              // A conflict copy delivered mid-session (Syncthing writes
+              // whenever it likes) needs the full resolver, not the ordinary
+              // per-file merge — handleExternalChange only no-ops for these.
+              // Kick off an immediate syncNow (which runs resolveConflicts)
+              // instead of waiting for the 60s reconcile, unless one is
+              // already in flight. Left un-awaited, same as before: it's a
+              // full resolve+import pass, not a per-event step to sequence.
+              if (event.type !== 'delete' && conflictTargetPath(event.path)) {
+                if (!get().isSyncing) get().syncNow().catch(() => {});
+                continue;
+              }
+              try {
+                await handleExternalChange(backend, event.path, event.type);
+              } catch (err) {
+                console.error('[vault] External change handling failed:', err);
+              }
             }
-            handleExternalChange(backend, event.path, event.type).catch(err => {
-              console.error('[vault] External change handling failed:', err);
-            });
-          }
+          })();
         });
         set({ _unwatchFs: unwatchFs });
       } catch (err) {

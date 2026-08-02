@@ -134,6 +134,42 @@ async function applyBaseDiffDeletions(
   }
 }
 
+/**
+ * Every row id found in the kind's OTHER files currently on `backend`
+ * (everything `discoverPaths` reports except `excludePath`) — the same
+ * "present elsewhere means moved, not deleted" signal `importAllFromDisk`
+ * gets for free from its own batch, computed on demand for a caller that
+ * only ever sees one file at a time (`handleExternalChange`, the file
+ * watcher's per-event path). A broken sibling file doesn't abort the scan —
+ * its rows just aren't counted as "elsewhere"; a real parse failure in it
+ * surfaces on its own turn through the normal import/reconcile path.
+ */
+export async function idsInOtherFilesOfKind(
+  kind: VaultKind,
+  backend: VaultBackend,
+  excludePath: string,
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let paths: string[];
+  try {
+    paths = await kind.discoverPaths(backend);
+  } catch {
+    return ids;
+  }
+  for (const path of paths) {
+    if (path === excludePath || conflictTargetPath(path)) continue;
+    try {
+      const content = await backend.readFile(path);
+      for (const row of kind.parseFile(path, content).rows) {
+        if (typeof row.id === 'string') ids.add(row.id);
+      }
+    } catch {
+      // Skip it — see doc comment above.
+    }
+  }
+  return ids;
+}
+
 export async function importAllFromDisk(backend: VaultBackend): Promise<{ total: number; counts: Record<string, number>; errors: string[] }> {
   fileIndex.clear();
   const counts: Record<string, number> = {};
@@ -282,7 +318,21 @@ export async function handleExternalChange(
   // absent — so it needs the identical base-diff inference before the new
   // base is recorded, or the deletion is never applied and the evidence to
   // catch it later (the old base) is gone the moment recordBase runs below.
-  await applyBaseDiffDeletions(kind, filePath, parsed);
+  //
+  // Unlike importAllFromDisk, this handler only ever sees ONE file — it has
+  // no batch-wide id union to consult for free. `idsInOtherFilesOfKind`
+  // recovers the same signal on demand, straight off the backend's CURRENT
+  // disk state: a cross-file move's destination file is typically already
+  // written by the time either side's watcher event fires (Syncthing/the
+  // filesystem doesn't wait for this device to have processed one event
+  // before delivering the next), so this closes the same race
+  // importAllFromDisk's batch view closes, for the common case. It cannot
+  // close it completely — see docs/vault-conflict-resolution.md for the
+  // residual window this doesn't cover.
+  await applyBaseDiffDeletions(
+    kind, filePath, parsed,
+    () => idsInOtherFilesOfKind(kind, backend, filePath),
+  );
 
   for (const row of parsed.rows) {
     await kind.mergeRow(row);

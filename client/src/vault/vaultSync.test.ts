@@ -496,6 +496,40 @@ describe('handleExternalChange — deletion inference runs on the watcher path (
   });
 });
 
+describe('handleExternalChange — deletion inference checks other files of the kind on the backend (CRITICAL 2 reopened, watcher path)', () => {
+  it('does not delete a task whose move-destination file is already on the backend, even though its own watcher event has not been handled yet', async () => {
+    const backend = new MemoryBackend();
+    const source = buildProject({ id: PROJECT_SOURCE_ID, name: 'Source' });
+    const target = buildProject({ id: PROJECT_TARGET_ID, name: 'Target' });
+    await db.projects.bulkPut([source, target]);
+    const sourcePath = PROJECT_TASKS.buildPath(source.name, source.id);
+    const targetPath = PROJECT_TASKS.buildPath(target.name, target.id);
+
+    const preMove = buildTask({ id: TASK_MOVED_ID, projectId: source.id, title: 'Moving Task', updatedAt: T0 });
+    await recordBase(sourcePath, serializeProjectTasksFile(source, [preMove]).content);
+    // This device hasn't heard about the move yet — same precondition as
+    // the reopened import-side bug.
+    await db.projectTasks.put(preMove);
+
+    // Both files are already on the backend — Target's write reached disk
+    // (the moving device wrote both together) even though ITS OWN watcher
+    // event for this device hasn't been delivered/processed at all yet.
+    await backend.writeFile(sourcePath, serializeProjectTasksFile(source, []).content);
+    const movedAtMoveTime = buildTask({ id: TASK_MOVED_ID, projectId: target.id, title: 'Moving Task', updatedAt: T1 });
+    await backend.writeFile(targetPath, serializeProjectTasksFile(target, [movedAtMoveTime]).content);
+
+    // Only the SOURCE event is delivered here — proving the guard works from
+    // the backend's current state, not from having already processed
+    // Target's own event.
+    await handleExternalChange(backend, sourcePath, 'modify');
+
+    const stored = await db.projectTasks.get(TASK_MOVED_ID);
+    expect(stored).toBeTruthy();
+    expect(stored!.deletedAt).toBeFalsy();
+    expect(stored!.projectId).toBe(source.id); // untouched — Target's own event hasn't merged it in yet
+  });
+});
+
 describe('importAllFromDisk — deletion inference skips a row that moved to another file (CRITICAL 2)', () => {
   it('does not soft-delete a task whose live row moved to another project, even though the base proves it left this file', async () => {
     const backend = new MemoryBackend();
