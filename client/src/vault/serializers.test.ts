@@ -9,7 +9,7 @@ import {
   serializeFolders, deserializeFolders,
 } from './serializers';
 import { sanitizeFilename, shortId, entityFilename } from './sanitize';
-import { stringifyFrontmatter } from './frontmatter';
+import { parseFrontmatter, stringifyFrontmatter } from './frontmatter';
 import type {
   Activity, Project, ProjectTask, TimeEntry, TodayTask,
   InboxItem, UserSettings, ProjectFolder, RecurrenceRule,
@@ -412,6 +412,43 @@ describe('Time log serialization', () => {
     const back = deserializeTimeLog(serializeTimeEntries(date, [manual], new Map()).content);
     expect(back.entries[0].isManual).toBe(true);
   });
+
+  it('produces byte-identical output across repeated calls with the same input (pure function)', () => {
+    const date = '2026-07-21';
+    const entries = [makeTimeEntry({ id: 'e1', updatedAt: '2026-07-21T10:00:00.000Z' })];
+    const activityNames = new Map([[entries[0].activityId, 'Deep Work']]);
+    const first = serializeTimeEntries(date, entries, activityNames);
+    const second = serializeTimeEntries(date, entries, activityNames);
+    expect(second.content).toBe(first.content);
+  });
+
+  it('stamps the top-level frontmatter with the max updatedAt across all input entries', () => {
+    const date = '2026-07-21';
+    const older = makeTimeEntry({ id: 'e-older', updatedAt: '2026-07-21T08:00:00.000Z' });
+    const newer = makeTimeEntry({ id: 'e-newer', updatedAt: '2026-07-21T12:00:00.000Z' });
+    const { content } = serializeTimeEntries(date, [older, newer], new Map());
+    // Parse rather than substring-match: both rows' own per-entry `updatedAt`
+    // also appear in the entries list, so a bare toContain would pass even if
+    // the top-level stamp were still wall-clock-derived.
+    const { meta } = parseFrontmatter(content);
+    expect(meta.updatedAt).toBe('2026-07-21T12:00:00.000Z');
+  });
+
+  it("derives the stamp from a soft-deleted entry's updatedAt even though the entry itself is omitted from the body (unfiltered-input pin)", () => {
+    const date = '2026-07-21';
+    const kept = makeTimeEntry({ id: 'e-kept', updatedAt: '2026-07-21T08:00:00.000Z' });
+    const deletedButFresher = makeTimeEntry({
+      id: 'e-deleted',
+      updatedAt: '2026-07-21T15:00:00.000Z',
+      deletedAt: '2026-07-21T15:00:00.000Z',
+    });
+    const { content } = serializeTimeEntries(date, [kept, deletedButFresher], new Map());
+    const { meta } = parseFrontmatter(content);
+    expect(meta.updatedAt).toBe('2026-07-21T15:00:00.000Z');
+
+    const back = deserializeTimeLog(content);
+    expect(back.entries.map(e => e.id)).toEqual(['e-kept']); // deleted entry still dropped from the body
+  });
 });
 
 // ─── Today tasks ──────────────────────────────────────────────────
@@ -449,6 +486,43 @@ describe('Today tasks serialization', () => {
     const { content } = serializeTodayTasks(date, [task], new Map());
     expect(content).toContain('Unknown task');
   });
+
+  it('produces byte-identical output across repeated calls with the same input (pure function)', () => {
+    const date = '2026-07-21';
+    const tasks = [makeTodayTask({ id: 'tt-1', updatedAt: '2026-07-21T09:00:00.000Z' })];
+    const taskTitles = new Map([[tasks[0].projectTaskId, 'Title']]);
+    const first = serializeTodayTasks(date, tasks, taskTitles);
+    const second = serializeTodayTasks(date, tasks, taskTitles);
+    expect(second.content).toBe(first.content);
+  });
+
+  it('stamps the top-level frontmatter with the max updatedAt across all input tasks', () => {
+    const date = '2026-07-21';
+    const older = makeTodayTask({ id: 'tt-older', updatedAt: '2026-07-21T08:00:00.000Z' });
+    const newer = makeTodayTask({ id: 'tt-newer', updatedAt: '2026-07-21T12:00:00.000Z' });
+    const { content } = serializeTodayTasks(date, [older, newer], new Map());
+    // Parse rather than substring-match: both rows' own per-task `updatedAt`
+    // also appear in the tasks list, so a bare toContain would pass even if
+    // the top-level stamp were still wall-clock-derived.
+    const { meta } = parseFrontmatter(content);
+    expect(meta.updatedAt).toBe('2026-07-21T12:00:00.000Z');
+  });
+
+  it("derives the stamp from a soft-deleted task's updatedAt even though the task itself is omitted from the body (unfiltered-input pin)", () => {
+    const date = '2026-07-21';
+    const kept = makeTodayTask({ id: 'tt-kept', updatedAt: '2026-07-21T08:00:00.000Z' });
+    const deletedButFresher = makeTodayTask({
+      id: 'tt-deleted',
+      updatedAt: '2026-07-21T15:00:00.000Z',
+      deletedAt: '2026-07-21T15:00:00.000Z',
+    });
+    const { content } = serializeTodayTasks(date, [kept, deletedButFresher], new Map());
+    const { meta } = parseFrontmatter(content);
+    expect(meta.updatedAt).toBe('2026-07-21T15:00:00.000Z');
+
+    const back = deserializeTodayTasks(content);
+    expect(back.tasks.map(t => t.id)).toEqual(['tt-kept']); // deleted task still dropped from the body
+  });
 });
 
 // ─── Inbox ────────────────────────────────────────────────────────
@@ -474,6 +548,39 @@ describe('Inbox serialization', () => {
   it('serializes an empty inbox without error', () => {
     const { content } = serializeInbox([]);
     expect(deserializeInbox(content)).toEqual([]);
+  });
+
+  it('produces byte-identical output across repeated calls with the same input (pure function)', () => {
+    const items = [makeInboxItem({ id: 'i1', updatedAt: '2026-07-21T09:00:00.000Z' })];
+    const first = serializeInbox(items);
+    const second = serializeInbox(items);
+    expect(second.content).toBe(first.content);
+  });
+
+  it('stamps the top-level frontmatter with the max updatedAt across all input items', () => {
+    const older = makeInboxItem({ id: 'i-older', updatedAt: '2026-07-21T08:00:00.000Z' });
+    const newer = makeInboxItem({ id: 'i-newer', updatedAt: '2026-07-21T12:00:00.000Z' });
+    const { content } = serializeInbox([older, newer]);
+    // Parse rather than substring-match: both rows' own per-item `updatedAt`
+    // also appear in the items list, so a bare toContain would pass even if
+    // the top-level stamp were still wall-clock-derived.
+    const { meta } = parseFrontmatter(content);
+    expect(meta.updatedAt).toBe('2026-07-21T12:00:00.000Z');
+  });
+
+  it("derives the stamp from a soft-deleted item's updatedAt even though the item itself is omitted from the body (unfiltered-input pin)", () => {
+    const kept = makeInboxItem({ id: 'i-kept', updatedAt: '2026-07-21T08:00:00.000Z' });
+    const deletedButFresher = makeInboxItem({
+      id: 'i-deleted',
+      updatedAt: '2026-07-21T15:00:00.000Z',
+      deletedAt: '2026-07-21T15:00:00.000Z',
+    });
+    const { content } = serializeInbox([kept, deletedButFresher]);
+    const { meta } = parseFrontmatter(content);
+    expect(meta.updatedAt).toBe('2026-07-21T15:00:00.000Z');
+
+    const back = deserializeInbox(content);
+    expect(back.map(i => i.id)).toEqual(['i-kept']); // deleted item still dropped from the body
   });
 });
 
