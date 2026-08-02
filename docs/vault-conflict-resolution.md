@@ -228,17 +228,65 @@ as the base; recording first would erase the very evidence ("what did this id
 look like last time we agreed") the inference needs, so a deletion missed on
 one path could never be recovered on the other.
 
-Before soft-deleting an id the base-diff proves missing, the helper (and
-`resolveOne`'s own `plan.deletedIds` loop below, for the conflict-copy path)
-checks `rowBelongsTo`, when the kind sets it: the id vanished from THIS file,
-but a base-diff scoped to one path can't tell that apart from the row having
-simply moved to a different file of the same kind — a task reassigned to
-another project, a time entry re-dated to another day. It reads the LIVE
-Dexie row for that id and asks whether its current scope (`projectId`,
-`date`) still matches this file's own scope (`ParsedFile.ownerId`, read from
-the file's own frontmatter/JSON so it survives a file with zero rows left).
-A mismatch means the row migrated, not deleted — the soft-delete is skipped
-and the row is left exactly as it is, wherever it actually lives now.
+Before soft-deleting an id the base-diff proves missing, every call site
+(the helper, and `resolveOne`'s own `plan.deletedIds` loop, for the
+conflict-copy path) checks `rowBelongsTo`, when the kind sets it: the id
+vanished from THIS file, but a base-diff scoped to one path can't tell that
+apart from the row having simply moved to a different file of the same
+kind — a task reassigned to another project, a time entry re-dated to
+another day. `rowBelongsTo` reads the LIVE Dexie row for that id and asks
+whether its current scope (`projectId`, `date`) still matches this file's
+own scope (`ParsedFile.ownerId`, read from the file's own frontmatter/JSON
+so it survives a file with zero rows left). A mismatch means the row
+migrated, not deleted — the soft-delete is skipped and the row is left
+exactly as it is, wherever it actually lives now.
+
+**The live-row check alone is order-dependent, and was not enough on its
+own.** It's only correct once THIS device already knows about the move —
+i.e. Dexie's row already reflects the new `projectId`/`date`. A device
+learning about a cross-file move via the very same sync batch it's
+currently processing has a live row that's still PRE-move at the moment the
+source file's deletion is decided, so `rowBelongsTo` reports "still belongs
+here," the row gets soft-deleted with `updatedAt` stamped to now, and the
+destination file's own (older-timestamped) copy then loses the LWW race
+outright — happening deterministically whenever the source file's path
+happens to sort or arrive before the destination's. A second, independent
+signal closes this without depending on Dexie having caught up:
+
+- **`importAllFromDisk`** restructures its per-kind loop into two phases —
+  read+parse+merge every path of the kind first, collecting the union of
+  every row id seen anywhere in that batch, and only THEN decide deletions
+  per path. An id present in another file of the kind THIS RUN is treated as
+  moved regardless of what Dexie's live row says, closing the batch-order
+  race completely: the full picture is known before any path's decision is
+  made.
+- **`handleExternalChange`** (the watcher, one file per call) and
+  **`resolveOne`**'s `plan.deletedIds` loop (the conflict-copy path,
+  pre-import) don't have a batch to draw that union from, so both consult
+  `idsInOtherFilesOfKind` (`vaultSync.ts`) instead: an on-demand scan of the
+  kind's OTHER files straight off the backend's CURRENT disk contents.
+  Lazy and memoized (computed at most once, only once a soft-delete is
+  actually being considered) so it costs nothing on an ordinary edit.
+
+Both call sites pass whichever signal they have BEFORE consulting
+`rowBelongsTo`'s live-row check — cheaper when precomputed (import), and
+strictly more informative than Dexie's possibly-stale state either way.
+
+**Residual risk (accepted, not fully closable from application code):** the
+on-demand scan only helps if the move's destination file has already
+reached the backend by the time the scan runs. In the ordinary case it has —
+a real move writes both files together, and neither Syncthing nor the local
+filesystem waits for one device to finish reacting to one file before
+delivering the next — but a genuine write-timing race (the destination file
+still landing on disk at the exact moment the scan runs) remains possible
+and is not something a single-file watcher event or a pre-import conflict
+resolve can fully rule out. If that race is lost, the wrongful soft-delete
+still happens and stamps `updatedAt` to now; because `mergeRow`'s LWW is
+strict `>`, the later-arriving destination-file row (carrying the move's own,
+older `updatedAt`) can never outrank it, so even the now order-independent
+60-second reconcile cannot undo it — the deletion has already won. Sequential
+watcher-event dispatch (`vaultStore.ts`) makes the outcome deterministic
+rather than additionally racy, but does not by itself close this window.
 
 `pruneBases` — the sweep that drops a `vaultBase` entry once its path is no
 longer live — is skipped for the whole import whenever any kind errored.
