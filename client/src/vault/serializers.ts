@@ -26,6 +26,16 @@ function pickMeta(obj: Record<string, unknown>, keys: string[]): Record<string, 
   return meta;
 }
 
+/**
+ * Latest `updatedAt` across rows (ISO strings compare lexicographically).
+ * Serialized stamps must be derived from input rows, never from the wall
+ * clock: a serializer that stamps "now" changes bytes on every export,
+ * which bumps mtime and manufactures sync conflicts out of nothing.
+ */
+function maxUpdatedAt(rows: { updatedAt: string }[], seed = ''): string {
+  return rows.reduce((latest, r) => (r.updatedAt > latest ? r.updatedAt : latest), seed);
+}
+
 // ─── Activity ─────────────────────────────────────────────────────
 
 const ACTIVITY_META_KEYS = [
@@ -89,16 +99,9 @@ export function serializeProjectTasksFile(
     .filter(t => !t.deletedAt)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  // Derived from the data, never `Date.now()`: a wall-clock stamp made this
-  // file's bytes differ on every export even when no task had changed, so each
-  // export bumped its mtime and Syncthing saw a modification to propagate. Two
-  // devices doing that concurrently manufactured conflicts out of identical
-  // data — and because the re-export carried a *fresh* mtime over *stale*
-  // content, the stale side won. Keep this a pure function of the tasks.
-  const updatedAt = activeTasks.reduce(
-    (latest, t) => (t.updatedAt > latest ? t.updatedAt : latest),
-    p.updatedAt,
-  );
+  // Derived from the data, never `Date.now()`. Seed from parent project row,
+  // unlike aggregate files (serializeTimeEntries, etc.) which reduce unfiltered.
+  const updatedAt = maxUpdatedAt(activeTasks, p.updatedAt);
 
   const tasksMeta: Record<string, unknown> = {
     projectId: p.id,
@@ -197,18 +200,8 @@ export function serializeTimeEntries(
     .filter(e => !e.deletedAt)
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 
-  // Derived from the data, never `Date.now()` — same fix serializeProjectTasksFile
-  // got: a wall-clock stamp made this file's bytes differ on every export even
-  // when no entry had changed, so each export bumped its mtime and Syncthing
-  // saw a modification to propagate, manufacturing conflicts the stale side
-  // could win. Uses the unfiltered `entries` list (not `activeEntries`) so a
-  // soft-deleted entry's own updatedAt still moves the stamp even though the
-  // body omits that entry; '' is the deterministic fallback when the list is
-  // empty (no deserializer reads this top-level field, only the per-entry one).
-  const updatedAt = entries.reduce(
-    (latest, e) => (e.updatedAt > latest ? e.updatedAt : latest),
-    '',
-  );
+  // Unfiltered: a soft-deleted entry must still move the stamp.
+  const updatedAt = maxUpdatedAt(entries);
 
   const meta: Record<string, unknown> = {
     date,
@@ -288,18 +281,8 @@ export function serializeTodayTasks(
     .filter(t => !t.deletedAt)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  // Derived from the data, never `Date.now()` — same fix serializeProjectTasksFile
-  // got: a wall-clock stamp made this file's bytes differ on every export even
-  // when no task had changed, so each export bumped its mtime and Syncthing
-  // saw a modification to propagate, manufacturing conflicts the stale side
-  // could win. Uses the unfiltered `tasks` list (not `activeTasks`) so a
-  // soft-deleted task's own updatedAt still moves the stamp even though the
-  // body omits that task; '' is the deterministic fallback when the list is
-  // empty (no deserializer reads this top-level field, only the per-task one).
-  const updatedAt = tasks.reduce(
-    (latest, t) => (t.updatedAt > latest ? t.updatedAt : latest),
-    '',
-  );
+  // Unfiltered: a soft-deleted task must still move the stamp.
+  const updatedAt = maxUpdatedAt(tasks);
 
   const meta: Record<string, unknown> = {
     date,
@@ -361,18 +344,8 @@ export function serializeInbox(items: InboxItem[]): { path: string; content: str
     .filter(i => !i.deletedAt)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-  // Derived from the data, never `Date.now()` — same fix serializeProjectTasksFile
-  // got: a wall-clock stamp made this file's bytes differ on every export even
-  // when no item had changed, so each export bumped its mtime and Syncthing
-  // saw a modification to propagate, manufacturing conflicts the stale side
-  // could win. Uses the unfiltered `items` list (not `activeItems`) so a
-  // soft-deleted item's own updatedAt still moves the stamp even though the
-  // body omits that item; '' is the deterministic fallback when the list is
-  // empty (no deserializer reads this top-level field, only the per-item one).
-  const updatedAt = items.reduce(
-    (latest, i) => (i.updatedAt > latest ? i.updatedAt : latest),
-    '',
-  );
+  // Unfiltered: a soft-deleted item must still move the stamp.
+  const updatedAt = maxUpdatedAt(items);
 
   const meta: Record<string, unknown> = {
     updatedAt,
