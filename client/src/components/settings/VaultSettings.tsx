@@ -3,6 +3,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { Button } from '../ui/Button';
 import { exportToZip, importFromZip, importFromDirectory, importFromPath } from '../../vault/webExport';
 import { getPlatform } from '../../vault/platform';
+import { useVaultStore } from '../../vault/vaultStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { FolderBrowserModal } from '../ui/FolderBrowserModal';
 
@@ -15,6 +16,10 @@ export function VaultSettings() {
   const update = useSettingsStore((s) => s.update);
   const vaultEnabled = useSettingsStore((s) => s.vaultEnabled);
   const vaultPath = useSettingsStore((s) => s.vaultPath);
+  const syncNow = useVaultStore((s) => s.syncNow);
+  const isSyncing = useVaultStore((s) => s.isSyncing);
+  const lastSyncAt = useVaultStore((s) => s.lastSyncAt);
+  const vaultError = useVaultStore((s) => s.error);
   const [folderBrowserOpen, setFolderBrowserOpen] = useState(false);
   const platform = getPlatform();
   const isTauri = platform !== 'web';
@@ -174,6 +179,14 @@ export function VaultSettings() {
             <Button
               variant="secondary"
               size="sm"
+              onClick={() => syncNow()}
+              disabled={isSyncing}
+            >
+              {t('vault.syncNow')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={async () => {
                 await update({ vaultSetupDone: false });
               }}
@@ -181,6 +194,14 @@ export function VaultSettings() {
               {t('vault.switchVault')}
             </Button>
           </div>
+          {lastSyncAt && (
+            <p className="text-xs text-text-muted mt-2">
+              {t('vault.lastSync')} {new Date(lastSyncAt).toLocaleTimeString()}
+            </p>
+          )}
+          {vaultError && (
+            <p className="text-xs text-red mt-1">{vaultError}</p>
+          )}
         </div>
       )}
 
