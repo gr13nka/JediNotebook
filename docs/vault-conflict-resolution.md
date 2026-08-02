@@ -309,11 +309,17 @@ each rather than adding a parallel one.
 Two narrower contract tests guard failure modes that don't look like a
 merge-logic bug at all, which is exactly why they need their own test rather
 than relying on the scenarios above to catch them. `backendContract.test.ts`
-runs the same listing contract — `listFiles`/`listDirs` return clean,
-leading-slash-free, direct-children-only paths — against every `VaultBackend`
-implementation via the shared `joinChildPath` helper (`vaultBackend.ts`). A
-leading slash at the vault root once made `conflictTargetPath` never match a
-root singleton's conflict copy on a real Tauri backend, so
+runs a shared listing contract — `listFiles`/`listDirs` return clean,
+leading-slash-free, direct-children-only paths — against `MemoryBackend`; the
+test file's own comment defers running the same suite against
+`TauriVaultBackend` to a future task, so that backend isn't exercised
+directly here. What actually pins the Tauri side today is narrower but real:
+both backends build child paths through the same `joinChildPath` helper
+(`vaultBackend.ts`), and the file's separate `joinChildPath` tests pin its
+root case — `joinChildPath('', name)` must not produce a leading slash —
+which is exactly what `TauriVaultBackend.listFiles`/`listDirs` call for every
+entry. A leading slash at the vault root once made `conflictTargetPath` never
+match a root singleton's conflict copy on a real Tauri backend, so
 `settings.json`/`folders.json`/`inbox.md` conflict copies silently piled up
 while `MemoryBackend`-only tests stayed green throughout. `capabilities.test.ts`
 reads the Tauri capability file's granted `fs:allow-*` permissions directly —

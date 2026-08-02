@@ -23,7 +23,7 @@ Do not configure JediNotebook to use a Syncthing conflict-copy folder. Select th
 
 JediNotebook's sync only works as well as Syncthing itself is configured underneath it. Check every item below on **every** device sharing the vault folder — desktop, phone, and laptop alike. A single misconfigured device can quietly cause data loss for all of them, not just for itself.
 
-- **The folder is not paused.** A paused folder still shows as "Up to Date" without actually sending or receiving anything.
+- **The folder is not paused.** Syncthing does show a paused folder as "Paused," not "Up to Date" — but it's easy to miss if you only glance at whether devices show as Connected, so check the folder's own status directly.
 - **File Versioning is set to Simple, keeping at least 5 versions.** This is what makes an accidental overwrite recoverable — see "Recovering an overwritten file" below.
 - **Max Conflicts is not 0.** A value of 0 tells Syncthing to silently *discard* the losing side of a conflict instead of keeping it as a `.sync-conflict-*` copy. That is permanent data loss on Syncthing's side, before JediNotebook ever gets a chance to merge anything.
 - **On Android:** exclude Syncthing from battery optimization, and grant the app "All files access." Without both, Android can suspend Syncthing or silently block it from reading the vault folder.
