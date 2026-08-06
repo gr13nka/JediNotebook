@@ -3,11 +3,14 @@ import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { renderLineMd } from '../../utils/markdown';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { DragDotsIcon } from '../ui/DragDotsIcon';
 import { EditProjectModal } from './EditProjectModal';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { adjustProjectNoteFontPx, useProjectTypography } from '../settings/projectTypography';
 import {
   setTextPayload,
+  setLineBlockPayload,
   readPayload,
   hasPayload,
   lineIndexFromNode,
@@ -16,6 +19,7 @@ import {
   offsetAfterLine,
   cutRange,
   insertLine,
+  moveLineBlock,
 } from '../../utils/taskDnd';
 import {
   recordTyping,
@@ -49,6 +53,16 @@ interface ProjectDraftEditorProps {
 // Shared typography for the description box. The preview and the textarea must
 // resolve to identical line boxes, otherwise text shifts when they swap.
 const EDITOR_TEXT = 'project-note leading-relaxed';
+
+/**
+ * Left gutter holding the per-line drag grips, in px.
+ *
+ * Applied to the preview AND the textarea, never to one alone: they share a
+ * grid cell and any difference in their text origin makes the note jump when
+ * the two swap. The grips live inside this gutter rather than outside the
+ * container, which clips (its `overflow-y-auto` forces overflow-x to `auto`).
+ */
+const LINE_GUTTER_PX = 24;
 
 export function ProjectDraftEditor({ projectId, title, description, color, icon, onSaveProject, onSave, linkedActivityId, onLinkActivity, activities, onConsumeTask, onRegisterCut }: ProjectDraftEditorProps) {
   const [localDesc, setLocalDesc] = useState(description);
@@ -368,22 +382,97 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
     onRegisterCut?.(cutRangeFromDescription);
   }, [onRegisterCut, cutRangeFromDescription]);
 
-  // Drag IN: a task row becomes a line of description.
+  /**
+   * Where a line being dragged inside the note would land. Feedback for this
+   * lives on the individual line (an insertion rule), not on the container —
+   * unlike a task drop, which can land anywhere and so rings the whole box.
+   */
+  const [dropLine, setDropLine] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
+
+  const isHoverPointer = useMediaQuery('(hover: hover) and (pointer: fine)');
+
+  /**
+   * Drag OUT by a line's grip. The grip carries the `draggable` attribute, not
+   * the line — making the line itself draggable would turn every mousedown-drag
+   * into a drag instead of a text selection, the same trap documented on the
+   * textarea below.
+   */
+  const handleLineDragStart = (e: React.DragEvent, lineIndex: number) => {
+    const { start, end } = wholeLineRange(localDesc, lineIndex, lineIndex);
+    setLineBlockPayload(e, localDesc.slice(start, end), start, end, lineIndex, lineIndex);
+    // Drag the line itself rather than the grip icon, so what follows the
+    // cursor is what is being moved.
+    const lineEl = (e.currentTarget as HTMLElement).parentElement;
+    if (lineEl) e.dataTransfer.setDragImage(lineEl, LINE_GUTTER_PX, lineEl.clientHeight / 2);
+  };
+
+  const handleLineDragOver = (e: React.DragEvent, lineIndex: number) => {
+    if (!hasPayload(e, 'text')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const position = e.clientY < rect.top + rect.height / 2 ? 'above' : 'below';
+    setDropLine({ index: lineIndex, position });
+  };
+
+  // Drag IN: a task row becomes a line of description, or a note line moves.
   const handleEditorDragOver = (e: React.DragEvent) => {
+    if (hasPayload(e, 'text')) {
+      // Over the container's padding, past any line. Accept the drop so it
+      // does not fall through to the browser, but leave the insertion rule to
+      // whichever line was last hovered.
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      return;
+    }
     if (!hasPayload(e, 'task')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     setIsTaskDropTarget(true);
   };
 
-  const handleEditorDragLeave = () => setIsTaskDropTarget(false);
+  const handleEditorDragLeave = (e: React.DragEvent) => {
+    setIsTaskDropTarget(false);
+    // dragleave bubbles, so crossing from one line to the next fires it on the
+    // container too. Clearing the insertion rule there would make it strobe as
+    // the cursor moves down the note — only clear when the drag has actually
+    // left the container.
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setDropLine(null);
+  };
+
+  const handleEditorDragEnd = () => setDropLine(null);
 
   const handleEditorDrop = (e: React.DragEvent) => {
     setIsTaskDropTarget(false);
+    const target = dropLine;
+    setDropLine(null);
     const payload = readPayload(e);
-    if (!payload || payload.kind !== 'task') return;
-    e.preventDefault();
+    if (!payload) return;
 
+    if (payload.kind === 'text') {
+      // Only a whole-line block can be re-ordered; a partial selection dragged
+      // out of the textarea has no line range and is ignored here.
+      if (payload.lineStart === undefined || payload.lineEnd === undefined || !target) return;
+      e.preventDefault();
+      const next = moveLineBlock(
+        localDesc,
+        payload.lineStart,
+        payload.lineEnd,
+        target.index,
+        target.position,
+      );
+      if (next === localDesc) return;
+      recordSnapshot();
+      localDescRef.current = next;
+      setLocalDesc(next);
+      saveDesc(next);
+      return;
+    }
+
+    e.preventDefault();
     recordSnapshot();
 
     // Insert after the line the cursor is over. Dropping past the last line
@@ -403,16 +492,45 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
   // One <div> per source line, each exactly one line box tall — matching how the
   // textarea lays the same text out. Blank lines render as a non-breaking space
   // rather than a fixed-height spacer.
+  //
+  // The grip and the insertion rule are absolutely positioned, so neither adds
+  // to the line box; the line keeps the exact height the textarea gives it.
   const renderPreview = () =>
     localDesc.split('\n').map((line, i) => (
       <div
         key={i}
         data-line-index={i}
-        className="markdown-preview"
-        dangerouslySetInnerHTML={{
-          __html: line.trim() === '' ? '&nbsp;' : renderLineMd(line),
-        }}
-      />
+        className="markdown-preview group/line relative"
+        onDragOver={(e) => handleLineDragOver(e, i)}
+      >
+        {isHoverPointer && (
+          <span
+            draggable
+            onDragStart={(e) => handleLineDragStart(e, i)}
+            // Without this, grabbing the grip counts as a click on the preview
+            // and flips the note into edit mode, swapping the line away.
+            onMouseUp={(e) => e.stopPropagation()}
+            title={t('projects.dragLine')}
+            className="absolute top-0 flex h-full cursor-grab items-center active:cursor-grabbing select-none transition-opacity can-hover:opacity-0 can-hover:group-hover/line:opacity-100"
+            style={{ left: -LINE_GUTTER_PX, width: LINE_GUTTER_PX }}
+          >
+            <DragDotsIcon />
+          </span>
+        )}
+        {dropLine?.index === i && (
+          <div
+            className="absolute left-0 right-0 h-[2px] rounded-full bg-accent z-10"
+            style={dropLine.position === 'above' ? { top: -1 } : { bottom: -1 }}
+          />
+        )}
+        {/* A block wrapper, not an inline one: a list line renders as a flex
+            div, and nesting that inside a span would split the line box. */}
+        <div
+          dangerouslySetInnerHTML={{
+            __html: line.trim() === '' ? '&nbsp;' : renderLineMd(line),
+          }}
+        />
+      </div>
     ));
 
   const nonBreakActivities = activities?.filter((a) => !a.isBreak) ?? [];
@@ -535,6 +653,7 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
           onMouseUp={handleContainerMouseUp}
           onDragOver={handleEditorDragOver}
           onDragLeave={handleEditorDragLeave}
+          onDragEnd={handleEditorDragEnd}
           onDrop={handleEditorDrop}
           className={`grid rounded-xl p-4 text-text-primary cursor-text overflow-y-auto no-scrollbar select-text ${isTaskDropTarget ? 'ring-2 ring-accent' : ''}`}
           // Focus mode drops the inset frame — nothing but the text should be
@@ -548,7 +667,11 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
         >
           <div
             onDragStart={handlePreviewDragStart}
-            style={{ gridArea: '1 / 1', fontSize: `${projectNoteFontPx}px` }}
+            style={{
+              gridArea: '1 / 1',
+              fontSize: `${projectNoteFontPx}px`,
+              paddingLeft: LINE_GUTTER_PX,
+            }}
             className={`${EDITOR_TEXT} min-w-0 ${isEditing ? 'invisible' : ''}`}
           >
             {hasContent ? (
@@ -569,7 +692,13 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
             // selection — which would make the description unselectable.
             onDragStart={handleTextDragStart}
             onKeyDown={handleEditorKeyDown}
-            style={{ gridArea: '1 / 1', fontSize: `${projectNoteFontPx}px` }}
+            // Same gutter as the preview — the two share a grid cell and any
+            // difference in their text origin makes the note jump on swap.
+            style={{
+              gridArea: '1 / 1',
+              fontSize: `${projectNoteFontPx}px`,
+              paddingLeft: LINE_GUTTER_PX,
+            }}
             className={`${EDITOR_TEXT} w-full min-w-0 bg-transparent text-text-primary focus:outline-none border-none resize-none overflow-hidden whitespace-pre-wrap selection:bg-accent/30 selection:text-text-primary ${
               isEditing ? '' : 'invisible pointer-events-none'
             }`}
