@@ -298,6 +298,9 @@ const en = {
   'projects.linkedActivity': 'Linked activity',
   'projects.noLinkedActivity': 'No linked activity',
   'projects.notePlaceholder': 'Take a note...',
+  'projects.focusNote': 'Focus mode',
+  'projects.exitFocusHint': 'Esc to exit',
+  'projects.dragLine': 'Drag to move this line, or drop it on the tasks',
 
   // Project cards
   'settings.mobileProjects': 'PROJECT CARDS',
@@ -623,6 +626,9 @@ const ru: Record<TranslationKey, string> = {
   'projects.linkedActivity': 'Связанная активность',
   'projects.noLinkedActivity': 'Без связанной активности',
   'projects.notePlaceholder': 'Заметка...',
+  'projects.focusNote': 'Режим фокуса',
+  'projects.exitFocusHint': 'Esc — выйти',
+  'projects.dragLine': 'Потяните, чтобы переместить строку или сделать её задачей',
   'settings.mobileProjects': 'КАРТОЧКИ ПРОЕКТОВ',
   'settings.mobileProjectGrid': 'Сетка карточек',
   'settings.mobileProjectGridDesc': 'Показывать проекты карточками; на компьютере карточки можно перемещать и менять по размеру',

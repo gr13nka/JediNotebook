@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { renderLineMd } from '../../utils/markdown';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -284,6 +285,37 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
     setIsEditing(true);
   };
 
+  /**
+   * Focus mode — the note alone, full screen, everything else gone.
+   *
+   * It re-styles this component's own root instead of rendering a second tree
+   * inside a portal: the same DOM nodes stay mounted, so the textarea keeps its
+   * focus and selection, and `localDesc`/the undo history are untouched. The
+   * cost is that entering and leaving cannot be animated (it is a layout change
+   * on one node, not a mount) — a deliberate trade for not remounting the editor.
+   *
+   * There is no exit button by design; Escape and the Android back button are
+   * the only ways out, so a hint is shown briefly on entry.
+   */
+  const [focusMode, setFocusMode] = useState(false);
+
+  useEffect(() => {
+    if (!focusMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFocusMode(false);
+    };
+    // A dummy history entry so the Android back button pops focus mode rather
+    // than leaving the page — same trick TodayPage's focus mode uses.
+    window.history.pushState({ projectNoteFocus: true }, '');
+    const handlePop = () => setFocusMode(false);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('popstate', handlePop);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('popstate', handlePop);
+    };
+  }, [focusMode]);
+
   const [isTaskDropTarget, setIsTaskDropTarget] = useState(false);
 
   // Drag OUT: stamp the exact selected range so the drop side can cut it.
@@ -386,11 +418,37 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
   const nonBreakActivities = activities?.filter((a) => !a.isBreak) ?? [];
 
   return (
-    <div className="flex flex-col h-full">
+    <div
+      className={
+        focusMode
+          ? 'fixed inset-0 z-50 flex flex-col overflow-y-auto bg-bg-primary'
+          : 'flex flex-col h-full'
+      }
+      style={
+        focusMode
+          ? {
+              paddingTop: 'calc(2rem + env(safe-area-inset-top, 0px))',
+              paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))',
+            }
+          : undefined
+      }
+    >
+      {focusMode && (
+        <motion.div
+          initial={{ opacity: 1 }}
+          animate={{ opacity: 0 }}
+          transition={{ duration: 0.6, delay: 2 }}
+          className="pointer-events-none fixed top-4 right-4 z-[51] rounded-lg px-2 py-1 text-xs text-text-muted"
+          style={{ boxShadow: NEU.raisedSm }}
+        >
+          {t('projects.exitFocusHint')}
+        </motion.div>
+      )}
+
       {/* Header row. A container rather than one big button, so controls that
           are not "edit the project" can sit beside the title without nesting a
           button inside a button. */}
-      <div className="group flex items-center gap-2 mb-2">
+      <div className={`group flex items-center gap-2 mb-2 ${focusMode ? 'hidden' : ''}`}>
         <button
           type="button"
           onClick={() => setEditModalOpen(true)}
@@ -422,6 +480,21 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
             <path d="m15 5 4 4" />
           </svg>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setFocusMode(true)}
+          title={t('projects.focusNote')}
+          className="shrink-0 p-1.5 rounded-lg text-text-secondary hover:text-text-primary transition-opacity can-hover:opacity-0 can-hover:group-hover:opacity-100 focus-visible:opacity-100"
+          style={{ boxShadow: NEU.raisedSm }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+            <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+            <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+          </svg>
+        </button>
       </div>
 
       <EditProjectModal
@@ -434,7 +507,7 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
       />
 
       {/* Activity link selector */}
-      {onLinkActivity && (
+      {onLinkActivity && !focusMode && (
         <div className="flex items-center gap-2 mb-3 px-1">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-text-muted shrink-0">
             <circle cx="12" cy="12" r="10" />
@@ -454,7 +527,7 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
         </div>
       )}
 
-      <div className="mx-auto w-full max-w-prose">
+      <div className={`mx-auto w-full max-w-prose ${focusMode ? 'flex-1 px-4' : ''}`}>
         {/* Preview and textarea occupy the SAME grid cell, so the container is
             as tall as the taller of the two and switching modes moves nothing. */}
         <div
@@ -464,7 +537,14 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
           onDragLeave={handleEditorDragLeave}
           onDrop={handleEditorDrop}
           className={`grid rounded-xl p-4 text-text-primary cursor-text overflow-y-auto no-scrollbar select-text ${isTaskDropTarget ? 'ring-2 ring-accent' : ''}`}
-          style={{ boxShadow: NEU.pressedSm, minHeight: '300px' }}
+          // Focus mode drops the inset frame — nothing but the text should be
+          // visible — and lets the note take the full height instead of the
+          // fixed 300px box it occupies beside the task panel.
+          style={
+            focusMode
+              ? { minHeight: '100%' }
+              : { boxShadow: NEU.pressedSm, minHeight: '300px' }
+          }
         >
           <div
             onDragStart={handlePreviewDragStart}
