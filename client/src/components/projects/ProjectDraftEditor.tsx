@@ -387,38 +387,42 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
 
   return (
     <div className="flex flex-col h-full">
-      {/* Clickable header row — opens edit modal */}
-      <button
-        type="button"
-        onClick={() => setEditModalOpen(true)}
-        className="flex items-center gap-2 mb-2 px-1 py-1 rounded-lg hover:bg-bg-elevated/50 transition-colors cursor-pointer text-left w-full group"
-      >
-        {icon ? (
-          <span className="text-2xl leading-none shrink-0">{icon}</span>
-        ) : (
-          <span
-            className="w-5 h-5 rounded-full shrink-0"
-            style={{ backgroundColor: color }}
-          />
-        )}
-        <span className="text-xl font-bold text-text-primary truncate flex-1">
-          {title}
-        </span>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-text-muted transition-opacity can-hover:opacity-0 can-hover:group-hover:opacity-100 group-focus-visible:opacity-100 shrink-0"
+      {/* Header row. A container rather than one big button, so controls that
+          are not "edit the project" can sit beside the title without nesting a
+          button inside a button. */}
+      <div className="group flex items-center gap-2 mb-2">
+        <button
+          type="button"
+          onClick={() => setEditModalOpen(true)}
+          className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1 rounded-lg hover:bg-bg-elevated/50 transition-colors cursor-pointer text-left"
         >
-          <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-          <path d="m15 5 4 4" />
-        </svg>
-      </button>
+          {icon ? (
+            <span className="text-2xl leading-none shrink-0">{icon}</span>
+          ) : (
+            <span
+              className="w-5 h-5 rounded-full shrink-0"
+              style={{ backgroundColor: color }}
+            />
+          )}
+          <span className="text-xl font-bold text-text-primary truncate flex-1">
+            {title}
+          </span>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-text-muted transition-opacity can-hover:opacity-0 can-hover:group-hover:opacity-100 group-focus-within:opacity-100 shrink-0"
+          >
+            <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+            <path d="m15 5 4 4" />
+          </svg>
+        </button>
+      </div>
 
       <EditProjectModal
         open={editModalOpen}
