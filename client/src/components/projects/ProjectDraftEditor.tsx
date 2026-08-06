@@ -15,6 +15,7 @@ import {
   hasPayload,
   lineIndexFromNode,
   lineIndexFromPoint,
+  LINE_INDEX_ATTR,
   wholeLineRange,
   offsetAfterLine,
   cutRange,
@@ -388,8 +389,42 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
    * unlike a task drop, which can land anywhere and so rings the whole box.
    */
   const [dropLine, setDropLine] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
+  /** Line whose grip is showing. Not CSS `:hover` — see `lineAtPoint`. */
+  const [hoveredLine, setHoveredLine] = useState<number | null>(null);
 
   const isHoverPointer = useMediaQuery('(hover: hover) and (pointer: fine)');
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Which preview line sits at `clientY`, and which half of it the point is in.
+   *
+   * Resolved by geometry rather than by hit-testing, because while the textarea
+   * is up the preview is `visibility: hidden` — it still lays out (which is all
+   * this needs) but receives no pointer or drag events at all, so neither CSS
+   * `:hover` on a line nor `elementFromPoint` can find one. Doing it this way is
+   * what lets the grips work while you are typing, not only while reading.
+   */
+  const lineAtPoint = useCallback(
+    (clientY: number): { index: number; position: 'above' | 'below' } | null => {
+      const preview = previewRef.current;
+      if (!preview) return null;
+      for (const el of preview.querySelectorAll<HTMLElement>(`[${LINE_INDEX_ATTR}]`)) {
+        const rect = el.getBoundingClientRect();
+        if (clientY < rect.top || clientY > rect.bottom) continue;
+        const index = Number(el.getAttribute(LINE_INDEX_ATTR));
+        if (Number.isNaN(index)) return null;
+        return { index, position: clientY < rect.top + rect.height / 2 ? 'above' : 'below' };
+      }
+      return null;
+    },
+    [],
+  );
+
+  const handleContainerMouseMove = (e: React.MouseEvent) => {
+    if (!isHoverPointer) return;
+    const hit = lineAtPoint(e.clientY);
+    setHoveredLine((prev) => (prev === (hit?.index ?? null) ? prev : hit?.index ?? null));
+  };
 
   /**
    * Drag OUT by a line's grip. The grip carries the `draggable` attribute, not
@@ -401,29 +436,23 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
     const { start, end } = wholeLineRange(localDesc, lineIndex, lineIndex);
     setLineBlockPayload(e, localDesc.slice(start, end), start, end, lineIndex, lineIndex);
     // Drag the line itself rather than the grip icon, so what follows the
-    // cursor is what is being moved.
+    // cursor is what is being moved. Only while the preview is showing — a
+    // hidden element makes a blank drag image, so editing keeps the default.
     const lineEl = (e.currentTarget as HTMLElement).parentElement;
-    if (lineEl) e.dataTransfer.setDragImage(lineEl, LINE_GUTTER_PX, lineEl.clientHeight / 2);
-  };
-
-  const handleLineDragOver = (e: React.DragEvent, lineIndex: number) => {
-    if (!hasPayload(e, 'text')) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const position = e.clientY < rect.top + rect.height / 2 ? 'above' : 'below';
-    setDropLine({ index: lineIndex, position });
+    if (lineEl && !isEditing) {
+      e.dataTransfer.setDragImage(lineEl, LINE_GUTTER_PX, lineEl.clientHeight / 2);
+    }
   };
 
   // Drag IN: a task row becomes a line of description, or a note line moves.
   const handleEditorDragOver = (e: React.DragEvent) => {
     if (hasPayload(e, 'text')) {
-      // Over the container's padding, past any line. Accept the drop so it
-      // does not fall through to the browser, but leave the insertion rule to
-      // whichever line was last hovered.
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
+      // Past the last line (the container's padding) the insertion rule stays
+      // wherever it last was, rather than vanishing under the cursor.
+      const hit = lineAtPoint(e.clientY);
+      if (hit) setDropLine(hit);
       return;
     }
     if (!hasPayload(e, 'task')) return;
@@ -476,8 +505,9 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
     recordSnapshot();
 
     // Insert after the line the cursor is over. Dropping past the last line
-    // (or into an empty description) appends.
-    const lineIndex = lineIndexFromPoint(e.clientX, e.clientY);
+    // (or into an empty description) appends. Geometry, not hit-testing, so
+    // this still lands correctly when the textarea is covering the preview.
+    const lineIndex = lineAtPoint(e.clientY)?.index ?? null;
     const offset =
       lineIndex === null ? localDesc.length : offsetAfterLine(localDesc, lineIndex);
     const next = insertLine(localDesc, offset, payload.title);
@@ -497,13 +527,12 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
   // to the line box; the line keeps the exact height the textarea gives it.
   const renderPreview = () =>
     localDesc.split('\n').map((line, i) => (
-      <div
-        key={i}
-        data-line-index={i}
-        className="markdown-preview group/line relative"
-        onDragOver={(e) => handleLineDragOver(e, i)}
-      >
-        {isHoverPointer && (
+      <div key={i} data-line-index={i} className="markdown-preview relative">
+        {/* `visible` and `z-20` are what let the grip work while you type: the
+            preview around it is `visibility: hidden` under the textarea, and
+            visibility is overridable per-element, so the grip alone shows and
+            alone stays hit-testable — above the textarea, which is unpositioned. */}
+        {isHoverPointer && hoveredLine === i && (
           <span
             draggable
             onDragStart={(e) => handleLineDragStart(e, i)}
@@ -511,7 +540,7 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
             // and flips the note into edit mode, swapping the line away.
             onMouseUp={(e) => e.stopPropagation()}
             title={t('projects.dragLine')}
-            className="absolute top-0 flex cursor-grab items-center active:cursor-grabbing select-none transition-opacity can-hover:opacity-0 can-hover:group-hover/line:opacity-100"
+            className="visible absolute top-0 z-20 flex cursor-grab items-center active:cursor-grabbing select-none"
             // Height is one line box (`leading-relaxed`), not the line's full
             // height: a source line that wraps to several visual lines would
             // otherwise centre its grip somewhere in the middle of the
@@ -523,7 +552,7 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
         )}
         {dropLine?.index === i && (
           <div
-            className="absolute left-0 right-0 h-[2px] rounded-full bg-accent z-10"
+            className="visible absolute left-0 right-0 h-[2px] rounded-full bg-accent z-20"
             style={dropLine.position === 'above' ? { top: -1 } : { bottom: -1 }}
           />
         )}
@@ -655,6 +684,8 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
         <div
           ref={containerRef}
           onMouseUp={handleContainerMouseUp}
+          onMouseMove={handleContainerMouseMove}
+          onMouseLeave={() => setHoveredLine(null)}
           onDragOver={handleEditorDragOver}
           onDragLeave={handleEditorDragLeave}
           onDragEnd={handleEditorDragEnd}
@@ -670,6 +701,7 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
           }
         >
           <div
+            ref={previewRef}
             onDragStart={handlePreviewDragStart}
             style={{
               gridArea: '1 / 1',
