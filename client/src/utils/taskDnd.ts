@@ -17,6 +17,14 @@ export interface TextPayload {
   /** Offsets into the textarea's value, so the exact range can be cut out. */
   start: number;
   end: number;
+  /**
+   * Source line range, present only when the dragged text covers whole lines.
+   * That is what makes a drag re-orderable *within* the note: a block of whole
+   * lines can be spliced to another position, an arbitrary mid-line selection
+   * cannot. Absent for a partial selection dragged out of the textarea.
+   */
+  lineStart?: number;
+  lineEnd?: number;
 }
 
 export interface TaskPayload {
@@ -36,6 +44,33 @@ export function setTextPayload(
   e.dataTransfer.setData(TEXT_MIME, JSON.stringify({ text, start, end }));
   e.dataTransfer.setData('text/plain', text);
   e.dataTransfer.effectAllowed = 'copy';
+}
+
+/**
+ * A whole-line block dragged by its grip in the rendered preview.
+ *
+ * Two differences from `setTextPayload`, both deliberate:
+ *
+ * - It carries the source line range, which is what lets the note itself accept
+ *   the drop and re-order the block (see `moveLineBlock`).
+ * - `effectAllowed` is 'copyMove', for the same reason `setTaskPayload` uses it:
+ *   this one drag has two possible targets that ask for different effects — the
+ *   note sets dropEffect 'move' to re-order, the task panel sets 'copy' — and a
+ *   dropEffect incompatible with effectAllowed silently cancels the drop. The
+ *   'copy'-only pinning that `setTextPayload` needs does not apply here, because
+ *   the source is a preview element, not a text control the engine might mutate.
+ */
+export function setLineBlockPayload(
+  e: React.DragEvent,
+  text: string,
+  start: number,
+  end: number,
+  lineStart: number,
+  lineEnd: number,
+): void {
+  e.dataTransfer.setData(TEXT_MIME, JSON.stringify({ text, start, end, lineStart, lineEnd }));
+  e.dataTransfer.setData('text/plain', text);
+  e.dataTransfer.effectAllowed = 'copyMove';
 }
 
 /**
@@ -65,8 +100,8 @@ export function readPayload(e: React.DragEvent): DragPayload | null {
   const rawText = e.dataTransfer.getData(TEXT_MIME);
   if (rawText) {
     try {
-      const { text, start, end } = JSON.parse(rawText);
-      return { kind: 'text', text, start, end };
+      const { text, start, end, lineStart, lineEnd } = JSON.parse(rawText);
+      return { kind: 'text', text, start, end, lineStart, lineEnd };
     } catch {
       return null;
     }
@@ -83,10 +118,17 @@ export function readPayload(e: React.DragEvent): DragPayload | null {
   return null;
 }
 
-/** Whether a drag in progress carries the given payload kind. Safe during dragover. */
-export function hasPayload(e: React.DragEvent, kind: 'text' | 'task'): boolean {
+/**
+ * Whether a drag in progress carries the given payload kind. Safe during
+ * dragover. Takes anything with a `dataTransfer`, so a native DragEvent from a
+ * document-level listener works as well as React's synthetic one.
+ */
+export function hasPayload(
+  e: { dataTransfer: DataTransfer | null },
+  kind: 'text' | 'task',
+): boolean {
   const mime = kind === 'text' ? TEXT_MIME : TASK_MIME;
-  return Array.from(e.dataTransfer.types).includes(mime);
+  return Array.from(e.dataTransfer?.types ?? []).includes(mime);
 }
 
 /** True when the user asked to copy rather than move (⌘ on macOS, Ctrl elsewhere). */
@@ -173,6 +215,46 @@ export function cutRange(text: string, start: number, end: number): string {
     return after.slice(1);
   }
   return joined;
+}
+
+/**
+ * Moves whole source lines `lineStart`..`lineEnd` to sit just above or below
+ * `targetLine`, and returns the rebuilt text.
+ *
+ * Deliberately splices the line array rather than doing offset arithmetic:
+ * removing a block shifts every offset after it, and the target offset would
+ * have to be re-derived against the post-removal text. Line indices have no
+ * such coupling, so the whole operation is one splice out and one splice in.
+ *
+ * Returns `text` unchanged when the move is a no-op — the target sits inside
+ * the block being moved, or the block would land exactly where it already is.
+ */
+export function moveLineBlock(
+  text: string,
+  lineStart: number,
+  lineEnd: number,
+  targetLine: number,
+  position: 'above' | 'below',
+): string {
+  const lines = text.split('\n');
+  const first = Math.max(0, Math.min(lineStart, lines.length - 1));
+  const last = Math.max(first, Math.min(lineEnd, lines.length - 1));
+  const target = Math.max(0, Math.min(targetLine, lines.length - 1));
+
+  // Dropping onto the block itself has no meaning — it is already there.
+  if (target >= first && target <= last) return text;
+
+  const insertAt = position === 'below' ? target + 1 : target;
+  // Landing immediately before the block, or immediately after it, is the
+  // position it already occupies.
+  if (insertAt === first || insertAt === last + 1) return text;
+
+  const block = lines.slice(first, last + 1);
+  lines.splice(first, block.length);
+  // Removing the block shifts everything after it up by its length.
+  const shifted = insertAt > last ? insertAt - block.length : insertAt;
+  lines.splice(shifted, 0, ...block);
+  return lines.join('\n');
 }
 
 /** Inserts `line` into `text` at `offset` as its own line. */

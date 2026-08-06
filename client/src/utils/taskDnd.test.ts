@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wholeLineRange, offsetAfterLine, cutRange, insertLine } from './taskDnd';
+import { wholeLineRange, offsetAfterLine, cutRange, insertLine, moveLineBlock } from './taskDnd';
 
 // These four functions are the character-offset arithmetic behind dragging
 // task lines into/out of a project description (see taskDnd.ts doc comments).
@@ -154,5 +154,63 @@ describe('insertLine', () => {
     const text = 'aaa';
     expect(insertLine(text, -10, 'NEW')).toBe('NEW\naaa');
     expect(insertLine(text, 999, 'NEW')).toBe('aaa\nNEW');
+  });
+});
+
+describe('moveLineBlock', () => {
+  const text = 'aaa\nbbb\nccc\nddd';
+
+  it('moves a line down, below a later line', () => {
+    expect(moveLineBlock(text, 0, 0, 2, 'below')).toBe('bbb\nccc\naaa\nddd');
+  });
+
+  it('moves a line up, above an earlier line', () => {
+    expect(moveLineBlock(text, 3, 3, 1, 'above')).toBe('aaa\nddd\nbbb\nccc');
+  });
+
+  it('moves a line down, above a later line', () => {
+    expect(moveLineBlock(text, 0, 0, 3, 'above')).toBe('bbb\nccc\naaa\nddd');
+  });
+
+  it('moves a line to the very top and to the very bottom', () => {
+    expect(moveLineBlock(text, 2, 2, 0, 'above')).toBe('ccc\naaa\nbbb\nddd');
+    expect(moveLineBlock(text, 1, 1, 3, 'below')).toBe('aaa\nccc\nddd\nbbb');
+  });
+
+  it('moves a multi-line block, keeping its internal order', () => {
+    expect(moveLineBlock(text, 0, 1, 3, 'below')).toBe('ccc\nddd\naaa\nbbb');
+    expect(moveLineBlock(text, 2, 3, 0, 'above')).toBe('ccc\nddd\naaa\nbbb');
+  });
+
+  it('is a no-op when the target sits inside the moved block', () => {
+    expect(moveLineBlock(text, 0, 2, 1, 'above')).toBe(text);
+    expect(moveLineBlock(text, 1, 1, 1, 'below')).toBe(text);
+  });
+
+  it('is a no-op when the block would land where it already is', () => {
+    // Just above itself, and just below itself.
+    expect(moveLineBlock(text, 2, 2, 1, 'below')).toBe(text);
+    expect(moveLineBlock(text, 2, 2, 3, 'above')).toBe(text);
+    expect(moveLineBlock(text, 0, 1, 2, 'above')).toBe(text);
+  });
+
+  it('clamps out-of-range indices into bounds', () => {
+    expect(moveLineBlock(text, -5, -5, 999, 'below')).toBe('bbb\nccc\nddd\naaa');
+    expect(moveLineBlock(text, 999, 999, -5, 'above')).toBe('ddd\naaa\nbbb\nccc');
+  });
+
+  it('is a no-op on a single-line text', () => {
+    expect(moveLineBlock('aaa', 0, 0, 0, 'below')).toBe('aaa');
+  });
+
+  it('is a no-op on empty text', () => {
+    expect(moveLineBlock('', 0, 0, 0, 'above')).toBe('');
+  });
+
+  it('treats the phantom line after a trailing newline as a real slot', () => {
+    // split('\n') gives ['aaa', 'bbb', ''] here; moving onto that empty slot is
+    // how a line gets dragged past the end of a note that ends in a newline.
+    expect(moveLineBlock('aaa\nbbb\n', 0, 0, 2, 'below')).toBe('bbb\n\naaa');
+    expect(moveLineBlock('aaa\nbbb\n', 0, 0, 2, 'above')).toBe('bbb\naaa\n');
   });
 });
