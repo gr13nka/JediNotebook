@@ -511,8 +511,12 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
             // and flips the note into edit mode, swapping the line away.
             onMouseUp={(e) => e.stopPropagation()}
             title={t('projects.dragLine')}
-            className="absolute top-0 flex h-full cursor-grab items-center active:cursor-grabbing select-none transition-opacity can-hover:opacity-0 can-hover:group-hover/line:opacity-100"
-            style={{ left: -LINE_GUTTER_PX, width: LINE_GUTTER_PX }}
+            className="absolute top-0 flex cursor-grab items-center active:cursor-grabbing select-none transition-opacity can-hover:opacity-0 can-hover:group-hover/line:opacity-100"
+            // Height is one line box (`leading-relaxed`), not the line's full
+            // height: a source line that wraps to several visual lines would
+            // otherwise centre its grip somewhere in the middle of the
+            // paragraph instead of beside where the line starts.
+            style={{ left: -LINE_GUTTER_PX, width: LINE_GUTTER_PX, height: '1.625em' }}
           >
             <DragDotsIcon />
           </span>
