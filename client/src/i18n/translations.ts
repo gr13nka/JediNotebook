@@ -114,6 +114,7 @@ const en = {
   'projectTasks.completed': 'Completed',
   'projectTasks.archived': 'Archive',
   'projectTasks.restore': 'Restore',
+  'projectTasks.dropToCreate': 'Drop here to create a task',
   'projectTasks.tooltip': 'Here you think about what few simple steps can be done to come closer to finish this project within about 20 minutes',
 
   // Task Selection
@@ -462,6 +463,7 @@ const ru: Record<TranslationKey, string> = {
   'projectTasks.completed': 'Завершённые',
   'projectTasks.archived': 'Архив',
   'projectTasks.restore': 'Вернуть',
+  'projectTasks.dropToCreate': 'Перетащите сюда, чтобы создать задачу',
   'projectTasks.tooltip': 'Подумайте, какие простые шаги помогут продвинуть проект за ~20 минут',
   'taskSelection.title': 'Выбор задач',
   'taskSelection.empty': 'Нет задач. Сначала создайте проект и добавьте задачи.',

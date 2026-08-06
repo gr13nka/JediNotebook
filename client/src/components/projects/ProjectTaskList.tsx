@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NEU } from '../../utils/shadows';
 import { useProjectTasks } from '../../hooks/useProjectTasks';
 import { useReorderList } from '../../hooks/useReorderList';
@@ -69,6 +69,33 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
 
   const [isTextDropTarget, setIsTextDropTarget] = useState(false);
 
+  /**
+   * True from the moment note text starts being dragged anywhere, not just once
+   * it reaches this panel — the point of the hint is to tell you the panel is a
+   * target *before* you go looking for one, so it cannot wait for a dragover.
+   * `dragstart`/`dragend` both bubble to the document, which is the only place
+   * that sees a drag begin somewhere else.
+   */
+  const [dragArmed, setDragArmed] = useState(false);
+
+  useEffect(() => {
+    // Arming while the project is at its task cap would promise a drop that
+    // handleTextDrop then refuses.
+    if (!canAdd) return;
+    const handleDragStart = (e: DragEvent) => {
+      if (hasPayload(e, 'text')) setDragArmed(true);
+    };
+    const disarm = () => setDragArmed(false);
+    document.addEventListener('dragstart', handleDragStart);
+    document.addEventListener('dragend', disarm);
+    document.addEventListener('drop', disarm);
+    return () => {
+      document.removeEventListener('dragstart', handleDragStart);
+      document.removeEventListener('dragend', disarm);
+      document.removeEventListener('drop', disarm);
+    };
+  }, [canAdd]);
+
   const handleTextDragOver = (e: React.DragEvent) => {
     if (!hasPayload(e, 'text') || !canAdd) return;
     e.preventDefault();
@@ -80,6 +107,7 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
 
   const handleTextDrop = async (e: React.DragEvent) => {
     setIsTextDropTarget(false);
+    setDragArmed(false);
     const payload = readPayload(e);
     if (!payload || payload.kind !== 'text' || !canAdd) return;
     e.preventDefault();
@@ -102,13 +130,31 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
 
   return (
     <div
-      className={`flex flex-col rounded-xl transition-shadow ${
-        isTextDropTarget ? 'ring-2 ring-accent' : ''
+      className={`relative flex min-h-full flex-col rounded-xl transition-shadow ${
+        isTextDropTarget
+          ? 'ring-2 ring-accent'
+          : dragArmed
+            ? 'outline-2 outline-dashed outline-offset-2 outline-accent/50'
+            : ''
       }`}
       onDragOver={handleTextDragOver}
       onDragLeave={handleTextDragLeave}
       onDrop={handleTextDrop}
     >
+      {/* Sits above the list rather than in it: a banner in flow would push the
+          tasks down the moment a drag started. pointer-events-none keeps the
+          drop target underneath reachable. */}
+      {dragArmed && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-accent/10 p-4">
+          <span
+            className="rounded-lg bg-bg-card px-2.5 py-1.5 text-center text-xs font-medium text-accent"
+            style={{ boxShadow: NEU.raisedSm }}
+          >
+            {t('projectTasks.dropToCreate')}
+          </span>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 mb-3">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
           {t('projectTasks.title')}
