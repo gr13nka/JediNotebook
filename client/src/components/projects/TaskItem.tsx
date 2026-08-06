@@ -5,6 +5,7 @@ import { normalizeTaskText } from '../../utils/taskText';
 import { RecurrenceEditor } from './RecurrenceEditor';
 import { CompletionBurst, useCompletionBurst } from '../ui/CompletionBurst';
 import { TaskTextArea } from '../ui/TaskTextArea';
+import { DragDotsIcon } from '../ui/DragDotsIcon';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 interface TaskItemProps {
@@ -19,17 +20,6 @@ interface TaskItemProps {
   onDrop?: (e: React.DragEvent) => void;
   isDragOver?: 'above' | 'below' | null;
 }
-
-const DragDotsIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="text-text-muted">
-    <circle cx="5" cy="3" r="1.2" />
-    <circle cx="11" cy="3" r="1.2" />
-    <circle cx="5" cy="8" r="1.2" />
-    <circle cx="11" cy="8" r="1.2" />
-    <circle cx="5" cy="13" r="1.2" />
-    <circle cx="11" cy="13" r="1.2" />
-  </svg>
-);
 
 const RecurringIcon = ({ active }: { active: boolean }) => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
