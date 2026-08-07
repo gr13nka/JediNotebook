@@ -5,6 +5,7 @@ import { Sidebar, useSidebarStore } from './Sidebar';
 import { BottomNav } from './BottomNav';
 import { DesktopBottomNav } from './DesktopBottomNav';
 import { DropdownNav } from './DropdownNav';
+import { DragGhost } from '../ui/DragGhost';
 import { useSettingsStore } from '../../stores/settingsStore';
 
 const WIDE_PAGES = ['/projects', '/tasks', '/settings'];
@@ -47,6 +48,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {desktopBottomNav && !hideNav && <DesktopBottomNav />}
         </>
       )}
+      {/* Mounted once, above everything: a drag can start on any page. */}
+      <DragGhost />
     </div>
   );
 }
