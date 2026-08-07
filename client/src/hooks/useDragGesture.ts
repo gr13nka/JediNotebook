@@ -426,11 +426,18 @@ function preventTouchPan(event: TouchEvent): void {
 
 /**
  * A long press is the platform's own gesture for selecting text and opening a
- * context menu. Once it is ours, the platform's version has to be called off,
- * or a finger held on a task row gets a selection popup instead of a drag.
+ * context menu. Once it is ours, the platform's version has to be called off, or
+ * a finger held on a task row gets a selection popup instead of a drag.
+ *
+ * `stopPropagation` as well as `preventDefault`, in the capture phase: cancelling
+ * the event only suppresses the *browser's* menu, while React's `onContextMenu`
+ * handlers — the tree's project menu — are attached to the root container inside
+ * the document and would still fire. Without this, one long press on a project
+ * row both opened its menu and started dragging it.
  */
 function preventNativeLongPress(event: Event): void {
   event.preventDefault();
+  event.stopPropagation();
 }
 
 function endSession(commit: boolean): void {
@@ -442,7 +449,7 @@ function endSession(commit: boolean): void {
   document.removeEventListener('pointerup', handlePointerUp);
   document.removeEventListener('pointercancel', handlePointerCancel);
   document.removeEventListener('keydown', handleKeyDown);
-  document.removeEventListener('contextmenu', preventNativeLongPress);
+  document.removeEventListener('contextmenu', preventNativeLongPress, true);
   document.removeEventListener('touchmove', preventTouchPan);
 
   try {
@@ -577,7 +584,7 @@ export function startDrag(event: React.PointerEvent<HTMLElement>, spec: DragSpec
     }, TOUCH_HOLD_MS);
     // Registered for the whole session, pending or active: the platform's own
     // long press has to lose whether or not ours has fired yet.
-    document.addEventListener('contextmenu', preventNativeLongPress);
+    document.addEventListener('contextmenu', preventNativeLongPress, true);
   }
 
   document.addEventListener('pointermove', handlePointerMove);
