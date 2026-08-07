@@ -359,7 +359,12 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
     },
     onDrop: (drag, _x, y) => {
       setIsTaskDropTarget(false);
-      const target = lineAtPoint(y);
+      // The insertion rule's own position, not a fresh hit test: `onOver` keeps
+      // it on the last line the pointer was over, deliberately, so it does not
+      // vanish in the padding below the note. Re-resolving here would refuse the
+      // drop exactly where the rule was promising it — which is how a line gets
+      // moved to the end.
+      const target = dropLine;
       setDropLine(null);
       const payload = drag.spec.payload;
       if (!payload) return;
@@ -380,11 +385,11 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
 
       if (payload.kind !== 'task') return;
 
-      // Insert after the line the pointer is over. Dropping past the last line
-      // (or into an empty description) appends. Geometry, not hit-testing, so
-      // this still lands correctly when the textarea is covering the preview.
-      const offset =
-        target === null ? localDesc.length : offsetAfterLine(localDesc, target.index);
+      // Insert after the line the pointer is over — a fresh hit test here, not
+      // the sticky rule above: a task dropped past the last line appends, which
+      // is what the release point says and what it has always done.
+      const hit = lineAtPoint(y);
+      const offset = hit === null ? localDesc.length : offsetAfterLine(localDesc, hit.index);
       doc.replace(insertLine(localDesc, offset, payload.title));
       onConsumeTask?.(payload.taskId);
     },
