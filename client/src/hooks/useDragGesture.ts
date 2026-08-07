@@ -319,19 +319,26 @@ function scrollableAncestor(element: Element | null): HTMLElement | null {
 }
 
 /**
- * Keeps a scrollable list moving when the pointer sits near its edge. A native
- * drag got this from the browser; a pointer drag has to do it, or a row cannot
- * be dragged past the bottom of a list taller than its container.
+ * Keeps the list moving when the pointer sits near its edge. A native drag got
+ * this from the browser; a pointer drag has to do it, or a row cannot be dragged
+ * past the end of a list taller than what shows.
+ *
+ * Falls back to the page when no element scrolls, because most lists here are
+ * not their own scroll container — `/tasks` sits in a plain div and the document
+ * does the scrolling. Same two cases `useTodayCardReorder` handles.
  */
 function runAutoScroll(): void {
   const active = session;
   if (!active?.activated) return;
 
   const container = scrollableAncestor(document.elementFromPoint(active.x, active.y));
-  if (container) {
-    const rect = container.getBoundingClientRect();
-    const delta = computeTodayAutoScrollDelta(active.y, rect.top, rect.bottom);
-    if (delta !== 0) container.scrollTop += delta;
+  const bounds = container
+    ? container.getBoundingClientRect()
+    : { top: 0, bottom: window.innerHeight };
+  const delta = computeTodayAutoScrollDelta(active.y, bounds.top, bounds.bottom);
+  if (delta !== 0) {
+    if (container) container.scrollTop += delta;
+    else window.scrollBy(0, delta);
   }
   autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
 }
