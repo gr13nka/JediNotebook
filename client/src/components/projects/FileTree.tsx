@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFolders } from '../../hooks/useFolders';
 import { useProjects } from '../../hooks/useProjects';
@@ -8,6 +8,7 @@ import { NEU } from '../../utils/shadows';
 import { AddProjectModal } from './AddProjectModal';
 import { AddFolderModal } from './AddFolderModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { InlineTextEdit } from '../ui/InlineTextEdit';
 import { useProjectTypography } from '../settings/projectTypography';
 import { startDrag, useDropTarget } from '../../hooks/useDragGesture';
@@ -35,7 +36,6 @@ export function FileTree() {
   const [confirmDeleteFolderId, setConfirmDeleteFolderId] = useState<string | null>(null);
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
-  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const activeProjects = projects.filter((p) => !p.isArchived);
   const inactiveProjects = projects.filter((p) => p.isArchived);
@@ -69,32 +69,25 @@ export function FileTree() {
     setContextMenu({ x: e.clientX, y: e.clientY, project });
   };
 
-  const handleDeleteProject = (project: Project) => {
-    setContextMenu(null);
-    setConfirmDeleteProject(project);
-  };
-
-  const handleMoveToRoot = (project: Project) => {
-    moveProject(project.id, null);
-    setContextMenu(null);
-  };
-
-  const handleToggleActive = (project: Project) => {
-    updateProject(project.id, { isArchived: !project.isArchived });
-    setContextMenu(null);
-  };
-
-  // Close context menu on click outside
-  useEffect(() => {
-    if (!contextMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
-        setContextMenu(null);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [contextMenu]);
+  // `ContextMenu` closes itself after an item runs, so none of these do.
+  const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
+    const project = contextMenu?.project;
+    if (!project) return [];
+    const items: ContextMenuItem[] = [];
+    if (project.folderId) {
+      items.push({ label: t('projects.moveToRoot'), onClick: () => moveProject(project.id, null) });
+    }
+    items.push({
+      label: project.isArchived ? t('projects.activate') : t('projects.deactivate'),
+      onClick: () => updateProject(project.id, { isArchived: !project.isArchived }),
+    });
+    items.push({
+      label: t('projects.delete'),
+      onClick: () => setConfirmDeleteProject(project),
+      danger: true,
+    });
+    return items;
+  }, [contextMenu?.project, moveProject, t, updateProject]);
 
   /**
    * Dragging a project row. The row is a `<button>`, so the press has to become
@@ -222,39 +215,11 @@ export function FileTree() {
         ))}
       </div>
 
-      {/* Context menu */}
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          className="fixed z-50 min-w-[140px] rounded-lg py-1 bg-bg-card"
-          style={{
-            left: contextMenu.x,
-            top: contextMenu.y,
-            boxShadow: NEU.modal,
-          }}
-        >
-          {contextMenu.project.folderId && (
-            <button
-              onClick={() => handleMoveToRoot(contextMenu.project)}
-              className="w-full text-left px-3 py-1.5 text-[12px] text-text-secondary hover:bg-bg-elevated transition-colors"
-            >
-              {t('projects.moveToRoot')}
-            </button>
-          )}
-          <button
-            onClick={() => handleToggleActive(contextMenu.project)}
-            className="w-full text-left px-3 py-1.5 text-[12px] text-text-secondary hover:bg-bg-elevated transition-colors"
-          >
-            {contextMenu.project.isArchived ? t('projects.activate') : t('projects.deactivate')}
-          </button>
-          <button
-            onClick={() => handleDeleteProject(contextMenu.project)}
-            className="w-full text-left px-3 py-1.5 text-[12px] text-red hover:bg-bg-elevated transition-colors"
-          >
-            {t('projects.delete')}
-          </button>
-        </div>
-      )}
+      <ContextMenu
+        items={contextMenuItems}
+        position={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+        onClose={() => setContextMenu(null)}
+      />
 
       <AddFolderModal
         open={showAddFolder}
