@@ -10,6 +10,7 @@ import { AddFolderModal } from './AddFolderModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { InlineTextEdit } from '../ui/InlineTextEdit';
 import { useProjectTypography } from '../settings/projectTypography';
+import { startDrag, useDropTarget } from '../../hooks/useDragGesture';
 import type { ProjectFolder, Project } from '@shared/types';
 
 interface ContextMenuState {
@@ -17,18 +18,6 @@ interface ContextMenuState {
   y: number;
   project: Project;
 }
-
-interface DragState {
-  projectId: string;
-  projectName: string;
-  projectColor: string;
-  projectIcon: string;
-  startX: number;
-  startY: number;
-  active: boolean;
-}
-
-const DRAG_THRESHOLD = 5;
 
 export function FileTree() {
   const { t } = useTranslation();
@@ -42,20 +31,11 @@ export function FileTree() {
   const [showAddFolder, setShowAddFolder] = useState(false);
   const [addProjectFolderId, setAddProjectFolderId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
-  const [dragOverRoot, setDragOverRoot] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<Project | null>(null);
   const [confirmDeleteFolderId, setConfirmDeleteFolderId] = useState<string | null>(null);
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
-  const treeRef = useRef<HTMLDivElement>(null);
-
-  // Mouse-based drag state (replaces HTML5 DnD which is broken in WKWebView)
-  const dragRef = useRef<DragState | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [ghostPos, setGhostPos] = useState({ x: 0, y: 0 });
-  const [ghostInfo, setGhostInfo] = useState<{ name: string; color: string; icon: string } | null>(null);
 
   const activeProjects = projects.filter((p) => !p.isArchived);
   const inactiveProjects = projects.filter((p) => p.isArchived);
@@ -116,95 +96,34 @@ export function FileTree() {
     return () => document.removeEventListener('mousedown', handler);
   }, [contextMenu]);
 
-  // Find which folder (or root) the cursor is over using data attributes
-  const findDropTarget = useCallback((x: number, y: number): string | null | undefined => {
-    // undefined = not over any drop zone, null = root zone, string = folder id
-    const el = document.elementFromPoint(x, y);
-    if (!el) return undefined;
-    // Walk up to find a folder drop target
-    let node: Element | null = el;
-    while (node) {
-      if (node instanceof HTMLElement) {
-        const folderId = node.dataset.dropFolderId;
-        if (folderId) return folderId;
-        if (node.dataset.dropRoot !== undefined) return null;
-      }
-      node = node.parentElement;
-    }
-    return undefined;
-  }, []);
+  /**
+   * Dragging a project row. The row is a `<button>`, so the press has to become
+   * a drag without ever looking like a click — the drag channel holds the press
+   * until it has moved, then swallows the click the mouse emits on release.
+   */
+  const startProjectDrag = useCallback(
+    (project: Project) => (e: React.PointerEvent<HTMLElement>) => {
+      startDrag(e, {
+        ghost: { label: project.name, color: project.color, icon: project.icon || undefined },
+        payload: { kind: 'project', projectId: project.id },
+      });
+    },
+    [],
+  );
 
-  // Mouse-based drag: mousedown on project
-  const handleProjectMouseDown = useCallback((project: Project) => (e: React.MouseEvent) => {
-    // Only left mouse button, ignore if context menu action
-    if (e.button !== 0) return;
-    dragRef.current = {
-      projectId: project.id,
-      projectName: project.name,
-      projectColor: project.color,
-      projectIcon: project.icon ?? '',
-      startX: e.clientX,
-      startY: e.clientY,
-      active: false,
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-
-      if (!drag.active) {
-        const dx = e.clientX - drag.startX;
-        const dy = e.clientY - drag.startY;
-        if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
-        drag.active = true;
-        setIsDragging(true);
-        setGhostInfo({ name: drag.projectName, color: drag.projectColor, icon: drag.projectIcon });
-      }
-
-      setGhostPos({ x: e.clientX, y: e.clientY });
-
-      // Hit-test for drop target
-      const target = findDropTarget(e.clientX, e.clientY);
-      if (target === undefined) {
-        setDragOverFolderId(null);
-        setDragOverRoot(false);
-      } else if (target === null) {
-        setDragOverFolderId(null);
-        setDragOverRoot(true);
-      } else {
-        setDragOverFolderId(target);
-        setDragOverRoot(false);
-      }
-    };
-
-    const handleMouseUp = (e: MouseEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      dragRef.current = null;
-
-      if (drag.active) {
-        const target = findDropTarget(e.clientX, e.clientY);
-        if (target !== undefined) {
-          // target is null (root) or string (folderId)
-          moveProject(drag.projectId, target);
-        }
-      }
-
-      setIsDragging(false);
-      setGhostInfo(null);
-      setDragOverFolderId(null);
-      setDragOverRoot(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [findDropTarget, moveProject]);
+  /**
+   * Everything in the tree that is not a folder row means "no folder" — a
+   * project row, the gap below the list, the unfiled divider. Registered on the
+   * scroll container, so the folder rows nested inside it win wherever they
+   * overlap and this catches the rest.
+   */
+  const { ref: rootDropRef, isOver: isDragOverRoot } = useDropTarget({
+    accepts: (drag) => drag.spec.payload?.kind === 'project',
+    onDrop: (drag) => {
+      const payload = drag.spec.payload;
+      if (payload?.kind === 'project') moveProject(payload.projectId, null);
+    },
+  });
 
   return (
     <div className="flex flex-col h-full">
@@ -256,9 +175,8 @@ export function FileTree() {
 
       {/* Scrollable tree */}
       <div
-        ref={treeRef}
-        className={`flex-1 overflow-y-auto pt-1 px-1 ${dragOverRoot ? 'bg-accent/10' : ''} transition-colors`}
-        data-drop-root
+        ref={rootDropRef}
+        className={`flex-1 overflow-y-auto pt-1 px-1 ${isDragOverRoot ? 'bg-accent/10' : ''} transition-colors`}
       >
         {folders.map((folder) => (
           <FolderRow
@@ -276,9 +194,8 @@ export function FileTree() {
             onRename={(name) => handleRenameFolder(folder.id, name)}
             onCancelRename={() => setRenamingFolderId(null)}
             onContextMenu={handleContextMenu}
-            onProjectMouseDown={handleProjectMouseDown}
-            isDragOver={dragOverFolderId === folder.id}
-            isDragging={isDragging}
+            onProjectPointerDown={startProjectDrag}
+            onMoveProject={moveProject}
           />
         ))}
 
@@ -298,39 +215,12 @@ export function FileTree() {
             project={project}
             fontPx={projectListFontPx}
             isActive={project.id === activeTabId}
-            onClick={() => {
-              if (!isDragging) openTab(project.id);
-            }}
+            onClick={() => openTab(project.id)}
             onContextMenu={(e) => handleContextMenu(e, project)}
-            onMouseDown={handleProjectMouseDown(project)}
+            onPointerDown={startProjectDrag(project)}
           />
         ))}
       </div>
-
-      {/* Drag ghost */}
-      {isDragging && ghostInfo && (
-        <div
-          className="fixed z-[100] pointer-events-none flex items-center gap-1.5 px-2 py-1 rounded-md bg-bg-card border border-border"
-          style={{
-            left: ghostPos.x + 12,
-            top: ghostPos.y - 10,
-            boxShadow: NEU.modal,
-            opacity: 0.9,
-          }}
-        >
-          {ghostInfo.icon ? (
-            <span className="text-[12px] shrink-0">{ghostInfo.icon}</span>
-          ) : (
-            <span
-              className="w-2 h-2 rounded-full shrink-0"
-              style={{ backgroundColor: ghostInfo.color }}
-            />
-          )}
-          <span className="text-[12px] text-text-primary whitespace-nowrap">
-            {ghostInfo.name}
-          </span>
-        </div>
-      )}
 
       {/* Context menu */}
       {contextMenu && (
@@ -421,9 +311,8 @@ function FolderRow({
   onRename,
   onCancelRename,
   onContextMenu,
-  onProjectMouseDown,
-  isDragOver,
-  isDragging,
+  onProjectPointerDown,
+  onMoveProject,
 }: {
   folder: ProjectFolder;
   projects: Project[];
@@ -438,17 +327,27 @@ function FolderRow({
   onRename: (name: string) => void;
   onCancelRename: () => void;
   onContextMenu: (e: React.MouseEvent, project: Project) => void;
-  onProjectMouseDown: (project: Project) => (e: React.MouseEvent) => void;
-  isDragOver: boolean;
-  isDragging: boolean;
+  onProjectPointerDown: (project: Project) => (e: React.PointerEvent<HTMLElement>) => void;
+  onMoveProject: (projectId: string, folderId: string | null) => void;
 }) {
+  // The header row is the drop target, not this whole subtree: dropping a
+  // project onto one of the folder's own child rows means "no folder", the same
+  // as it did when the drop attribute sat here.
+  const { ref: folderDropRef, isOver } = useDropTarget({
+    accepts: (drag) => drag.spec.payload?.kind === 'project',
+    onDrop: (drag) => {
+      const payload = drag.spec.payload;
+      if (payload?.kind === 'project') onMoveProject(payload.projectId, folder.id);
+    },
+  });
+
   return (
     <div>
       <div
+        ref={folderDropRef}
         className={`flex items-center gap-1 px-1.5 py-[3px] rounded-md cursor-pointer group transition-colors ${
-          isDragOver ? 'bg-accent/15' : 'hover:bg-bg-elevated/50'
+          isOver ? 'bg-accent/15' : 'hover:bg-bg-elevated/50'
         }`}
-        data-drop-folder-id={folder.id}
         onClick={onToggle}
       >
         <motion.span
@@ -520,11 +419,9 @@ function FolderRow({
                   project={project}
                   fontPx={fontPx}
                   isActive={project.id === activeTabId}
-                  onClick={() => {
-                    if (!isDragging) onProjectClick(project.id);
-                  }}
+                  onClick={() => onProjectClick(project.id)}
                   onContextMenu={(e) => onContextMenu(e, project)}
-                  onMouseDown={onProjectMouseDown(project)}
+                  onPointerDown={onProjectPointerDown(project)}
                 />
               ))}
             </div>
@@ -541,20 +438,20 @@ function ProjectRow({
   isActive,
   onClick,
   onContextMenu,
-  onMouseDown,
+  onPointerDown,
 }: {
   project: Project;
   fontPx: number;
   isActive: boolean;
   onClick: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
-  onMouseDown?: (e: React.MouseEvent) => void;
+  onPointerDown?: (e: React.PointerEvent<HTMLElement>) => void;
 }) {
   return (
     <button
       onClick={onClick}
       onContextMenu={onContextMenu}
-      onMouseDown={onMouseDown}
+      onPointerDown={onPointerDown}
       className={`w-full flex items-center gap-1.5 px-1.5 py-[3px] rounded-md text-left transition-colors ${
         isActive ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary hover:bg-bg-elevated/30'
       } ${project.isArchived ? 'opacity-50' : ''}`}
