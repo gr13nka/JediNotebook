@@ -51,17 +51,24 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
     }
     let x = position.x;
     let y = position.y;
-    const rect = el.getBoundingClientRect();
+    // `offsetWidth`/`offsetHeight`, not `getBoundingClientRect`: this measures
+    // on the first layout after opening, when the entry animation still has the
+    // menu at `scale: 0.95`. A bounding rect reports the *visual* box, so it
+    // under-reported by 5% and the clamp let the menu overhang by that much —
+    // and it never re-measured, because the effect does not run again when the
+    // animation settles.
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
     const pad = 8;
 
-    if (x + rect.width > window.innerWidth) {
-      x = window.innerWidth - rect.width - pad;
+    if (x + width > window.innerWidth) {
+      x = window.innerWidth - width - pad;
     }
     if (x < pad) x = pad;
 
-    if (y + rect.height > window.innerHeight) {
+    if (y + height > window.innerHeight) {
       // Show above the click point
-      y = position.y - rect.height;
+      y = position.y - height;
     }
     if (y < pad) y = pad;
 

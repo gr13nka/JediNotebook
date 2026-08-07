@@ -272,6 +272,7 @@ const en = {
   // Projects File Tree
   'projects.newProject': 'New Project',
   'projects.toggleSidebar': 'Toggle sidebar',
+  'projects.closeTab': 'Close tab',
   'projects.splitVertical': 'Side by side',
   'projects.splitHorizontal': 'Stacked',
 
@@ -605,6 +606,7 @@ const ru: Record<TranslationKey, string> = {
   'points.colorToggle': 'Переключить цвета оценок',
   'projects.newProject': 'Новый проект',
   'projects.toggleSidebar': 'Переключить боковую панель',
+  'projects.closeTab': 'Закрыть вкладку',
   'projects.splitVertical': 'Бок о бок',
   'projects.splitHorizontal': 'Стопкой',
   'nav.inbox': 'Входящие',
