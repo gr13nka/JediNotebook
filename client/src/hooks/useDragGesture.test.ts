@@ -8,20 +8,39 @@ import { dragActivation, resolveDropSide, reorderIds } from './useDragGesture';
 
 describe('dragActivation', () => {
   it('waits while the press has not moved', () => {
-    expect(dragActivation(0, 0)).toBe('wait');
+    expect(dragActivation('mouse', 0, 0)).toBe('wait');
+    expect(dragActivation('touch', 0, 0)).toBe('wait');
   });
 
-  it('waits just below the threshold and activates at it', () => {
-    expect(dragActivation(3, 0)).toBe('wait');
-    expect(dragActivation(4, 0)).toBe('activate');
-    expect(dragActivation(0, -4)).toBe('activate');
+  it('waits just below the mouse threshold and activates at it', () => {
+    expect(dragActivation('mouse', 3, 0)).toBe('wait');
+    expect(dragActivation('mouse', 4, 0)).toBe('activate');
+    expect(dragActivation('mouse', 0, -4)).toBe('activate');
   });
 
   it('measures distance, not per-axis movement', () => {
     // 3px right and 3px down is 4.24px of travel — a diagonal drag must not
     // need 4px on a single axis to start.
-    expect(dragActivation(3, 3)).toBe('activate');
-    expect(dragActivation(2, 2)).toBe('wait');
+    expect(dragActivation('mouse', 3, 3)).toBe('activate');
+    expect(dragActivation('mouse', 2, 2)).toBe('wait');
+  });
+
+  it('treats a pen like a mouse', () => {
+    expect(dragActivation('pen', 4, 0)).toBe('activate');
+  });
+
+  it('never activates on touch movement — only the hold timer does that', () => {
+    // Movement on touch means scrolling, so it cancels the pending hold rather
+    // than starting a drag. Nothing a finger can do here returns 'activate'.
+    expect(dragActivation('touch', 8, 0)).toBe('wait');
+    expect(dragActivation('touch', 9, 0)).toBe('cancel');
+    expect(dragActivation('touch', 0, 40)).toBe('cancel');
+    expect(dragActivation('touch', 100, 100)).toBe('cancel');
+  });
+
+  it('tolerates more slack on touch than a mouse needs to start', () => {
+    // A finger that wobbles by the mouse threshold is still holding still.
+    expect(dragActivation('touch', 4, 0)).toBe('wait');
   });
 });
 

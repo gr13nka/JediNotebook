@@ -104,16 +104,31 @@ export interface DropTargetSpec {
 
 /** Distance a mouse or pen must travel before a press becomes a drag. */
 const POINTER_ACTIVATION_PX = 4;
+/** How long a finger must stay put before its press becomes a drag. */
+const TOUCH_HOLD_MS = 500;
+/** Movement that abandons a pending hold, handing the gesture back to the list. */
+const TOUCH_CANCEL_PX = 8;
 
 /**
- * Whether a press that has moved by (dx, dy) has become a drag.
+ * What a press that has moved by (dx, dy) should become.
  *
- * Split out as a pure function because it is the one rule that decides whether
- * a click stays a click, and it is the same rule for every draggable thing in
- * the app.
+ * The one rule deciding whether a click stays a click, and it differs by input:
+ * a mouse starts dragging as soon as it has travelled far enough, while a finger
+ * starts dragging by *not* moving — because on touch, movement already means
+ * scrolling, and a list that dragged on the first pixel of a swipe could not be
+ * scrolled at all. So for touch, movement is what calls the drag off, and the
+ * hold timer is what starts it.
  */
-export function dragActivation(dx: number, dy: number): 'wait' | 'activate' {
-  return Math.hypot(dx, dy) >= POINTER_ACTIVATION_PX ? 'activate' : 'wait';
+export function dragActivation(
+  pointerType: string,
+  dx: number,
+  dy: number,
+): 'wait' | 'activate' | 'cancel' {
+  const distance = Math.hypot(dx, dy);
+  if (pointerType === 'touch') {
+    return distance > TOUCH_CANCEL_PX ? 'cancel' : 'wait';
+  }
+  return distance >= POINTER_ACTIVATION_PX ? 'activate' : 'wait';
 }
 
 /** Which half of a row a point falls in — the insertion side. */
@@ -165,6 +180,7 @@ interface DragSession {
   y: number;
   copy: boolean;
   activated: boolean;
+  holdTimer: number | null;
 }
 
 interface SavedSelectionStyles {
@@ -351,14 +367,54 @@ function handleClickCapture(event: MouseEvent): void {
   event.stopPropagation();
 }
 
+function clearHoldTimer(active: DragSession): void {
+  if (active.holdTimer !== null) {
+    window.clearTimeout(active.holdTimer);
+    active.holdTimer = null;
+  }
+}
+
+/**
+ * Turns a press into a drag. Reached two ways — a mouse that has travelled far
+ * enough, or a finger that has stayed put long enough — and everything after
+ * that point is identical.
+ */
+function activate(active: DragSession): void {
+  clearHoldTimer(active);
+  active.activated = true;
+  try {
+    active.node.setPointerCapture(active.pointerId);
+  } catch {
+    // Some embedded WebViews invalidate a pointer before we get here; the
+    // document-level listeners keep the drag working without capture.
+  }
+  disableTextSelection();
+  publishActive(snapshotOf(active));
+  // Published here rather than waiting for a move: a touch drag begins with the
+  // finger still, and the ghost has to appear anyway.
+  publishPoint({ x: active.x, y: active.y });
+  autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
+}
+
+/**
+ * A long press is the platform's own gesture for selecting text and opening a
+ * context menu. Once it is ours, the platform's version has to be called off,
+ * or a finger held on a task row gets a selection popup instead of a drag.
+ */
+function preventNativeLongPress(event: Event): void {
+  event.preventDefault();
+}
+
 function endSession(commit: boolean): void {
   const active = session;
   if (!active) return;
 
+  clearHoldTimer(active);
   document.removeEventListener('pointermove', handlePointerMove);
   document.removeEventListener('pointerup', handlePointerUp);
   document.removeEventListener('pointercancel', handlePointerCancel);
   document.removeEventListener('keydown', handleKeyDown);
+  document.removeEventListener('contextmenu', preventNativeLongPress);
 
   try {
     if (active.node.hasPointerCapture(active.pointerId)) {
@@ -396,19 +452,18 @@ function handlePointerMove(event: PointerEvent): void {
   active.y = event.clientY;
 
   if (!active.activated) {
-    if (dragActivation(event.clientX - active.startX, event.clientY - active.startY) === 'wait') {
+    const decision = dragActivation(
+      active.pointerType,
+      event.clientX - active.startX,
+      event.clientY - active.startY,
+    );
+    if (decision === 'wait') return;
+    // A finger that moved before the hold elapsed was scrolling, not dragging.
+    if (decision === 'cancel') {
+      endSession(false);
       return;
     }
-    active.activated = true;
-    try {
-      active.node.setPointerCapture(active.pointerId);
-    } catch {
-      // Some embedded WebViews invalidate a pointer before we get here; the
-      // document-level listeners keep the drag working without capture.
-    }
-    disableTextSelection();
-    publishActive(snapshotOf(active));
-    autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
+    activate(active);
   }
 
   // Suppresses the browser's own gesture (text selection, panning) now that
@@ -453,20 +508,17 @@ function handleKeyDown(event: KeyboardEvent): void {
 
 /**
  * Arms a drag on this press. Nothing is published and no target is notified
- * until the pointer has actually moved — until then the press is still a click.
- *
- * Touch is refused for now: a press that becomes a drag immediately would take
- * scrolling away from every list. `feat(dnd): long-press starts a drag on
- * touch` is what opens this to fingers.
+ * until the press has become a drag — before that it is still a click, or still
+ * the beginning of a scroll.
  */
 export function startDrag(event: React.PointerEvent<HTMLElement>, spec: DragSpec): void {
-  if (event.pointerType === 'touch') return;
   if (event.pointerType === 'mouse' && event.button !== 0) return;
   if (session) endSession(false);
 
-  session = {
+  const pointerId = event.pointerId;
+  const armed: DragSession = {
     spec,
-    pointerId: event.pointerId,
+    pointerId,
     pointerType: event.pointerType,
     node: event.currentTarget,
     startX: event.clientX,
@@ -475,7 +527,21 @@ export function startDrag(event: React.PointerEvent<HTMLElement>, spec: DragSpec
     y: event.clientY,
     copy: event.ctrlKey || event.metaKey,
     activated: false,
+    holdTimer: null,
   };
+  session = armed;
+
+  if (event.pointerType === 'touch') {
+    armed.holdTimer = window.setTimeout(() => {
+      const active = session;
+      if (!active || active.pointerId !== pointerId || active.activated) return;
+      active.holdTimer = null;
+      activate(active);
+    }, TOUCH_HOLD_MS);
+    // Registered for the whole session, pending or active: the platform's own
+    // long press has to lose whether or not ours has fired yet.
+    document.addEventListener('contextmenu', preventNativeLongPress);
+  }
 
   document.addEventListener('pointermove', handlePointerMove);
   document.addEventListener('pointerup', handlePointerUp);
