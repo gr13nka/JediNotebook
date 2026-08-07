@@ -1,5 +1,6 @@
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isDragActive } from './useDragGesture';
 import { cutRange as cutRangeFromText } from '../utils/taskDnd';
 import {
   recordTyping,
@@ -20,6 +21,14 @@ import {
  * nothing here knows about preview-versus-textarea, focus mode, font size or
  * drag gestures, which is what the component keeps.
  */
+/**
+ * How long typing pauses before the note is written.
+ *
+ * Long enough that a normal typing run is one write, short enough that no
+ * thought worth keeping is ever more than this far from being stored.
+ */
+const AUTOSAVE_IDLE_MS = 800;
+
 export interface UseNoteDocumentOptions {
   /** Keys the per-project undo history, which survives editor remounts. */
   projectId: string;
@@ -104,16 +113,53 @@ export function useNoteDocument({
   const lastAppliedRef = useRef(description);
   const pendingExternalRef = useRef<string | null>(null);
 
+  const autosaveTimer = useRef<number | null>(null);
+
+  const cancelAutosave = useCallback(() => {
+    if (autosaveTimer.current !== null) {
+      window.clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    }
+  }, []);
+
   /** Persists `next` as our own — the next live-query echo must be ignored. */
   const save = useCallback((next: string) => {
+    cancelAutosave();
     lastAppliedRef.current = next;
     pendingExternalRef.current = null;
     onSaveRef.current(next);
-  }, []);
+  }, [cancelAutosave]);
+
+  /** Writes what has been typed, if anything has. */
+  const flush = useCallback(() => {
+    if (textRef.current !== lastAppliedRef.current) save(textRef.current);
+  }, [save]);
+
+  /**
+   * Restarts the idle countdown after a keystroke.
+   *
+   * Deferred while a drag is in flight, and this is not a nicety: a save echoes
+   * back through the live query, and a re-render mid-gesture would move the note
+   * lines out from under a pointer that is aiming at them by geometry. The text
+   * is not at risk in the meantime — the gesture ends in milliseconds and the
+   * countdown simply starts again.
+   */
+  const scheduleAutosave = useCallback(() => {
+    cancelAutosave();
+    autosaveTimer.current = window.setTimeout(() => {
+      autosaveTimer.current = null;
+      if (isDragActive()) {
+        scheduleAutosave();
+        return;
+      }
+      flush();
+    }, AUTOSAVE_IDLE_MS);
+  }, [cancelAutosave, flush]);
 
   /** Accepts a foreign description, keeping the overwritten text undoable. */
   const applyExternal = useCallback(
     (next: string) => {
+      cancelAutosave();
       if (next !== textRef.current) {
         recordSnapshot();
         textRef.current = next;
@@ -122,7 +168,7 @@ export function useNoteDocument({
       lastAppliedRef.current = next;
       pendingExternalRef.current = null;
     },
-    [recordSnapshot]
+    [cancelAutosave, recordSnapshot]
   );
 
   useEffect(() => {
@@ -153,8 +199,9 @@ export function useNoteDocument({
       );
       textRef.current = event.target.value;
       setText(event.target.value);
+      scheduleAutosave();
     },
-    [projectId]
+    [projectId, scheduleAutosave]
   );
 
   const settle = useCallback(() => {
@@ -195,17 +242,38 @@ export function useNoteDocument({
       const { text: restored, caretStart, caretEnd } = result.restored;
       textRef.current = restored;
       setText(restored);
+      // An undone state is as much "what the note says now" as a typed one, so
+      // it goes through the same countdown rather than waiting for a blur.
+      scheduleAutosave();
       // The textarea is controlled — the restored value applies on the
       // re-render this discrete event flushes, so the caret must wait a frame.
       requestAnimationFrame(() => {
         textareaRef.current?.setSelectionRange(caretStart, caretEnd);
       });
     },
-    [currentEntry, projectId]
+    [currentEntry, projectId, scheduleAutosave]
   );
 
   const undo = useCallback(() => applyHistoryStep(undoHistory), [applyHistoryStep]);
   const redo = useCallback(() => applyHistoryStep(redoHistory), [applyHistoryStep]);
+
+  /**
+   * The last write, on the way out. Leaving the route, switching project (this
+   * hook is keyed per project) and closing the app all end here, and none of
+   * them fires blur first — which is exactly how typed text used to be lost.
+   */
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+  useEffect(() => {
+    const flushNow = () => flushRef.current();
+    // `pagehide` rather than `beforeunload`: it is the one that fires on mobile,
+    // where the app is backgrounded rather than closed.
+    window.addEventListener('pagehide', flushNow);
+    return () => {
+      window.removeEventListener('pagehide', flushNow);
+      flushNow();
+    };
+  }, []);
 
   return { text, textareaRef, onChange, settle, replace, cutRange, undo, redo };
 }
