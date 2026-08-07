@@ -395,12 +395,33 @@ function activate(active: DragSession): void {
     // Some embedded WebViews invalidate a pointer before we get here; the
     // document-level listeners keep the drag working without capture.
   }
+  if (active.pointerType === 'touch') {
+    document.addEventListener('touchmove', preventTouchPan, { passive: false });
+  }
   disableTextSelection();
   publishActive(snapshotOf(active));
   // Published here rather than waiting for a move: a touch drag begins with the
   // finger still, and the ghost has to appear anyway.
   publishPoint({ x: active.x, y: active.y });
   autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
+}
+
+/**
+ * Stops the finger from panning the page now that it is dragging.
+ *
+ * The `preventDefault` on `pointermove` cannot do this: by the time a
+ * touch-derived pointer event is dispatched the scroll is already running on the
+ * compositor, and the browser answers by cancelling our pointer instead. Only a
+ * *non-passive* `touchmove` listener can refuse the pan, and it only works
+ * because it is registered while the finger is still — a long press that has not
+ * moved has not started a scroll yet, so there is still something to refuse.
+ *
+ * The alternative, `touch-action: none` on each drag source, would also stop the
+ * list being scrolled by a finger that starts on a row — which is most of the
+ * list.
+ */
+function preventTouchPan(event: TouchEvent): void {
+  if (event.cancelable) event.preventDefault();
 }
 
 /**
@@ -422,6 +443,7 @@ function endSession(commit: boolean): void {
   document.removeEventListener('pointercancel', handlePointerCancel);
   document.removeEventListener('keydown', handleKeyDown);
   document.removeEventListener('contextmenu', preventNativeLongPress);
+  document.removeEventListener('touchmove', preventTouchPan);
 
   try {
     if (active.node.hasPointerCapture(active.pointerId)) {
