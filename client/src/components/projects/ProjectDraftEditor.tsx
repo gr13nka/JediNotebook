@@ -15,7 +15,6 @@ import {
   LINE_INDEX_ATTR,
   wholeLineRange,
   offsetAfterLine,
-  cutRange,
   insertLine,
   moveLineBlock,
 } from '../../utils/taskDnd';
@@ -25,15 +24,7 @@ import {
   startDrag,
   useDropTarget,
 } from '../../hooks/useDragGesture';
-import {
-  recordTyping,
-  recordSnapshot as pushSnapshot,
-  undo,
-  redo,
-  getProjectHistory,
-  setProjectHistory,
-  type UndoEntry,
-} from '../../utils/textUndo';
+import { useNoteDocument } from '../../hooks/useNoteDocument';
 import type { Activity } from '@shared/types';
 
 interface ProjectDraftEditorProps {
@@ -69,10 +60,10 @@ const EDITOR_TEXT = 'project-note leading-relaxed';
 const LINE_GUTTER_PX = 24;
 
 export function ProjectDraftEditor({ projectId, title, description, color, icon, onSaveProject, onSave, linkedActivityId, onLinkActivity, activities, onConsumeTask, onRegisterCut }: ProjectDraftEditorProps) {
-  const [localDesc, setLocalDesc] = useState(description);
+  const doc = useNoteDocument({ projectId, description, onSave });
+  const { text: localDesc, textareaRef } = doc;
   const [isEditing, setIsEditing] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
   const { projectNoteFontPx } = useProjectTypography();
@@ -82,84 +73,6 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
   useEffect(() => {
     projectNoteFontPxRef.current = projectNoteFontPx;
   }, [projectNoteFontPx]);
-
-  /**
-   * `localDesc` mirrored into a ref so stable callbacks (cut registration,
-   * undo snapshots) can read the current text without re-creating on every
-   * keystroke, and so saves happen outside state updaters — React may invoke
-   * updaters twice under StrictMode, which would double-save.
-   */
-  const localDescRef = useRef(localDesc);
-  useEffect(() => {
-    localDescRef.current = localDesc;
-  }, [localDesc]);
-
-  /** The editor's state right now — text plus textarea selection. */
-  const currentEntry = useCallback((): UndoEntry => {
-    const text = localDescRef.current;
-    const ta = textareaRef.current;
-    return ta
-      ? { text, caretStart: ta.selectionStart, caretEnd: ta.selectionEnd }
-      : { text, caretStart: text.length, caretEnd: text.length };
-  }, []);
-
-  /**
-   * Pushes the current state as its own undo step. Called before every
-   * discrete mutation (DnD cut/drop, an external overwrite landing) so the
-   * pre-mutation text stays one Ctrl+Z away. Only ever reached from event
-   * handlers or a real `description` change — never from a mount effect, so
-   * a StrictMode double-mount records nothing into the module-level history.
-   */
-  const recordSnapshot = useCallback(() => {
-    setProjectHistory(
-      projectId,
-      pushSnapshot(getProjectHistory(projectId), currentEntry(), Date.now())
-    );
-  }, [projectId, currentEntry]);
-
-  /**
-   * External-overwrite bookkeeping. `lastAppliedDescRef` is the last
-   * `description` value this editor produced or accepted — a live-query
-   * re-emit equal to it (our own save echo, or a title/color save) is
-   * ignored. `pendingExternalRef` stashes a genuinely-foreign value that
-   * arrived mid-edit (textarea focused) so in-progress typing is never
-   * clobbered; handleDescBlur settles it.
-   */
-  const lastAppliedDescRef = useRef(description);
-  const pendingExternalRef = useRef<string | null>(null);
-
-  /** Persists `next` as our own — the next live-query echo must be ignored. */
-  const saveDesc = useCallback(
-    (next: string) => {
-      lastAppliedDescRef.current = next;
-      pendingExternalRef.current = null;
-      onSave(next);
-    },
-    [onSave]
-  );
-
-  /** Accepts a foreign description, keeping the overwritten text undoable. */
-  const applyExternalDesc = useCallback(
-    (next: string) => {
-      if (next !== localDescRef.current) {
-        recordSnapshot();
-        localDescRef.current = next;
-        setLocalDesc(next);
-      }
-      lastAppliedDescRef.current = next;
-      pendingExternalRef.current = null;
-    },
-    [recordSnapshot]
-  );
-
-  useEffect(() => {
-    if (description === lastAppliedDescRef.current) return; // our own echo
-    if (document.activeElement === textareaRef.current) {
-      pendingExternalRef.current = description;
-      return;
-    }
-    applyExternalDesc(description);
-  }, [description, applyExternalDesc]);
 
   const autoResize = useCallback(() => {
     if (textareaRef.current) {
@@ -191,36 +104,13 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
   }, [isEditing]);
 
   const handleDescChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const prevText = localDescRef.current;
-    // The textarea's selection at onChange time is already post-edit; clamped
-    // to the pre-change text it lands within a character of the true pre-edit
-    // caret — close enough for a typing-run boundary.
-    const caretStart = Math.min(e.target.selectionStart, prevText.length);
-    const caretEnd = Math.min(e.target.selectionEnd, prevText.length);
-    setProjectHistory(
-      projectId,
-      recordTyping(
-        getProjectHistory(projectId),
-        { text: prevText, caretStart, caretEnd },
-        e.target.value,
-        Date.now()
-      )
-    );
-    localDescRef.current = e.target.value;
-    setLocalDesc(e.target.value);
+    doc.onChange(e);
     autoResize();
   };
 
   const handleDescBlur = () => {
     setIsEditing(false);
-    const pending = pendingExternalRef.current;
-    if (localDesc !== lastAppliedDescRef.current) {
-      // Local edits win over anything stashed mid-edit — both sides carry an
-      // updatedAt, and last-write-wins settles it downstream.
-      saveDesc(localDesc);
-    } else if (pending !== null) {
-      applyExternalDesc(pending);
-    }
+    doc.settle();
   };
 
   const adjustProjectNoteFont = useCallback((deltaPx: number) => {
@@ -230,36 +120,22 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
     void setProjectNoteFontOverride(next);
   }, [setProjectNoteFontOverride]);
 
-  /** Applies one undo/redo step, restoring its caret once the value lands. */
-  const applyHistoryStep = (step: typeof undo) => {
-    const result = step(getProjectHistory(projectId), currentEntry());
-    if (!result) return;
-    setProjectHistory(projectId, result.history);
-    const { text, caretStart, caretEnd } = result.restored;
-    localDescRef.current = text;
-    setLocalDesc(text);
-    // The textarea is controlled — the restored value applies on the
-    // re-render this discrete event flushes, so the caret must wait a frame.
-    requestAnimationFrame(() => {
-      textareaRef.current?.setSelectionRange(caretStart, caretEnd);
-    });
-  };
-
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // App-level undo/redo. The native stack stays suppressed even when there
     // is nothing to restore — programmatic value replacements (sync merges,
-    // DnD cut/drop) leave it pointing at stale text. `altKey` is excluded so
-    // AltGr layouts (reported as Ctrl+Alt) keep typing characters.
+    // a drag's cut or drop) leave it pointing at stale text. `altKey` is
+    // excluded so AltGr layouts (reported as Ctrl+Alt) keep typing characters.
     if ((e.ctrlKey || e.metaKey) && !e.altKey) {
       const key = e.key.toLowerCase();
       if (key === 'z') {
         e.preventDefault();
-        applyHistoryStep(e.shiftKey ? redo : undo);
+        if (e.shiftKey) doc.redo();
+        else doc.undo();
         return;
       }
       if (key === 'y' && e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
-        applyHistoryStep(redo);
+        doc.redo();
         return;
       }
     }
@@ -339,22 +215,10 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
 
   const [isTaskDropTarget, setIsTaskDropTarget] = useState(false);
 
-  // Cut a range that the task panel has just turned into a task. Reads
-  // through localDescRef so the callback stays stable across keystrokes.
-  const cutRangeFromDescription = useCallback(
-    (start: number, end: number) => {
-      recordSnapshot();
-      const next = cutRange(localDescRef.current, start, end);
-      localDescRef.current = next;
-      setLocalDesc(next);
-      saveDesc(next);
-    },
-    [recordSnapshot, saveDesc]
-  );
-
+  // Lets the task panel remove the range it has just turned into a task.
   useEffect(() => {
-    onRegisterCut?.(cutRangeFromDescription);
-  }, [onRegisterCut, cutRangeFromDescription]);
+    onRegisterCut?.(doc.cutRange);
+  }, [onRegisterCut, doc.cutRange]);
 
   /**
    * Where a line being dragged inside the note would land. Feedback for this
@@ -504,33 +368,24 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
         // Only a whole-line block can be re-ordered; a partial selection has no
         // line range and is ignored here.
         if (payload.lineStart === undefined || payload.lineEnd === undefined || !target) return;
-        const next = moveLineBlock(
+        doc.replace(moveLineBlock(
           localDesc,
           payload.lineStart,
           payload.lineEnd,
           target.index,
           target.position,
-        );
-        if (next === localDesc) return;
-        recordSnapshot();
-        localDescRef.current = next;
-        setLocalDesc(next);
-        saveDesc(next);
+        ));
         return;
       }
 
       if (payload.kind !== 'task') return;
-      recordSnapshot();
 
       // Insert after the line the pointer is over. Dropping past the last line
       // (or into an empty description) appends. Geometry, not hit-testing, so
       // this still lands correctly when the textarea is covering the preview.
       const offset =
         target === null ? localDesc.length : offsetAfterLine(localDesc, target.index);
-      const next = insertLine(localDesc, offset, payload.title);
-      localDescRef.current = next;
-      setLocalDesc(next);
-      saveDesc(next);
+      doc.replace(insertLine(localDesc, offset, payload.title));
       onConsumeTask?.(payload.taskId);
     },
   });
@@ -740,7 +595,7 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
           </div>
 
           <textarea
-            ref={textareaRef}
+            ref={doc.textareaRef}
             value={localDesc}
             onChange={handleDescChange}
             onBlur={handleDescBlur}
