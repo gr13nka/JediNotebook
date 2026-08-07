@@ -328,8 +328,13 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const selected = selectedDragRange(e.clientY);
     if (!selected) return;
-    // Otherwise the press collapses the selection it is trying to pick up.
-    e.preventDefault();
+    // Deliberately no `preventDefault`. Cancelling the press would keep the
+    // selection alive for the drag, but it also cancels the caret move that a
+    // press inside a selection normally performs — so a plain click inside the
+    // selection did nothing at all, and the selection could not be dismissed by
+    // clicking it. The range below is captured now, so the drag survives the
+    // browser collapsing the selection; only the highlight goes, and it goes at
+    // the moment the drag starts, which is when it should.
     const text = localDesc.slice(selected.start, selected.end);
     startDrag(e, {
       ghost: { label: text.split('\n')[0].trim() || t('projects.dragLine') },
