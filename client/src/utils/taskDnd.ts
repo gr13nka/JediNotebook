@@ -1,140 +1,13 @@
 /**
- * The drag contract between the project description editor and the task panel.
+ * Offset arithmetic for moving text between a project note and its task panel.
  *
- * Custom MIME types are used so foreign drags (a file, a link, text from another
- * app) are ignored rather than silently turned into tasks. `effectAllowed` is
- * always 'copy': the browser must never mutate the drag source itself, because
- * every move in this feature is performed explicitly by our own handlers, and
- * engines disagree about when a 'move' effect deletes source text.
+ * The drag itself is not here — it runs on the pointer channel
+ * (`hooks/useDragGesture.ts`), which owns the payloads and the drop targets.
+ * What stays here is the part that has nothing to do with pointers: mapping
+ * between the rendered preview and offsets in the note's source text, and the
+ * splices that add, remove and re-order whole lines. All of it is pure, and all
+ * of it corrupts the user's note when it is wrong, so it is tested directly.
  */
-
-const TEXT_MIME = 'application/x-jedi-text';
-const TASK_MIME = 'application/x-jedi-task';
-
-export interface TextPayload {
-  kind: 'text';
-  text: string;
-  /** Offsets into the textarea's value, so the exact range can be cut out. */
-  start: number;
-  end: number;
-  /**
-   * Source line range, present only when the dragged text covers whole lines.
-   * That is what makes a drag re-orderable *within* the note: a block of whole
-   * lines can be spliced to another position, an arbitrary mid-line selection
-   * cannot. Absent for a partial selection dragged out of the textarea.
-   */
-  lineStart?: number;
-  lineEnd?: number;
-}
-
-export interface TaskPayload {
-  kind: 'task';
-  taskId: string;
-  title: string;
-}
-
-export type DragPayload = TextPayload | TaskPayload;
-
-export function setTextPayload(
-  e: React.DragEvent,
-  text: string,
-  start: number,
-  end: number,
-): void {
-  e.dataTransfer.setData(TEXT_MIME, JSON.stringify({ text, start, end }));
-  e.dataTransfer.setData('text/plain', text);
-  e.dataTransfer.effectAllowed = 'copy';
-}
-
-/**
- * A whole-line block dragged by its grip in the rendered preview.
- *
- * Two differences from `setTextPayload`, both deliberate:
- *
- * - It carries the source line range, which is what lets the note itself accept
- *   the drop and re-order the block (see `moveLineBlock`).
- * - `effectAllowed` is 'copyMove', for the same reason `setTaskPayload` uses it:
- *   this one drag has two possible targets that ask for different effects — the
- *   note sets dropEffect 'move' to re-order, the task panel sets 'copy' — and a
- *   dropEffect incompatible with effectAllowed silently cancels the drop. The
- *   'copy'-only pinning that `setTextPayload` needs does not apply here, because
- *   the source is a preview element, not a text control the engine might mutate.
- */
-export function setLineBlockPayload(
-  e: React.DragEvent,
-  text: string,
-  start: number,
-  end: number,
-  lineStart: number,
-  lineEnd: number,
-): void {
-  e.dataTransfer.setData(TEXT_MIME, JSON.stringify({ text, start, end, lineStart, lineEnd }));
-  e.dataTransfer.setData('text/plain', text);
-  e.dataTransfer.effectAllowed = 'copyMove';
-}
-
-/**
- * `effectAllowed` is 'copyMove' here, not 'copy'.
- *
- * A task row is the source of two different drags: reordering within the task
- * list, whose dragover sets dropEffect 'move', and dropping into the
- * description, which sets 'copy'. A dropEffect incompatible with effectAllowed
- * resolves the drag operation to "none" and the drop event never fires — so
- * pinning this to 'copy' would silently break reordering. Unlike a text
- * selection, a task row has no native source mutation to guard against, so
- * permitting 'move' costs nothing.
- */
-export function setTaskPayload(e: React.DragEvent, taskId: string, title: string): void {
-  e.dataTransfer.setData(TASK_MIME, JSON.stringify({ taskId, title }));
-  e.dataTransfer.setData('text/plain', title);
-  e.dataTransfer.effectAllowed = 'copyMove';
-}
-
-/**
- * Reads a payload on drop. Returns null for anything we did not originate.
- *
- * Note: only `types` is readable during dragover — the data itself is not. Use
- * `hasPayload` for hover feedback and this for the drop itself.
- */
-export function readPayload(e: React.DragEvent): DragPayload | null {
-  const rawText = e.dataTransfer.getData(TEXT_MIME);
-  if (rawText) {
-    try {
-      const { text, start, end, lineStart, lineEnd } = JSON.parse(rawText);
-      return { kind: 'text', text, start, end, lineStart, lineEnd };
-    } catch {
-      return null;
-    }
-  }
-  const rawTask = e.dataTransfer.getData(TASK_MIME);
-  if (rawTask) {
-    try {
-      const { taskId, title } = JSON.parse(rawTask);
-      return { kind: 'task', taskId, title };
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-/**
- * Whether a drag in progress carries the given payload kind. Safe during
- * dragover. Takes anything with a `dataTransfer`, so a native DragEvent from a
- * document-level listener works as well as React's synthetic one.
- */
-export function hasPayload(
-  e: { dataTransfer: DataTransfer | null },
-  kind: 'text' | 'task',
-): boolean {
-  const mime = kind === 'text' ? TEXT_MIME : TASK_MIME;
-  return Array.from(e.dataTransfer?.types ?? []).includes(mime);
-}
-
-/** True when the user asked to copy rather than move (⌘ on macOS, Ctrl elsewhere). */
-export function isCopyModifier(e: React.DragEvent): boolean {
-  return e.metaKey || e.ctrlKey;
-}
 
 /**
  * Mapping between the rendered description preview and offsets in its source.
@@ -197,6 +70,23 @@ export function wholeLineRange(
 /** Offset just past the end of `lineIndex`, before its trailing newline. */
 export function offsetAfterLine(text: string, lineIndex: number): number {
   return wholeLineRange(text, lineIndex, lineIndex).end;
+}
+
+/**
+ * Which source line an offset falls on.
+ *
+ * The inverse direction from everything else here, and needed for one case: a
+ * selection inside the textarea is reported as offsets, but deciding whether a
+ * press landed *on* that selection has to happen in line space, because that is
+ * the only granularity the preview's geometry can answer in.
+ */
+export function lineOfOffset(text: string, offset: number): number {
+  const limit = Math.max(0, Math.min(offset, text.length));
+  let line = 0;
+  for (let i = 0; i < limit; i++) {
+    if (text[i] === '\n') line++;
+  }
+  return line;
 }
 
 /** Removes [start, end) from `text`, collapsing the blank line it may leave behind. */

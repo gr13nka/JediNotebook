@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { NEU } from '../../utils/shadows';
 import { useProjectTasks } from '../../hooks/useProjectTasks';
 import { useReorderList } from '../../hooks/useReorderList';
+import { useActiveDrag, useDropTarget } from '../../hooks/useDragGesture';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useProjectUIStore } from '../../stores/projectUIStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -10,7 +11,6 @@ import { InfoTooltip } from '../ui/InfoTooltip';
 import { TaskTextArea } from '../ui/TaskTextArea';
 import { TaskItem } from './TaskItem';
 import { RecurrenceEditor } from './RecurrenceEditor';
-import { readPayload, hasPayload, isCopyModifier } from '../../utils/taskDnd';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 interface ProjectTaskListProps {
@@ -67,69 +67,42 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
     getPayload: (task) => ({ kind: 'task', taskId: task.id, title: task.title }),
   });
 
-  const [isTextDropTarget, setIsTextDropTarget] = useState(false);
-
   /**
    * True from the moment note text starts being dragged anywhere, not just once
    * it reaches this panel — the point of the hint is to tell you the panel is a
-   * target *before* you go looking for one, so it cannot wait for a dragover.
-   * `dragstart`/`dragend` both bubble to the document, which is the only place
-   * that sees a drag begin somewhere else.
+   * target *before* you go looking for one, so it cannot wait for the drag to
+   * arrive. Arming while the project is at its task cap would promise a drop
+   * that `onDrop` then refuses.
    */
-  const [dragArmed, setDragArmed] = useState(false);
+  const drag = useActiveDrag();
+  const dragArmed = canAdd && drag?.spec.payload?.kind === 'text';
 
-  useEffect(() => {
-    // Arming while the project is at its task cap would promise a drop that
-    // handleTextDrop then refuses.
-    if (!canAdd) return;
-    const handleDragStart = (e: DragEvent) => {
-      if (hasPayload(e, 'text')) setDragArmed(true);
-    };
-    const disarm = () => setDragArmed(false);
-    document.addEventListener('dragstart', handleDragStart);
-    document.addEventListener('dragend', disarm);
-    document.addEventListener('drop', disarm);
-    return () => {
-      document.removeEventListener('dragstart', handleDragStart);
-      document.removeEventListener('dragend', disarm);
-      document.removeEventListener('drop', disarm);
-    };
-  }, [canAdd]);
+  const { ref: textDropRef, isOver: isTextDropTarget } = useDropTarget({
+    accepts: (active) => active.spec.payload?.kind === 'text' && canAdd,
+    onDrop: async (active) => {
+      const payload = active.spec.payload;
+      if (payload?.kind !== 'text') return;
 
-  const handleTextDragOver = (e: React.DragEvent) => {
-    if (!hasPayload(e, 'text') || !canAdd) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    setIsTextDropTarget(true);
-  };
+      // One task per non-empty line, so dragging a multi-line block unloads the
+      // whole block rather than creating one task with embedded newlines.
+      const lines = payload.text
+        .split('\n')
+        .map((l) => l.replace(/^[-*]\s+/, '').trim())
+        .filter(Boolean);
+      if (lines.length === 0) return;
 
-  const handleTextDragLeave = () => setIsTextDropTarget(false);
-
-  const handleTextDrop = async (e: React.DragEvent) => {
-    setIsTextDropTarget(false);
-    setDragArmed(false);
-    const payload = readPayload(e);
-    if (!payload || payload.kind !== 'text' || !canAdd) return;
-    e.preventDefault();
-
-    // One task per non-empty line, so dragging a multi-line block unloads the
-    // whole block rather than creating one task with embedded newlines.
-    const lines = payload.text
-      .split('\n')
-      .map((l) => l.replace(/^[-*]\s+/, '').trim())
-      .filter(Boolean);
-    if (lines.length === 0) return;
-
-    for (const line of lines) {
-      await createTask(line, null);
-    }
-    if (!isCopyModifier(e)) {
-      onCutDescriptionRange?.(payload.start, payload.end);
-    }
-  };
+      for (const line of lines) {
+        await createTask(line, null);
+      }
+      if (!active.copy) {
+        onCutDescriptionRange?.(payload.start, payload.end);
+      }
+    },
+  });
 
   return (
     <div
+      ref={textDropRef}
       className={`relative flex min-h-full flex-col rounded-xl transition-shadow ${
         isTextDropTarget
           ? 'ring-2 ring-accent'
@@ -137,9 +110,6 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
             ? 'outline-2 outline-dashed outline-offset-2 outline-accent/50'
             : ''
       }`}
-      onDragOver={handleTextDragOver}
-      onDragLeave={handleTextDragLeave}
-      onDrop={handleTextDrop}
     >
       {/* Sits above the list rather than in it: a banner in flow would push the
           tasks down the moment a drag started. pointer-events-none keeps the

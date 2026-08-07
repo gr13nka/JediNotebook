@@ -205,6 +205,18 @@ export function isDragActive(): boolean {
 }
 
 /**
+ * True in the tail of a finished drag — the same window in which the trailing
+ * `click` is swallowed.
+ *
+ * For handlers that run on `mouseup` rather than `click` and so cannot be
+ * covered by the click suppression: releasing a drag over the note would
+ * otherwise read as a click on the note and flip it into edit mode.
+ */
+export function didJustDrag(): boolean {
+  return suppressClick;
+}
+
+/**
  * The drag in flight, or null. Re-renders on start, end, and modifier changes
  * — not on movement, which only `useDragPointer` follows.
  */

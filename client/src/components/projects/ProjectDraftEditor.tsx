@@ -9,12 +9,9 @@ import { EditProjectModal } from './EditProjectModal';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { adjustProjectNoteFontPx, useProjectTypography } from '../settings/projectTypography';
 import {
-  setTextPayload,
-  setLineBlockPayload,
-  readPayload,
-  hasPayload,
   lineIndexFromNode,
   lineIndexFromPoint,
+  lineOfOffset,
   LINE_INDEX_ATTR,
   wholeLineRange,
   offsetAfterLine,
@@ -22,6 +19,12 @@ import {
   insertLine,
   moveLineBlock,
 } from '../../utils/taskDnd';
+import {
+  didJustDrag,
+  isDragActive,
+  startDrag,
+  useDropTarget,
+} from '../../hooks/useDragGesture';
 import {
   recordTyping,
   recordSnapshot as pushSnapshot,
@@ -292,6 +295,9 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
   // clicks outside any line fall back to end-of-text in the focus effect.
   const handleContainerMouseUp = (e: React.MouseEvent) => {
     if (isEditing) return;
+    // Releasing a drag over the note fires mouseup here, and mouseup is not
+    // covered by the drag channel's click suppression.
+    if (didJustDrag()) return;
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed) return;
     const lineIndex = lineIndexFromPoint(e.clientX, e.clientY);
@@ -332,39 +338,6 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
   }, [focusMode]);
 
   const [isTaskDropTarget, setIsTaskDropTarget] = useState(false);
-
-  // Drag OUT: stamp the exact selected range so the drop side can cut it.
-  const handleTextDragStart = (e: React.DragEvent<HTMLTextAreaElement>) => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const { selectionStart, selectionEnd } = ta;
-    if (selectionStart === selectionEnd) {
-      e.preventDefault();
-      return;
-    }
-    setTextPayload(e, ta.value.slice(selectionStart, selectionEnd), selectionStart, selectionEnd);
-  };
-
-  /**
-   * Drag OUT of the rendered preview — the common case, since reading the
-   * description is what you do before deciding a line should be a task.
-   *
-   * A selection is natively draggable, so no `draggable` attribute is needed
-   * (and adding one would break selecting in the first place). Rendered markup
-   * cannot be mapped back to source columns, so a selection takes the whole
-   * lines it touches, which is also the useful granularity here.
-   */
-  const handlePreviewDragStart = (e: React.DragEvent) => {
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
-    const range = selection.getRangeAt(0);
-    const from = lineIndexFromNode(range.startContainer);
-    const to = lineIndexFromNode(range.endContainer);
-    if (from === null || to === null) return;
-
-    const { start, end } = wholeLineRange(localDesc, Math.min(from, to), Math.max(from, to));
-    setTextPayload(e, localDesc.slice(start, end), start, end);
-  };
 
   // Cut a range that the task panel has just turned into a task. Reads
   // through localDescRef so the callback stays stable across keystrokes.
@@ -422,100 +395,154 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
 
   const handleContainerMouseMove = (e: React.MouseEvent) => {
     if (!isHoverPointer) return;
+    // A mouse drag emits mousemove alongside pointermove. Letting the hovered
+    // line change mid-drag would unmount the very grip being dragged.
+    if (isDragActive()) return;
     const hit = lineAtPoint(e.clientY);
     setHoveredLine((prev) => (prev === (hit?.index ?? null) ? prev : hit?.index ?? null));
   };
 
   /**
-   * Drag OUT by a line's grip. The grip carries the `draggable` attribute, not
-   * the line — making the line itself draggable would turn every mousedown-drag
-   * into a drag instead of a text selection, the same trap documented on the
-   * textarea below.
+   * Drag OUT by a line's grip. The grip is the drag source, not the line —
+   * pressing a line has to stay a text selection, and a press that starts a
+   * drag cannot also start a selection.
    */
-  const handleLineDragStart = (e: React.DragEvent, lineIndex: number) => {
+  const startLineDrag = (e: React.PointerEvent<HTMLElement>, lineIndex: number) => {
+    // The container's own pointerdown would otherwise see this press too and
+    // replace the drag it just started.
+    e.stopPropagation();
     const { start, end } = wholeLineRange(localDesc, lineIndex, lineIndex);
-    setLineBlockPayload(e, localDesc.slice(start, end), start, end, lineIndex, lineIndex);
-    // Drag the line itself rather than the grip icon, so what follows the
-    // cursor is what is being moved. Only while the preview is showing — a
-    // hidden element makes a blank drag image, so editing keeps the default.
-    const lineEl = (e.currentTarget as HTMLElement).parentElement;
-    if (lineEl && !isEditing) {
-      e.dataTransfer.setDragImage(lineEl, LINE_GUTTER_PX, lineEl.clientHeight / 2);
+    const text = localDesc.slice(start, end);
+    startDrag(e, {
+      ghost: { label: text.trim() || t('projects.dragLine') },
+      payload: { kind: 'text', text, start, end, lineStart: lineIndex, lineEnd: lineIndex },
+    });
+  };
+
+  /**
+   * The selected lines and their exact character range, when a press at
+   * `clientY` lands on the current selection — the gesture that drags a
+   * selection out of the note rather than replacing it.
+   *
+   * Line granularity for the hit test, in both modes: rendered markup cannot be
+   * mapped back to source columns, and a textarea's selection is reported as
+   * offsets with no geometry at all. Lines are the only common ground, and they
+   * are the granularity the drop side works in anyway.
+   */
+  const selectedDragRange = (
+    clientY: number,
+  ): { start: number; end: number; firstLine: number; lastLine: number } | null => {
+    let range: { start: number; end: number } | null = null;
+    let firstLine: number;
+    let lastLine: number;
+
+    const ta = textareaRef.current;
+    if (isEditing && ta && ta.selectionStart !== ta.selectionEnd) {
+      range = { start: ta.selectionStart, end: ta.selectionEnd };
+      firstLine = lineOfOffset(localDesc, ta.selectionStart);
+      lastLine = lineOfOffset(localDesc, ta.selectionEnd);
+    } else {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+      const domRange = selection.getRangeAt(0);
+      const from = lineIndexFromNode(domRange.startContainer);
+      const to = lineIndexFromNode(domRange.endContainer);
+      if (from === null || to === null) return null;
+      firstLine = Math.min(from, to);
+      lastLine = Math.max(from, to);
+      // A preview selection takes the whole lines it touches: its rendered
+      // offsets say nothing about columns in the source.
+      range = wholeLineRange(localDesc, firstLine, lastLine);
     }
+
+    const hit = lineAtPoint(clientY);
+    if (!hit || hit.index < firstLine || hit.index > lastLine) return null;
+    return { ...range, firstLine, lastLine };
+  };
+
+  const handleContainerPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const selected = selectedDragRange(e.clientY);
+    if (!selected) return;
+    // Otherwise the press collapses the selection it is trying to pick up.
+    e.preventDefault();
+    const text = localDesc.slice(selected.start, selected.end);
+    startDrag(e, {
+      ghost: { label: text.split('\n')[0].trim() || t('projects.dragLine') },
+      // No line range, so this drag can only leave the note, not re-order it —
+      // a selection may be partial, and splicing a partial range as if it were
+      // whole lines would corrupt the text around it.
+      payload: { kind: 'text', text, start: selected.start, end: selected.end },
+    });
   };
 
   // Drag IN: a task row becomes a line of description, or a note line moves.
-  const handleEditorDragOver = (e: React.DragEvent) => {
-    if (hasPayload(e, 'text')) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
+  const { ref: noteDropRef } = useDropTarget({
+    accepts: (drag) => drag.spec.payload?.kind === 'text' || drag.spec.payload?.kind === 'task',
+    onOver: (drag, _x, y) => {
+      if (drag.spec.payload?.kind === 'task') {
+        setIsTaskDropTarget(true);
+        return;
+      }
       // Past the last line (the container's padding) the insertion rule stays
       // wherever it last was, rather than vanishing under the cursor.
-      const hit = lineAtPoint(e.clientY);
+      const hit = lineAtPoint(y);
       if (hit) setDropLine(hit);
-      return;
-    }
-    if (!hasPayload(e, 'task')) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    setIsTaskDropTarget(true);
-  };
+    },
+    onLeave: () => {
+      setIsTaskDropTarget(false);
+      setDropLine(null);
+    },
+    onDrop: (drag, _x, y) => {
+      setIsTaskDropTarget(false);
+      const target = lineAtPoint(y);
+      setDropLine(null);
+      const payload = drag.spec.payload;
+      if (!payload) return;
 
-  const handleEditorDragLeave = (e: React.DragEvent) => {
-    setIsTaskDropTarget(false);
-    // dragleave bubbles, so crossing from one line to the next fires it on the
-    // container too. Clearing the insertion rule there would make it strobe as
-    // the cursor moves down the note — only clear when the drag has actually
-    // left the container.
-    const next = e.relatedTarget as Node | null;
-    if (next && e.currentTarget.contains(next)) return;
-    setDropLine(null);
-  };
+      if (payload.kind === 'text') {
+        // Only a whole-line block can be re-ordered; a partial selection has no
+        // line range and is ignored here.
+        if (payload.lineStart === undefined || payload.lineEnd === undefined || !target) return;
+        const next = moveLineBlock(
+          localDesc,
+          payload.lineStart,
+          payload.lineEnd,
+          target.index,
+          target.position,
+        );
+        if (next === localDesc) return;
+        recordSnapshot();
+        localDescRef.current = next;
+        setLocalDesc(next);
+        saveDesc(next);
+        return;
+      }
 
-  const handleEditorDragEnd = () => setDropLine(null);
-
-  const handleEditorDrop = (e: React.DragEvent) => {
-    setIsTaskDropTarget(false);
-    const target = dropLine;
-    setDropLine(null);
-    const payload = readPayload(e);
-    if (!payload) return;
-
-    if (payload.kind === 'text') {
-      // Only a whole-line block can be re-ordered; a partial selection dragged
-      // out of the textarea has no line range and is ignored here.
-      if (payload.lineStart === undefined || payload.lineEnd === undefined || !target) return;
-      e.preventDefault();
-      const next = moveLineBlock(
-        localDesc,
-        payload.lineStart,
-        payload.lineEnd,
-        target.index,
-        target.position,
-      );
-      if (next === localDesc) return;
+      if (payload.kind !== 'task') return;
       recordSnapshot();
+
+      // Insert after the line the pointer is over. Dropping past the last line
+      // (or into an empty description) appends. Geometry, not hit-testing, so
+      // this still lands correctly when the textarea is covering the preview.
+      const offset =
+        target === null ? localDesc.length : offsetAfterLine(localDesc, target.index);
+      const next = insertLine(localDesc, offset, payload.title);
       localDescRef.current = next;
       setLocalDesc(next);
       saveDesc(next);
-      return;
-    }
+      onConsumeTask?.(payload.taskId);
+    },
+  });
 
-    e.preventDefault();
-    recordSnapshot();
-
-    // Insert after the line the cursor is over. Dropping past the last line
-    // (or into an empty description) appends. Geometry, not hit-testing, so
-    // this still lands correctly when the textarea is covering the preview.
-    const lineIndex = lineAtPoint(e.clientY)?.index ?? null;
-    const offset =
-      lineIndex === null ? localDesc.length : offsetAfterLine(localDesc, lineIndex);
-    const next = insertLine(localDesc, offset, payload.title);
-    localDescRef.current = next;
-    setLocalDesc(next);
-    saveDesc(next);
-    onConsumeTask?.(payload.taskId);
-  };
+  /** The note container is both the wheel-zoom host and the drop target. */
+  const setContainerNode = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      noteDropRef(node);
+    },
+    [noteDropRef],
+  );
 
   const hasContent = localDesc.trim().length > 0;
 
@@ -534,8 +561,7 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
             alone stays hit-testable — above the textarea, which is unpositioned. */}
         {isHoverPointer && hoveredLine === i && (
           <span
-            draggable
-            onDragStart={(e) => handleLineDragStart(e, i)}
+            onPointerDown={(e) => startLineDrag(e, i)}
             // Without this, grabbing the grip counts as a click on the preview
             // and flips the note into edit mode, swapping the line away.
             onMouseUp={(e) => e.stopPropagation()}
@@ -682,14 +708,11 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
         {/* Preview and textarea occupy the SAME grid cell, so the container is
             as tall as the taller of the two and switching modes moves nothing. */}
         <div
-          ref={containerRef}
+          ref={setContainerNode}
           onMouseUp={handleContainerMouseUp}
           onMouseMove={handleContainerMouseMove}
           onMouseLeave={() => setHoveredLine(null)}
-          onDragOver={handleEditorDragOver}
-          onDragLeave={handleEditorDragLeave}
-          onDragEnd={handleEditorDragEnd}
-          onDrop={handleEditorDrop}
+          onPointerDown={handleContainerPointerDown}
           className={`grid rounded-xl p-4 text-text-primary cursor-text overflow-y-auto no-scrollbar select-text ${isTaskDropTarget ? 'ring-2 ring-accent' : ''}`}
           // Focus mode drops the inset frame — nothing but the text should be
           // visible — and lets the note take the full height instead of the
@@ -702,7 +725,6 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
         >
           <div
             ref={previewRef}
-            onDragStart={handlePreviewDragStart}
             style={{
               gridArea: '1 / 1',
               fontSize: `${projectNoteFontPx}px`,
@@ -722,11 +744,6 @@ export function ProjectDraftEditor({ projectId, title, description, color, icon,
             value={localDesc}
             onChange={handleDescChange}
             onBlur={handleDescBlur}
-            // No `draggable` attribute: a selection inside a text control is
-            // natively draggable and still fires dragstart, whereas
-            // draggable="true" makes mousedown-drag start a drag instead of a
-            // selection — which would make the description unselectable.
-            onDragStart={handleTextDragStart}
             onKeyDown={handleEditorKeyDown}
             // Same gutter as the preview — the two share a grid cell and any
             // difference in their text origin makes the note jump on swap.

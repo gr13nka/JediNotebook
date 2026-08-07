@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wholeLineRange, offsetAfterLine, cutRange, insertLine, moveLineBlock } from './taskDnd';
+import { wholeLineRange, offsetAfterLine, lineOfOffset, cutRange, insertLine, moveLineBlock } from './taskDnd';
 
 // These four functions are the character-offset arithmetic behind dragging
 // task lines into/out of a project description (see taskDnd.ts doc comments).
@@ -77,6 +77,34 @@ describe('offsetAfterLine', () => {
 
   it('is 0 for an empty text', () => {
     expect(offsetAfterLine('', 0)).toBe(0);
+  });
+});
+
+describe('lineOfOffset', () => {
+  const text = 'aaa\nbbb\nccc';
+
+  it('is the inverse of wholeLineRange for each line start', () => {
+    for (const line of [0, 1, 2]) {
+      expect(lineOfOffset(text, wholeLineRange(text, line, line).start)).toBe(line);
+    }
+  });
+
+  it('keeps the end of a line on that line, not the next one', () => {
+    // Offset 3 is the '\n' that ends line 0; a selection ending there selected
+    // line 0, not line 1.
+    expect(lineOfOffset(text, 3)).toBe(0);
+    expect(lineOfOffset(text, 4)).toBe(1);
+  });
+
+  it('is 0 at the start and the last line at the end', () => {
+    expect(lineOfOffset(text, 0)).toBe(0);
+    expect(lineOfOffset(text, text.length)).toBe(2);
+    expect(lineOfOffset('', 0)).toBe(0);
+  });
+
+  it('clamps out-of-range offsets', () => {
+    expect(lineOfOffset(text, -5)).toBe(0);
+    expect(lineOfOffset(text, 999)).toBe(2);
   });
 });
 
