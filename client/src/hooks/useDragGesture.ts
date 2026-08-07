@@ -439,7 +439,15 @@ function endSession(commit: boolean): void {
   }
 
   const drag = snapshotOf(active);
-  const target = commit ? findTarget(active.x, active.y, drag) : null;
+  // A release where the press began is not a drop. It matters because a touch
+  // drag activates on *time*, not movement: a finger held on a project row and
+  // lifted in place — the gesture that asks for a context menu — would otherwise
+  // hit-test its own row, resolve to whatever encloses it, and commit a move the
+  // user never aimed at.
+  const travelled = Math.hypot(active.x - active.startX, active.y - active.startY);
+  const target = commit && travelled >= POINTER_ACTIVATION_PX
+    ? findTarget(active.x, active.y, drag)
+    : null;
   leaveCurrentTarget();
 
   stopAutoScroll();
