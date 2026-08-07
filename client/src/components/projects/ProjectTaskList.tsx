@@ -10,7 +10,7 @@ import { InfoTooltip } from '../ui/InfoTooltip';
 import { TaskTextArea } from '../ui/TaskTextArea';
 import { TaskItem } from './TaskItem';
 import { RecurrenceEditor } from './RecurrenceEditor';
-import { readPayload, hasPayload, isCopyModifier, setTaskPayload } from '../../utils/taskDnd';
+import { readPayload, hasPayload, isCopyModifier } from '../../utils/taskDnd';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 interface ProjectTaskListProps {
@@ -57,14 +57,14 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
     }
   };
 
-  // Also advertise the task payload on dragstart so the description editor can
-  // accept it. setTaskPayload owns effectAllowed ('copyMove') — it has to
-  // permit both this list's 'move' reorder and the editor's 'copy' drop.
+  // The task payload rides along on every row drag so the description editor
+  // can accept the same drag as a drop — one gesture, two possible targets.
   const reorder = useReorderList({
     items: incompleteTasks,
     getId: (t: ProjectTask) => t.id,
+    getLabel: (t: ProjectTask) => t.title,
     onReorder: (ids) => reorderTasks([...ids, ...completedTasks.map((t) => t.id)]),
-    onDragStart: (task, _index, e) => setTaskPayload(e, task.id, task.title),
+    getPayload: (task) => ({ kind: 'task', taskId: task.id, title: task.title }),
   });
 
   const [isTextDropTarget, setIsTextDropTarget] = useState(false);
@@ -165,7 +165,7 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
         <InfoTooltip text={t('projectTasks.tooltip')} />
       </div>
 
-      <div className="flex flex-col gap-0.5" onDragEnd={reorder.handleDragEnd}>
+      <div className="flex flex-col gap-0.5" {...reorder.containerProps}>
         {incompleteTasks.map((task, i) => (
           <TaskItem
             key={task.id}
@@ -174,7 +174,7 @@ export function ProjectTaskList({ projectId, onCutDescriptionRange }: ProjectTas
             onDelete={() => deleteTask(task.id)}
             onRename={(title) => updateTask(task.id, { title })}
             onUpdateRecurrence={(rule) => updateRecurrence(task.id, rule)}
-            {...reorder.getRowProps(i)}
+            reorder={reorder.getRowProps(i)}
           />
         ))}
       </div>

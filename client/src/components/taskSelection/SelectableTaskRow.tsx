@@ -8,6 +8,7 @@ import { normalizeTaskText } from '../../utils/taskText';
 import { ContextMenu } from '../ui/ContextMenu';
 import { CompletionBurst, useCompletionBurst } from '../ui/CompletionBurst';
 import { TaskTextArea } from '../ui/TaskTextArea';
+import type { ReorderRowProps } from '../../hooks/useReorderList';
 
 /** Canonical box order; each row offers the two entries that aren't its current box. */
 const MOVE_TARGETS: TimeBox[] = ['today', 'week', 'later'];
@@ -25,11 +26,8 @@ interface SelectableTaskRowProps {
   onToggleComplete: () => void;
   onDelete: () => void;
   onRename?: (title: string) => void;
-  draggable: boolean;
-  onDragStart?: (e: React.DragEvent) => void;
-  onDragOver?: (e: React.DragEvent) => void;
-  onDrop?: (e: React.DragEvent) => void;
-  isDragOver?: 'above' | 'below' | null;
+  /** Present when this row takes part in drag-to-reorder. */
+  reorder?: ReorderRowProps;
   projectInfo?: { name: string; color: string; icon?: string };
   swipeEnabled?: boolean;
 }
@@ -94,11 +92,7 @@ export function SelectableTaskRow({
   onToggleComplete,
   onDelete,
   onRename,
-  draggable,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  isDragOver,
+  reorder,
   projectInfo,
   swipeEnabled = false,
 }: SelectableTaskRowProps) {
@@ -269,15 +263,19 @@ export function SelectableTaskRow({
 
   return (
     <div className="relative">
-      {isDragOver === 'above' && (
+      {reorder?.isDragOver === 'above' && (
         <div className="absolute -top-[2px] left-8 right-3 h-[2px] rounded-full bg-accent z-20" />
       )}
 
+      {/* `data-reorder-id` sits here, not on the row below it: the row below is
+          translated by the swipe gesture, and its box would report wherever the
+          swipe left it rather than where the row sits in the list. */}
       <div
         ref={rowRef}
-        className={`relative rounded-lg ${renaming ? 'z-30 overflow-visible' : 'overflow-hidden'}`}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
+        data-reorder-id={reorder?.rowId}
+        className={`relative rounded-lg ${renaming ? 'z-30 overflow-visible' : 'overflow-hidden'} ${
+          reorder?.isDragging ? 'opacity-40' : ''
+        }`}
       >
         {canSwipe && (
           <div className="absolute inset-0 grid grid-cols-2 rounded-lg border border-border bg-bg-elevated/70">
@@ -349,11 +347,12 @@ export function SelectableTaskRow({
           onWheel={handleWheel}
           onContextMenu={handleContextMenu}
         >
-          {draggable && !isCompleted && (
+          {reorder && !isCompleted && (
             <span
+              // The grip, not the row, starts the drag: the row already owns a
+              // horizontal swipe gesture and both would claim the same press.
               data-no-swipe="true"
-              draggable
-              onDragStart={onDragStart}
+              onPointerDown={reorder.onPointerDown}
               className="cursor-grab active:cursor-grabbing select-none flex-shrink-0 opacity-40 hover:opacity-100 transition-opacity"
             >
               <DragDotsIcon />
@@ -438,7 +437,7 @@ export function SelectableTaskRow({
         <ContextMenu items={contextMenuItems} position={ctxMenu} onClose={closeCtxMenu} />
       </div>
 
-      {isDragOver === 'below' && (
+      {reorder?.isDragOver === 'below' && (
         <div className="absolute -bottom-[2px] left-8 right-3 h-[2px] rounded-full bg-accent z-20" />
       )}
     </div>

@@ -204,6 +204,7 @@ export function TaskSelectionView() {
   const projectReorder = useReorderList({
     items: boxFilteredGroups,
     getId: (g) => g.project.id,
+    getLabel: (g) => g.project.name,
     onReorder: reorderProjects,
   });
 
@@ -211,6 +212,7 @@ export function TaskSelectionView() {
   const flatReorder = useReorderList({
     items: sortedFlatTasks,
     getId: (t: ProjectTask) => t.id,
+    getLabel: (t: ProjectTask) => t.title,
     onReorder: setFlatOrder,
   });
 
@@ -443,7 +445,7 @@ export function TaskSelectionView() {
           variants={container}
           initial="hidden"
           animate="show"
-          onDragEnd={flatReorder.handleDragEnd}
+          {...flatReorder.containerProps}
         >
           {sortedFlatTasks.map((task, i) => {
             const rowProps = flatReorder.getRowProps(i);
@@ -460,11 +462,7 @@ export function TaskSelectionView() {
                       updatedAt: new Date().toISOString(),
                     });
                   }}
-                  draggable={sortMode === 'custom'}
-                  onDragStart={sortMode === 'custom' ? rowProps.onDragStart : undefined}
-                  onDragOver={sortMode === 'custom' ? rowProps.onDragOver : undefined}
-                  onDrop={sortMode === 'custom' ? rowProps.onDrop : undefined}
-                  isDragOver={rowProps.isDragOver}
+                  reorder={sortMode === 'custom' ? rowProps : undefined}
                   projectInfo={projectMap.get(task.projectId)}
                   swipeEnabled={swipeRowsEnabled}
                   onMoveToProject={setProjectMoveTask}
@@ -513,7 +511,6 @@ export function TaskSelectionView() {
                             updatedAt: new Date().toISOString(),
                           });
                         }}
-                        draggable={false}
                         projectInfo={projectMap.get(task.projectId)}
                         swipeEnabled={swipeRowsEnabled}
                         onMoveToProject={setProjectMoveTask}
@@ -532,7 +529,7 @@ export function TaskSelectionView() {
           variants={container}
           initial="hidden"
           animate="show"
-          onDragEnd={projectReorder.handleDragEnd}
+          {...projectReorder.containerProps}
         >
           {hasFolders ? (
             boxFilteredFolderGroups.map((folderGroup) => {
@@ -568,12 +565,7 @@ export function TaskSelectionView() {
             sortedGroups.map((group, i) => {
               const rowProps = projectReorder.getRowProps(i);
               return (
-                <motion.div
-                  key={group.project.id}
-                  variants={item}
-                  onDragOver={groupedSortMode === 'custom' && groupDragEnabled ? rowProps.onDragOver : undefined}
-                  onDrop={groupedSortMode === 'custom' && groupDragEnabled ? rowProps.onDrop : undefined}
-                >
+                <motion.div key={group.project.id} variants={item}>
                   <TaskGroupCard
                     project={group.project}
                     tasks={group.incompleteTasks}
@@ -585,11 +577,7 @@ export function TaskSelectionView() {
                     dragEnabled={groupDragEnabled}
                     isCollapsed={collapsedProjects.has(group.project.id)}
                     onToggleCollapse={() => toggleProject(group.project.id)}
-                    draggableProject={groupedSortMode === 'custom'}
-                    onProjectDragStart={rowProps.onDragStart}
-                    onProjectDragOver={rowProps.onDragOver}
-                    onProjectDrop={rowProps.onDrop}
-                    isProjectDragOver={rowProps.isDragOver}
+                    projectReorder={rowProps}
                   />
                 </motion.div>
               );

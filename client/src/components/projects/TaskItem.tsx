@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { NEU } from '../../utils/shadows';
 import { normalizeTaskText } from '../../utils/taskText';
@@ -6,6 +6,7 @@ import { RecurrenceEditor } from './RecurrenceEditor';
 import { CompletionBurst, useCompletionBurst } from '../ui/CompletionBurst';
 import { TaskTextArea } from '../ui/TaskTextArea';
 import { DragDotsIcon } from '../ui/DragDotsIcon';
+import type { ReorderRowProps } from '../../hooks/useReorderList';
 import type { ProjectTask, RecurrenceRule } from '@shared/types';
 
 interface TaskItemProps {
@@ -14,11 +15,8 @@ interface TaskItemProps {
   onDelete: () => void;
   onRename: (title: string) => void;
   onUpdateRecurrence?: (rule: RecurrenceRule | null) => void;
-  draggable?: boolean;
-  onDragStart?: (e: React.DragEvent) => void;
-  onDragOver?: (e: React.DragEvent) => void;
-  onDrop?: (e: React.DragEvent) => void;
-  isDragOver?: 'above' | 'below' | null;
+  /** Present when this row takes part in drag-to-reorder. */
+  reorder?: ReorderRowProps;
 }
 
 const RecurringIcon = ({ active }: { active: boolean }) => (
@@ -31,7 +29,7 @@ const RecurringIcon = ({ active }: { active: boolean }) => (
   </svg>
 );
 
-export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrence, draggable, onDragStart, onDragOver, onDrop, isDragOver }: TaskItemProps) {
+export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrence, reorder }: TaskItemProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(task.title);
   const [showRecurrence, setShowRecurrence] = useState(false);
@@ -68,18 +66,18 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
   return (
     <>
     <div className="relative">
-      {isDragOver === 'above' && (
+      {reorder?.isDragOver === 'above' && (
         <div className="absolute -top-[2px] left-2 right-2 h-[2px] rounded-full bg-accent z-10" />
       )}
       <div
-        className="group/task flex items-start gap-1.5 py-1.5"
-        draggable={draggable}
-        onDragStart={onDragStart}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
+        className={`group/task flex items-start gap-1.5 py-1.5 ${reorder?.isDragging ? 'opacity-40' : ''}`}
+        // The whole row is the drag source, as it was when the row carried
+        // `draggable` — the grip beside it is the affordance, not the handle.
+        data-reorder-id={reorder?.rowId}
+        onPointerDown={reorder?.onPointerDown}
       >
         {/* Drag handle */}
-        {draggable && !task.isCompleted && (
+        {reorder && !task.isCompleted && (
           <span className="cursor-grab active:cursor-grabbing select-none shrink-0 opacity-40 hover:opacity-100 transition-opacity">
             <DragDotsIcon />
           </span>
@@ -146,7 +144,7 @@ export function TaskItem({ task, onToggle, onDelete, onRename, onUpdateRecurrenc
           </button>
         )}
       </div>
-      {isDragOver === 'below' && (
+      {reorder?.isDragOver === 'below' && (
         <div className="absolute -bottom-[2px] left-2 right-2 h-[2px] rounded-full bg-accent z-10" />
       )}
     </div>

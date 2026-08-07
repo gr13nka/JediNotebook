@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SelectableTaskRow } from './SelectableTaskRow';
 import { useProjectTasks } from '../../hooks/useProjectTasks';
-import { useReorderList } from '../../hooks/useReorderList';
+import { useReorderList, type ReorderRowProps } from '../../hooks/useReorderList';
 import { useTranslation } from '../../i18n/useTranslation';
 import type { Project, ProjectTask, TimeBox } from '@shared/types';
 
@@ -28,11 +28,12 @@ interface TaskGroupCardProps {
   dragEnabled?: boolean;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
-  draggableProject?: boolean;
-  onProjectDragStart?: (e: React.DragEvent) => void;
-  onProjectDragOver?: (e: React.DragEvent) => void;
-  onProjectDrop?: (e: React.DragEvent) => void;
-  isProjectDragOver?: 'above' | 'below' | null;
+  /**
+   * Present when this card is a row of a reorderable project list. The whole
+   * card is the drop box (dropping a project onto another project's task rows
+   * means "here"), while only its header starts a drag.
+   */
+  projectReorder?: ReorderRowProps;
 }
 
 function sortTasks(tasks: ProjectTask[], mode: TaskSortMode): ProjectTask[] {
@@ -53,11 +54,7 @@ export function TaskGroupCard({
   dragEnabled = true,
   isCollapsed = false,
   onToggleCollapse,
-  draggableProject,
-  onProjectDragStart,
-  onProjectDragOver,
-  onProjectDrop,
-  isProjectDragOver,
+  projectReorder,
 }: TaskGroupCardProps) {
   const { reorderTasks, toggleTask, deleteTask, updateTask } = useProjectTasks(project.id);
   const { t } = useTranslation();
@@ -67,32 +64,31 @@ export function TaskGroupCard({
 
   const isDragEnabled = sortMode === 'custom' && dragEnabled;
 
-  // stopPropagation: this card's task rows sit inside a project row that is
-  // itself draggable (for reordering projects) — without it, a task-row drag
-  // would also register as a project-row drag on the ancestor.
+  // No propagation guard needed even though these rows sit inside a card that
+  // is itself a draggable project row: a drag is scoped by list id, so the
+  // project list simply does not accept a task-row drag.
   const reorder = useReorderList({
     items: sortedTasks,
     getId: (t: ProjectTask) => t.id,
+    getLabel: (t: ProjectTask) => t.title,
     onReorder: reorderTasks,
-    stopPropagation: true,
   });
 
   const selectedCount = tasks.filter((t) => t.timeBox === 'today').length;
 
   return (
-    <div className="relative">
-      {isProjectDragOver === 'above' && (
+    <div className="relative" data-reorder-id={projectReorder?.rowId}>
+      {projectReorder?.isDragOver === 'above' && (
         <div className="absolute -top-[2px] left-2 right-2 h-[2px] rounded-full bg-accent z-10" />
       )}
 
       {/* Project header row */}
       <div
-        className={`flex min-h-9 items-center gap-3 rounded-lg border border-border bg-bg-card px-2.5 py-2 ${onToggleCollapse ? 'cursor-pointer hover:bg-bg-elevated/30' : ''} transition-colors`}
+        className={`flex min-h-9 items-center gap-3 rounded-lg border border-border bg-bg-card px-2.5 py-2 ${onToggleCollapse ? 'cursor-pointer hover:bg-bg-elevated/30' : ''} transition-colors ${
+          projectReorder?.isDragging ? 'opacity-40' : ''
+        }`}
         onClick={onToggleCollapse}
-        draggable={draggableProject && isDragEnabled}
-        onDragStart={onProjectDragStart}
-        onDragOver={onProjectDragOver}
-        onDrop={onProjectDrop}
+        onPointerDown={projectReorder && isDragEnabled ? projectReorder.onPointerDown : undefined}
       >
         {project.icon ? (
           <span className="text-base flex-shrink-0 leading-none">{project.icon}</span>
@@ -133,7 +129,7 @@ export function TaskGroupCard({
             transition={{ duration: 0.2, ease: 'easeInOut' }}
             style={{ overflow: 'hidden' }}
           >
-            <div className="-mr-2 -mb-2 flex flex-col gap-3 pl-3 pr-2 pt-3 pb-2" onDragEnd={reorder.handleDragEnd} onDragLeave={reorder.handleDragLeave}>
+            <div className="-mr-2 -mb-2 flex flex-col gap-3 pl-3 pr-2 pt-3 pb-2" {...reorder.containerProps}>
               {sortedTasks.map((task, i) => {
                 const rowProps = reorder.getRowProps(i);
                 return (
@@ -146,11 +142,7 @@ export function TaskGroupCard({
                     onToggleComplete={() => toggleTask(task.id)}
                     onDelete={() => deleteTask(task.id)}
                     onRename={(title) => updateTask(task.id, { title })}
-                    draggable={isDragEnabled}
-                    onDragStart={isDragEnabled ? rowProps.onDragStart : undefined}
-                    onDragOver={isDragEnabled ? rowProps.onDragOver : undefined}
-                    onDrop={isDragEnabled ? rowProps.onDrop : undefined}
-                    isDragOver={rowProps.isDragOver}
+                    reorder={isDragEnabled ? rowProps : undefined}
                   />
                 );
               })}
@@ -192,7 +184,6 @@ export function TaskGroupCard({
                             onToggleComplete={() => toggleTask(task.id)}
                             onDelete={() => deleteTask(task.id)}
                             onRename={(title) => updateTask(task.id, { title })}
-                            draggable={false}
                           />
                         ))}
                       </motion.div>
@@ -205,7 +196,7 @@ export function TaskGroupCard({
         )}
       </AnimatePresence>
 
-      {isProjectDragOver === 'below' && (
+      {projectReorder?.isDragOver === 'below' && (
         <div className="absolute -bottom-[2px] left-2 right-2 h-[2px] rounded-full bg-accent z-10" />
       )}
     </div>

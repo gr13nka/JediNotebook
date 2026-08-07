@@ -1,120 +1,165 @@
-import { useRef, useState } from 'react';
+import type React from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
+import {
+  isInteractiveDragTarget,
+  reorderIds,
+  resolveDropSide,
+  startDrag,
+  useActiveDrag,
+  useDropTarget,
+  type DragPayload,
+  type DropSide,
+} from './useDragGesture';
 
 /**
  * Drag-to-reorder for a flat list of rows, shared by every list in the app that
- * lets you drag a row and drop it above/below another row (project tasks,
- * selectable task rows, project cards).
+ * lets you drag a row above or below another row (project tasks, selectable
+ * task rows, project rows).
  *
- * Owns the two pieces every one of those lists had reimplemented identically:
- * the in-flight drag index (a ref, not state — it must survive without
- * re-rendering the row being dragged) and the hit-test that turns a dragover's
- * `clientY` into an "above" or "below" insertion relative to the hovered row.
- * `onReorder` receives the full id list in its new order; callers decide what
- * "reorder" means for their data (persist it, splice in extra ids, or just
- * hold it in local state).
+ * Runs on the pointer drag channel (`useDragGesture`), so it works from a
+ * finger as well as a mouse. Two consequences worth knowing:
+ *
+ * - The list *container* is the drop target, not each row. Rows are found
+ *   inside it by `data-reorder-id` and the pointer's coordinates, which is one
+ *   registration per list instead of one per row.
+ * - Rows are scoped by list id rather than by where events stop bubbling. A
+ *   task row dragged inside a project card used to need `stopPropagation` so
+ *   its drag would not also register on the card's own draggable header; now
+ *   the card's row list simply does not accept a drag whose list id is not
+ *   its own.
  */
 export interface UseReorderListOptions<T> {
-  /** Rows in their current display order — drag/drop indexes into this array. */
+  /** Rows in their current display order. */
   items: T[];
   getId: (item: T) => string;
   /** Called with every item's id, in the new order, once a drop completes. */
   onReorder: (orderedIds: string[]) => void;
+  /** Text the drag ghost carries. */
+  getLabel: (item: T) => string;
   /**
-   * Extra work to run at the end of a row's dragstart, after this hook has set
-   * `dataTransfer.effectAllowed = 'move'` — e.g. also advertising a payload for
-   * a drop target outside this list. May overwrite `effectAllowed` itself.
+   * Payload offered to drop targets *outside* this list — e.g. a task row that
+   * can also be dropped into a project note. Omit for a list that only
+   * reorders itself.
    */
-  onDragStart?: (item: T, index: number, e: React.DragEvent) => void;
-  /**
-   * Stop the three drag events from bubbling past this list's rows. Needed
-   * only when the list is nested inside another draggable/reorderable
-   * ancestor (e.g. task rows inside a project card that is itself dragged to
-   * reorder projects) — otherwise a row drag would also register as a drag on
-   * the ancestor.
-   */
-  stopPropagation?: boolean;
+  getPayload?: (item: T) => DragPayload;
 }
 
-export type DropPosition = 'above' | 'below';
-
 export interface ReorderRowProps {
-  draggable: true;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent) => void;
-  isDragOver: DropPosition | null;
+  /** Render as `data-reorder-id` on the element whose box decides above/below. */
+  rowId: string;
+  /**
+   * Put on whatever starts the drag — the whole row, or a grip inside it. A row
+   * that owns another pointer gesture (the swipe on `SelectableTaskRow`) must
+   * use a grip, or the two gestures would both claim the press.
+   */
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  isDragOver: DropSide | null;
+  isDragging: boolean;
 }
 
 export interface UseReorderListResult {
-  /** Drag handlers + indicator state for row `index`. Spread onto its draggable element. */
+  /** Spread on the element wrapping the rows — it is the drop target. */
+  containerProps: { ref: (node: HTMLElement | null) => void };
+  /** Drag handlers + indicator state for row `index`. */
   getRowProps(index: number): ReorderRowProps;
-  /** Wire to the list container's `onDragEnd` — always clears drag state. */
-  handleDragEnd(): void;
-  /** Wire to the list container's `onDragLeave` — clears only the drop indicator, keeping the drag active. */
-  handleDragLeave(): void;
+}
+
+const REORDER_ID_ATTR = 'reorderId';
+
+/**
+ * The row under a point, and its box. Restricted to `ids`, so a nested list's
+ * rows (task rows inside a project card whose header is itself a row) cannot be
+ * mistaken for rows of this list.
+ */
+function rowAtPoint(
+  x: number,
+  y: number,
+  ids: string[],
+): { id: string; rect: DOMRect } | null {
+  let element: Element | null = document.elementFromPoint(x, y);
+  while (element) {
+    if (element instanceof HTMLElement) {
+      const id = element.dataset[REORDER_ID_ATTR];
+      if (id !== undefined && ids.includes(id)) {
+        return { id, rect: element.getBoundingClientRect() };
+      }
+    }
+    element = element.parentElement;
+  }
+  return null;
 }
 
 export function useReorderList<T>({
   items,
   getId,
   onReorder,
-  onDragStart,
-  stopPropagation = false,
+  getLabel,
+  getPayload,
 }: UseReorderListOptions<T>): UseReorderListResult {
-  const dragIdx = useRef<number | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ index: number; position: DropPosition } | null>(null);
+  const listId = useId();
+  const [dropTarget, setDropTarget] = useState<{ id: string; side: DropSide } | null>(null);
+  const drag = useActiveDrag();
+  const draggingId = drag?.spec.list?.id === listId ? drag.spec.list.itemId : null;
 
-  const getRowProps = (index: number): ReorderRowProps => ({
-    draggable: true,
-    onDragStart: (e) => {
-      if (stopPropagation) e.stopPropagation();
-      dragIdx.current = index;
-      e.dataTransfer.effectAllowed = 'move';
-      onDragStart?.(items[index], index, e);
+  // Read inside the drop-target callbacks, which are registered once per node
+  // and must not close over a stale render's items.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const onReorderRef = useRef(onReorder);
+  onReorderRef.current = onReorder;
+
+  const resolveHit = useCallback((x: number, y: number, movingId: string) => {
+    const ids = itemsRef.current.map(getId);
+    const hit = rowAtPoint(x, y, ids);
+    if (!hit || hit.id === movingId) return null;
+    return { ids, id: hit.id, side: resolveDropSide(hit.rect, y) };
+  }, [getId]);
+
+  const { ref } = useDropTarget({
+    accepts: (active) => active.spec.list?.id === listId,
+    onOver: (active, x, y) => {
+      const movingId = active.spec.list?.itemId ?? '';
+      const hit = resolveHit(x, y, movingId);
+      setDropTarget((previous) => {
+        if (!hit) return previous === null ? previous : null;
+        if (previous?.id === hit.id && previous.side === hit.side) return previous;
+        return { id: hit.id, side: hit.side };
+      });
     },
-    onDragOver: (e) => {
-      e.preventDefault();
-      if (stopPropagation) e.stopPropagation();
-      e.dataTransfer.dropEffect = 'move';
-      if (dragIdx.current === null || dragIdx.current === index) {
-        setDropTarget(null);
-        return;
-      }
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      const midY = rect.top + rect.height / 2;
-      const position: DropPosition = e.clientY < midY ? 'above' : 'below';
-      setDropTarget({ index, position });
-    },
-    onDrop: (e) => {
-      e.preventDefault();
-      if (stopPropagation) e.stopPropagation();
-      const from = dragIdx.current;
-      if (from === null || from === index) {
-        dragIdx.current = null;
-        setDropTarget(null);
-        return;
-      }
-      const ordered = items.map(getId);
-      const [moved] = ordered.splice(from, 1);
-      const insertAt = dropTarget?.position === 'below'
-        ? index + (from < index ? 0 : 1)
-        : index - (from < index ? 1 : 0);
-      ordered.splice(Math.max(0, insertAt), 0, moved);
-      onReorder(ordered);
-      dragIdx.current = null;
+    onLeave: () => setDropTarget(null),
+    // Resolved from the drop coordinates rather than from `dropTarget`: the
+    // indicator is state and may lag a move behind, and a drop must land where
+    // the pointer actually is.
+    onDrop: (active, x, y) => {
       setDropTarget(null);
+      const movingId = active.spec.list?.itemId;
+      if (!movingId) return;
+      const hit = resolveHit(x, y, movingId);
+      if (!hit) return;
+      const next = reorderIds(hit.ids, movingId, hit.id, hit.side);
+      if (next !== hit.ids) onReorderRef.current(next);
     },
-    isDragOver: dropTarget?.index === index ? dropTarget.position : null,
   });
 
-  const handleDragEnd = () => {
-    setDropTarget(null);
-    dragIdx.current = null;
+  const getRowProps = (index: number): ReorderRowProps => {
+    const item = items[index];
+    const id = getId(item);
+    return {
+      rowId: id,
+      onPointerDown: (event) => {
+        // The row's own checkbox, delete button and title editor keep working
+        // when the whole row is the drag source.
+        if (isInteractiveDragTarget(event.target)) return;
+        startDrag(event, {
+          ghost: { label: getLabel(item) },
+          payload: getPayload?.(item),
+          list: { id: listId, itemId: id },
+        });
+      },
+      isDragOver: dropTarget?.id === id ? dropTarget.side : null,
+      isDragging: draggingId === id,
+    };
   };
 
-  const handleDragLeave = () => {
-    setDropTarget(null);
-  };
-
-  return { getRowProps, handleDragEnd, handleDragLeave };
+  return { containerProps: { ref }, getRowProps };
 }
